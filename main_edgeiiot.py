@@ -438,6 +438,7 @@ class EdgeIIoTFederatedLearningSystem:
                 input_dim=self.config.input_dim,
                 hidden_dim=self.config.hidden_dim,
                 embedding_dim=self.config.embedding_dim,
+                num_classes=2,  # Binary classification for zero-day detection
                 support_weight=self.config.support_weight,
                 test_weight=self.config.test_weight
             ).to(self.device)
@@ -1343,7 +1344,6 @@ class EdgeIIoTFederatedLearningSystem:
                 hidden_dim=self.config.hidden_dim,
                 embedding_dim=self.config.embedding_dim,
                 num_classes=2,  # Binary classification for zero-day detection
-                sequence_length=12,
                 support_weight=self.config.support_weight,
                 test_weight=self.config.test_weight
             ).to(self.device)
@@ -1429,15 +1429,16 @@ class EdgeIIoTFederatedLearningSystem:
         logger.info(f"Setup {len(self.client_addresses)} client addresses")
 
     def start_services(self):
-        """Start Ganache and IPFS services"""
+        """Start Ganache, IPFS, and MetaMask services"""
         logger.info("🚀 Starting blockchain services...")
         
         # Check if services are already running
         ganache_running = self._check_ganache()
         ipfs_running = self._check_ipfs()
+        metamask_running = self._check_metamask()
         
-        if ganache_running and ipfs_running:
-            logger.info("✅ Both Ganache and IPFS are already running!")
+        if ganache_running and ipfs_running and metamask_running:
+            logger.info("✅ All blockchain services (Ganache, IPFS, MetaMask) are already running!")
             self.services_started = True
             return
         
@@ -1478,6 +1479,15 @@ class EdgeIIoTFederatedLearningSystem:
         try:
             import requests
             response = requests.get('http://localhost:5001/api/v0/version', timeout=2)
+            return response.status_code == 200
+        except:
+            return False
+
+    def _check_metamask(self):
+        """Check if MetaMask web interface is running"""
+        try:
+            import requests
+            response = requests.get('http://localhost:5000', timeout=2)
             return response.status_code == 200
         except:
             return False
@@ -2139,9 +2149,12 @@ class EdgeIIoTFederatedLearningSystem:
             adaptation_data: Dictionary with adaptation metrics over time
         """
         try:
-            # Clone the model for adaptation
-            adapted_model = self.coordinator.model
+            import copy
+            # Clone the model for adaptation (proper deep copy to avoid data leakage)
+            adapted_model = copy.deepcopy(self.coordinator.model)
             adapted_model.train()
+            
+            logger.info(f"✅ TTT adaptation: Created deep copy of model to prevent data leakage")
             
             # Setup optimizer
             optimizer = torch.optim.AdamW(adapted_model.parameters(), lr=0.001)

@@ -640,10 +640,9 @@ class TransductiveLearner(nn.Module):
     Streamlined implementation with unified methods for better maintainability
     """
     
-    def __init__(self, input_dim: int, hidden_dim: int = 128, embedding_dim: int = 64, num_classes: int = 2, sequence_length: int = 5, support_weight: float = 0.7, test_weight: float = 0.3):
+    def __init__(self, input_dim: int, hidden_dim: int = 128, embedding_dim: int = 64, num_classes: int = 2, support_weight: float = 0.7, test_weight: float = 0.3):
         super(TransductiveLearner, self).__init__()
         
-        self.sequence_length = sequence_length
         self.embedding_dim = embedding_dim
         self.num_classes = num_classes
         self.support_weight = support_weight
@@ -928,10 +927,10 @@ class MetaLearner(nn.Module):
     Learns to quickly adapt to new tasks with minimal examples
     """
     
-    def __init__(self, input_dim: int, hidden_dim: int = 128, embedding_dim: int = 64, num_classes: int = 2, sequence_length: int = 12, support_weight: float = 0.7, test_weight: float = 0.3):
+    def __init__(self, input_dim: int, hidden_dim: int = 128, embedding_dim: int = 64, num_classes: int = 2, support_weight: float = 0.7, test_weight: float = 0.3):
         super(MetaLearner, self).__init__()
         
-        self.transductive_net = TransductiveLearner(input_dim, hidden_dim, embedding_dim, num_classes, sequence_length, support_weight, test_weight)
+        self.transductive_net = TransductiveLearner(input_dim, hidden_dim, embedding_dim, num_classes, support_weight, test_weight)
         self.meta_optimizer = optim.AdamW(self.parameters(), lr=0.001, weight_decay=1e-4)
         
         # Meta-learning parameters
@@ -1032,10 +1031,10 @@ class TransductiveFewShotModel(nn.Module):
     Combines meta-learning with test-time training for rapid adaptation
     """
     
-    def __init__(self, input_dim: int, hidden_dim: int = 128, embedding_dim: int = 64, num_classes: int = 2, sequence_length: int = 12, support_weight: float = 0.7, test_weight: float = 0.3):
+    def __init__(self, input_dim: int, hidden_dim: int = 128, embedding_dim: int = 64, num_classes: int = 2, support_weight: float = 0.7, test_weight: float = 0.3):
         super(TransductiveFewShotModel, self).__init__()
         
-        self.meta_learner = MetaLearner(input_dim, hidden_dim, embedding_dim, num_classes, sequence_length, support_weight, test_weight)
+        self.meta_learner = MetaLearner(input_dim, hidden_dim, embedding_dim, num_classes, support_weight, test_weight)
         self.embedding_dim = embedding_dim
         self.num_classes = num_classes
         
