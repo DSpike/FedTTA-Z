@@ -909,12 +909,14 @@ class PerformanceVisualizer:
                        fontsize=14, fontweight='bold')
         
         # Add performance metrics as text
-        accuracy = evaluation_results.get('accuracy', 0)
-        precision = evaluation_results.get('precision', 0)
-        recall = evaluation_results.get('recall', 0)
-        f1_score = evaluation_results.get('f1_score', 0)
+        # Try both old and new metric key formats
+        accuracy = evaluation_results.get('accuracy_mean', evaluation_results.get('accuracy', 0))
+        precision = evaluation_results.get('precision_mean', evaluation_results.get('precision', 0))
+        recall = evaluation_results.get('recall_mean', evaluation_results.get('recall', 0))
+        f1_score = evaluation_results.get('macro_f1_mean', evaluation_results.get('f1_score', 0))
+        mcc = evaluation_results.get('mcc_mean', evaluation_results.get('mcc', 0))
         
-        metrics_text = f'Accuracy: {accuracy:.3f}\nPrecision: {precision:.3f}\nRecall: {recall:.3f}\nF1-Score: {f1_score:.3f}'
+        metrics_text = f'Accuracy: {accuracy:.3f}\nPrecision: {precision:.3f}\nRecall: {recall:.3f}\nF1-Score: {f1_score:.3f}\nMCC: {mcc:.3f}'
         ax.text(0.02, 0.98, metrics_text, transform=ax.transAxes, fontsize=10,
                 verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
         
@@ -1001,12 +1003,58 @@ class PerformanceVisualizer:
         if scenario_names is None:
             scenario_names = ['Scenario 1', 'Scenario 2', 'Scenario 3', 'Scenario 4', 'Scenario 5']
         
-        # Extract metrics for comparison
-        base_metrics = ['accuracy', 'precision', 'recall', 'f1_score', 'mccc']
-        ttt_metrics = ['accuracy', 'precision', 'recall', 'f1_score', 'mccc']
+        # Extract metrics for comparison - handle both old and new key formats
+        base_metrics = ['accuracy_mean', 'precision_mean', 'recall_mean', 'macro_f1_mean', 'mcc_mean']
+        ttt_metrics = ['accuracy_mean', 'precision_mean', 'recall_mean', 'macro_f1_mean', 'mcc_mean']
         
-        base_values = [base_results.get(metric, 0) for metric in base_metrics]
-        ttt_values = [ttt_results.get(metric, 0) for metric in ttt_metrics]
+        # Calculate metrics from available data
+        base_values = []
+        ttt_values = []
+        
+        # Get confusion matrices for precision/recall calculation
+        base_cm = base_results.get('confusion_matrix', [[0, 0], [0, 0]])
+        ttt_cm = ttt_results.get('confusion_matrix', [[0, 0], [0, 0]])
+        
+        for metric in base_metrics:
+            if metric == 'accuracy_mean':
+                base_val = base_results.get('accuracy_mean', 0)
+                ttt_val = ttt_results.get('accuracy_mean', 0)
+            elif metric == 'precision_mean':
+                # Calculate precision from confusion matrix
+                if len(base_cm) == 2 and len(base_cm[0]) == 2:
+                    tp, fp = base_cm[1][1], base_cm[0][1]
+                    base_val = tp / (tp + fp) if (tp + fp) > 0 else 0
+                else:
+                    base_val = 0
+                if len(ttt_cm) == 2 and len(ttt_cm[0]) == 2:
+                    tp, fp = ttt_cm[1][1], ttt_cm[0][1]
+                    ttt_val = tp / (tp + fp) if (tp + fp) > 0 else 0
+                else:
+                    ttt_val = 0
+            elif metric == 'recall_mean':
+                # Calculate recall from confusion matrix
+                if len(base_cm) == 2 and len(base_cm[0]) == 2:
+                    tp, fn = base_cm[1][1], base_cm[1][0]
+                    base_val = tp / (tp + fn) if (tp + fn) > 0 else 0
+                else:
+                    base_val = 0
+                if len(ttt_cm) == 2 and len(ttt_cm[0]) == 2:
+                    tp, fn = ttt_cm[1][1], ttt_cm[1][0]
+                    ttt_val = tp / (tp + fn) if (tp + fn) > 0 else 0
+                else:
+                    ttt_val = 0
+            elif metric == 'macro_f1_mean':
+                base_val = base_results.get('macro_f1_mean', 0)
+                ttt_val = ttt_results.get('macro_f1_mean', 0)
+            elif metric == 'mcc_mean':
+                base_val = base_results.get('mcc_mean', 0)
+                ttt_val = ttt_results.get('mcc_mean', 0)
+            else:
+                base_val = base_results.get(metric, 0)
+                ttt_val = ttt_results.get(metric, 0)
+            
+            base_values.append(base_val)
+            ttt_values.append(ttt_val)
         
         # Create figure with IEEE standard styling
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
@@ -1061,11 +1109,19 @@ class PerformanceVisualizer:
         ax1.set_title(f'Performance Comparison: Base vs TTT Model{title_suffix}', fontsize=13, fontweight='bold', 
                      pad=15, fontfamily='Times New Roman')
         ax1.set_xticks(x)
-        # Fix MCCC label to MCC
+        # Fix metric labels for display
         metric_labels = []
         for m in base_metrics:
-            if m == 'mccc':
+            if m == 'mcc_mean':
                 metric_labels.append('MCC')
+            elif m == 'macro_f1_mean':
+                metric_labels.append('F1 Score')
+            elif m == 'precision_mean':
+                metric_labels.append('Precision')
+            elif m == 'recall_mean':
+                metric_labels.append('Recall')
+            elif m == 'accuracy_mean':
+                metric_labels.append('Accuracy')
             else:
                 metric_labels.append(m.replace('_', ' ').title())
         

@@ -78,8 +78,28 @@ class FedAVGAggregator:
         
         # Threading for concurrent operations
         self.lock = threading.Lock()
+    
+    def set_ipfs_client(self, ipfs_client):
+        """
+        Set IPFS client for aggregator
         
-        logger.info(f"FedAVG Aggregator initialized on {device}")
+        Args:
+            ipfs_client: IPFS client instance
+        """
+        self.ipfs_client = ipfs_client
+        self.ipfs_enabled = True
+        logger.info(f"Aggregator: IPFS integration enabled")
+    
+    def set_blockchain_client(self, blockchain_client):
+        """
+        Set blockchain client for aggregator
+        
+        Args:
+            blockchain_client: Blockchain client instance
+        """
+        self.blockchain_client = blockchain_client
+        self.blockchain_enabled = True
+        logger.info(f"Aggregator: Blockchain integration enabled")
     
     def _verify_aggregator_model_integrity(self, stage: str = "unknown"):
         """
@@ -167,9 +187,12 @@ class FedAVGAggregator:
             }
             
             # Store on IPFS
-            ipfs_cid = self.ipfs_client.add_data(model_data)
-            
-            logger.info(f"Model stored on IPFS: {ipfs_cid}")
+            if self.ipfs_client is not None:
+                ipfs_cid = self.ipfs_client.add_data(model_data)
+                logger.info(f"Model stored on IPFS: {ipfs_cid}")
+            else:
+                logger.warning("IPFS client not available, skipping model storage")
+                ipfs_cid = None
             
             # Note: IPFS storage doesn't consume blockchain gas, so we don't track it
             
@@ -474,6 +497,17 @@ class BlockchainFederatedClient:
         
         logger.info(f"Client {self.client_id}: Blockchain and IPFS integration enabled")
     
+    def set_ipfs_client(self, ipfs_client):
+        """
+        Set IPFS client for integration
+        
+        Args:
+            ipfs_client: IPFS client instance
+        """
+        self.ipfs_client = ipfs_client
+        self.ipfs_enabled = True
+        logger.info(f"Client {self.client_id}: IPFS integration enabled")
+    
     def set_training_data(self, train_data: torch.Tensor, train_labels: torch.Tensor):
         """
         Set training data for this client
@@ -571,6 +605,29 @@ class BlockchainFederatedClient:
             # Clear GPU memory
             torch.cuda.empty_cache()
             
+            # Store on IPFS
+            ipfs_cid = None
+            if self.ipfs_enabled:
+                metadata = {
+                    'client_id': self.client_id,
+                    'epochs': epochs,
+                    'batch_size': batch_size,
+                    'learning_rate': learning_rate,
+                    'avg_loss': avg_loss,
+                    'validation_accuracy': avg_accuracy
+                }
+                ipfs_cid = self.store_model_on_ipfs(model_parameters, metadata)
+            
+            # Record on blockchain
+            blockchain_tx_hash = None
+            logger.info(f"Client {self.client_id}: About to check blockchain_enabled: {self.blockchain_enabled}")
+            if self.blockchain_enabled:
+                logger.info(f"Client {self.client_id}: Recording on blockchain with hash {model_hash} and IPFS {ipfs_cid}")
+                blockchain_tx_hash = self.record_on_blockchain(model_hash, ipfs_cid)
+                logger.info(f"Client {self.client_id}: Blockchain recording result: {blockchain_tx_hash}")
+            else:
+                logger.warning(f"Client {self.client_id}: Blockchain not enabled, skipping recording")
+            
             return ClientUpdate(
                 client_id=self.client_id,
                 model_parameters=model_parameters,
@@ -578,12 +635,14 @@ class BlockchainFederatedClient:
                 training_loss=avg_loss,
                 validation_accuracy=avg_accuracy,
                 model_hash=model_hash,
+                ipfs_cid=ipfs_cid,
+                blockchain_tx_hash=blockchain_tx_hash,
                 timestamp=time.time()
             )
             
         except Exception as e:
-            logger.error(f"Client {self.client_id}: Enhanced training failed, falling back to basic training: {str(e)}")
-            return self._fallback_basic_training(epochs, batch_size, learning_rate)
+            logger.error(f"Client {self.client_id}: Enhanced training failed: {str(e)}")
+            raise e
     
     def _perform_local_ttt_adaptation(self):
         """Perform test-time training adaptation on local data"""
@@ -632,130 +691,6 @@ class BlockchainFederatedClient:
         except Exception as e:
             logger.warning(f"Client {self.client_id}: TTT adaptation failed: {str(e)}")
     
-    def _fallback_basic_training(self, epochs: int, batch_size: int, learning_rate: float) -> ClientUpdate:
-        """Fallback to basic training if enhanced training fails"""
-        logger.info(f"Client {self.client_id}: Using fallback basic training")
-        
-        # Set up training
-        optimizer = torch.optim.AdamW(self.model.parameters(), lr=learning_rate, weight_decay=1e-4)
-        
-        # Calculate class weights to handle class imbalance
-        class_counts = torch.bincount(self.train_labels)
-        total_samples = len(self.train_labels)
-        class_weights = total_samples / (len(class_counts) * class_counts.float())
-        class_weights = class_weights.to(self.device)
-        
-        logger.info(f"Client {self.client_id}: Class distribution - {dict(zip(range(len(class_counts)), class_counts.tolist()))}")
-        logger.info(f"Client {self.client_id}: Class weights - {class_weights.tolist()}")
-        
-        # Use Focal Loss for better handling of class imbalance
-        from models.transductive_fewshot_model import FocalLoss
-        criterion = FocalLoss(alpha=1, gamma=2, reduction='mean')
-        
-        logger.info(f"Client {self.client_id}: Using Focal Loss (alpha=1, gamma=2) for training")
-        
-        # Training loop
-        self.model.train()
-        total_loss = 0
-        num_batches = 0
-        
-        for epoch in range(epochs):
-            epoch_loss = 0
-            batch_count = 0
-            
-            # Mini-batch training with memory management
-            total_batches = len(self.train_data) // batch_size
-            for i in range(0, len(self.train_data), batch_size):
-                batch_data = self.train_data[i:i+batch_size]
-                batch_labels = self.train_labels[i:i+batch_size]
-                
-                optimizer.zero_grad()
-                
-                # Forward pass
-                outputs = self.model(batch_data)
-                loss = criterion(outputs, batch_labels)
-                
-                # Backward pass
-                loss.backward()
-                optimizer.step()
-                
-                epoch_loss += loss.item()
-                batch_count += 1
-                
-                # Show progress every 1000 batches
-                if batch_count % 1000 == 0:
-                    progress = (batch_count / total_batches) * 100
-                    logger.info(f"Client {self.client_id}: Epoch {epoch+1}/{epochs}, Batch {batch_count}/{total_batches} ({progress:.1f}%), Loss: {loss.item():.4f}")
-                
-                # Clear cache every 50 batches to manage memory (reduced overhead)
-                if batch_count % 50 == 0:
-                    torch.cuda.empty_cache()
-            
-            avg_epoch_loss = epoch_loss / batch_count
-            total_loss += avg_epoch_loss
-            
-            if epoch % 2 == 0:
-                logger.info(f"Client {self.client_id}: Epoch {epoch+1}/{epochs}, Loss: {avg_epoch_loss:.4f}")
-            
-            # Clear cache after each epoch
-            torch.cuda.empty_cache()
-        
-        avg_loss = total_loss / epochs
-        
-        # Evaluate on validation set (if available)
-        validation_accuracy, validation_precision, validation_recall, validation_f1_score = self.evaluate_model()
-        
-        # Get model parameters (simplified to avoid memory issues)
-        model_parameters = {}
-        for name, param in self.model.named_parameters():
-            model_parameters[name] = param.detach().cpu()
-        
-        # Use simple hash to avoid memory issues
-        model_hash = f"{self.client_id}_model_{int(time.time())}"
-        
-        # Clear memory before IPFS storage
-        torch.cuda.empty_cache()
-        
-        # Store on IPFS (memory-safe)
-        ipfs_cid = None
-        if self.ipfs_enabled:
-            metadata = {
-                'client_id': self.client_id,
-                'epochs': epochs,
-                'batch_size': batch_size,
-                'learning_rate': learning_rate,
-                'avg_loss': avg_loss,
-                'validation_accuracy': validation_accuracy
-            }
-            ipfs_cid = self.store_model_on_ipfs(model_parameters, metadata)
-        
-        # Record on blockchain
-        blockchain_tx_hash = None
-        if self.blockchain_enabled:
-            blockchain_tx_hash = self.record_on_blockchain(model_hash, ipfs_cid)
-        
-        # Create client update
-        client_update = ClientUpdate(
-            client_id=self.client_id,
-            model_parameters=model_parameters,
-            sample_count=len(self.train_data),
-            training_loss=avg_loss,
-            validation_accuracy=validation_accuracy,
-            timestamp=time.time(),
-            model_hash=model_hash,
-            ipfs_cid=ipfs_cid,
-            blockchain_tx_hash=blockchain_tx_hash
-        )
-        
-        # Store in training history
-        self.training_history.append(client_update)
-        
-        logger.info(f"Client {self.client_id}: Training completed")
-        logger.info(f"  Average loss: {avg_loss:.4f}")
-        logger.info(f"  Validation accuracy: {validation_accuracy:.4f}")
-        logger.info(f"  Model hash: {model_hash}")
-        
-        return client_update
     
     def update_global_model(self, global_parameters: Dict[str, torch.Tensor]):
         """
@@ -862,6 +797,11 @@ class BlockchainFederatedClient:
     
     def store_model_on_ipfs(self, parameters: Dict[str, torch.Tensor], metadata: Dict) -> Optional[str]:
         """Store model parameters on IPFS"""
+        logger.info(f"🔍 Debug: Client {self.client_id} store_model_on_ipfs called")
+        logger.info(f"🔍 Debug: IPFS enabled: {self.ipfs_enabled}")
+        logger.info(f"🔍 Debug: IPFS client: {self.ipfs_client}")
+        logger.info(f"🔍 Debug: IPFS client type: {type(self.ipfs_client)}")
+        
         if not self.ipfs_enabled:
             return None
         
@@ -873,8 +813,12 @@ class BlockchainFederatedClient:
                 'timestamp': time.time()
             }
             
-            ipfs_cid = self.ipfs_client.add_data(model_data)
-            logger.info(f"Client {self.client_id}: Model stored on IPFS: {ipfs_cid}")
+            if self.ipfs_client is not None:
+                ipfs_cid = self.ipfs_client.add_data(model_data)
+                logger.info(f"Client {self.client_id}: Model stored on IPFS: {ipfs_cid}")
+            else:
+                logger.warning(f"Client {self.client_id}: IPFS client not available, skipping model storage")
+                ipfs_cid = None
             
             # Note: IPFS storage doesn't consume blockchain gas, so we don't track it
             
@@ -886,15 +830,25 @@ class BlockchainFederatedClient:
     
     def record_on_blockchain(self, model_hash: str, ipfs_cid: str) -> Optional[str]:
         """Record model hash on blockchain"""
+        logger.info(f"Client {self.client_id}: record_on_blockchain called with hash={model_hash}, cid={ipfs_cid}")
+        logger.info(f"Client {self.client_id}: blockchain_enabled={self.blockchain_enabled}, blockchain_client={self.blockchain_client}")
+        
         if not self.blockchain_enabled:
+            logger.warning(f"Client {self.client_id}: Blockchain not enabled")
+            return None
+        
+        if not self.blockchain_client:
+            logger.warning(f"Client {self.client_id}: Blockchain client not available")
             return None
         
         try:
+            logger.info(f"Client {self.client_id}: Calling submit_client_update...")
             tx_hash = self.blockchain_client.submit_client_update(
                 client_id=self.client_id,
                 model_hash=model_hash,
                 ipfs_cid=ipfs_cid
             )
+            logger.info(f"Client {self.client_id}: submit_client_update returned: {tx_hash}")
             logger.info(f"Client {self.client_id}: Recorded on blockchain: {tx_hash}")
             
             # Record gas usage for client update
@@ -956,6 +910,21 @@ class BlockchainFedAVGCoordinator:
         self.training_history = []
         
         logger.info(f"Blockchain FedAVG Coordinator initialized with {num_clients} clients")
+    
+    def set_ipfs_client(self, ipfs_client):
+        """
+        Set IPFS client for all clients
+        
+        Args:
+            ipfs_client: IPFS client instance
+        """
+        logger.info(f"🔍 Debug: Setting IPFS client on {len(self.clients)} clients")
+        logger.info(f"🔍 Debug: IPFS client type: {type(ipfs_client)}")
+        for i, client in enumerate(self.clients):
+            logger.info(f"🔍 Debug: Setting IPFS client on client {i+1}")
+            client.set_ipfs_client(ipfs_client)
+            logger.info(f"🔍 Debug: Client {i+1} IPFS client set: {client.ipfs_client is not None}")
+        logger.info(f"IPFS client set for all {len(self.clients)} clients")
     
     def _verify_coordinator_model_integrity(self, stage: str = "unknown"):
         """

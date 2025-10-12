@@ -1988,21 +1988,15 @@ class BlockchainFederatedIncentiveSystem:
                         epoch_losses.append(0.1)  # Default loss
                         epoch_accuracies.append(round_accuracy)
                 
-                # If we have real data, use it; otherwise use dummy data
+                # If we have real data, use it; otherwise skip
                 if epoch_losses and epoch_accuracies:
                     training_history = {
                         'epoch_losses': epoch_losses,
                         'epoch_accuracies': epoch_accuracies
                     }
                 else:
-                    # Use evaluation results if no detailed training data
-                    final_results = getattr(self, 'final_evaluation_results', {})
-                    base_loss = 0.1
-                    base_accuracy = final_results.get('accuracy', 0.5)
-                    training_history = {
-                        'epoch_losses': [base_loss],
-                        'epoch_accuracies': [base_accuracy]
-                    }
+                    # No real training data available
+                    training_history = None
             else:
                 # Fallback to evaluation results if no training history
                 final_results = getattr(self, 'final_evaluation_results', {})
