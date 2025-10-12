@@ -2496,29 +2496,37 @@ class BlockchainFederatedIncentiveSystem:
             
             # Generate token distribution visualization if incentive data is available
             try:
-                if hasattr(self, 'incentive_history') and self.incentive_history:
-                    # Prepare incentive data for visualization
+                if hasattr(self, 'incentive_manager') and self.incentive_manager:
+                    # Get incentive data from incentive history (following main_edgeiiot.py pattern)
                     incentive_data = {
-                        'rounds': [
-                            {
-                                'round_number': record['round_number'],
-                                'total_rewards': record['total_rewards']
-                            }
-                            for record in self.incentive_history
-                        ],
-                        'participant_rewards': self.get_incentive_summary().get('participant_rewards', {}),
-                        'total_rewards_distributed': sum(record['total_rewards'] for record in self.incentive_history)
+                        'participant_rewards': {},
+                        'total_rewards_distributed': 0
                     }
                     
-                    # Generate token distribution visualization
-                    token_plot_path = self.visualizer.plot_token_distribution(incentive_data, save=True)
-                    if token_plot_path:
-                        plot_paths['token_distribution'] = token_plot_path
-                        logger.info("✅ Token distribution visualization completed")
+                    # Extract data from incentive history
+                    if hasattr(self, 'incentive_history') and self.incentive_history:
+                        for record in self.incentive_history:
+                            if 'individual_rewards' in record:
+                                for client_id, reward in record['individual_rewards'].items():
+                                    if client_id in incentive_data['participant_rewards']:
+                                        incentive_data['participant_rewards'][client_id] += reward
+                                    else:
+                                        incentive_data['participant_rewards'][client_id] = reward
+                            incentive_data['total_rewards_distributed'] += record.get('total_rewards', 0)
+                    
+                    # Only generate visualization if we have real incentive data
+                    if incentive_data['participant_rewards'] or incentive_data['total_rewards_distributed'] > 0:
+                        # Generate token distribution visualization
+                        token_plot_path = self.visualizer.plot_token_distribution(incentive_data, save=True)
+                        if token_plot_path:
+                            plot_paths['token_distribution'] = token_plot_path
+                            logger.info("✅ Token distribution visualization completed with real data")
+                        else:
+                            logger.warning("Token distribution visualization generation failed")
                     else:
-                        logger.warning("Token distribution visualization generation failed")
+                        logger.info("ℹ️ No real incentive data available, skipping token distribution visualization")
                 else:
-                    logger.info("No incentive history available for token distribution visualization")
+                    logger.info("ℹ️ No incentive manager available, skipping token distribution visualization")
             except Exception as e:
                 logger.warning(f"Token distribution visualization failed: {str(e)}")
             
@@ -3308,18 +3316,18 @@ class BlockchainFederatedIncentiveSystem:
             else:
                 # Fallback to meta-task data if main TTT data not available
                 self.ttt_adaptation_data = {
-                'task_accuracies': task_metrics['accuracy'],
-                'task_f1_scores': task_metrics['f1_score'],
-                'task_mcc_scores': task_metrics['mcc'],
-                'num_tasks': len(task_metrics['accuracy']),
-                'mean_accuracy': results['accuracy_mean'],
-                'std_accuracy': results['accuracy_std'],
-                'steps': list(range(len(task_metrics['accuracy']))),
-                # Use real loss data from TTT adaptation if available
-                'total_losses': getattr(adapted_model, 'ttt_adaptation_data', {}).get('total_losses', []) if 'adapted_model' in locals() and adapted_model else [],
-                'support_losses': getattr(adapted_model, 'ttt_adaptation_data', {}).get('support_losses', []) if 'adapted_model' in locals() and adapted_model else [],
-                'consistency_losses': getattr(adapted_model, 'ttt_adaptation_data', {}).get('consistency_losses', []) if 'adapted_model' in locals() and adapted_model else []
-            }
+                    'task_accuracies': task_metrics['accuracy'],
+                    'task_f1_scores': task_metrics['f1_score'],
+                    'task_mcc_scores': task_metrics['mcc'],
+                    'num_tasks': len(task_metrics['accuracy']),
+                    'mean_accuracy': results['accuracy_mean'],
+                    'std_accuracy': results['accuracy_std'],
+                    'steps': list(range(len(task_metrics['accuracy']))),
+                    # Use real loss data from TTT adaptation if available
+                    'total_losses': getattr(adapted_model, 'ttt_adaptation_data', {}).get('total_losses', []) if 'adapted_model' in locals() and adapted_model else [],
+                    'support_losses': getattr(adapted_model, 'ttt_adaptation_data', {}).get('support_losses', []) if 'adapted_model' in locals() and adapted_model else [],
+                    'consistency_losses': getattr(adapted_model, 'ttt_adaptation_data', {}).get('consistency_losses', []) if 'adapted_model' in locals() and adapted_model else []
+                }
             
             logger.info(f"✅ TTT Model meta-tasks evaluation completed")
             logger.info(f"  Accuracy: {results['accuracy_mean']:.4f} ± {results['accuracy_std']:.4f}")
@@ -3531,8 +3539,8 @@ class BlockchainFederatedIncentiveSystem:
                 else:
                     patience_counter += 1
                 
-                if patience_counter >= patience_limit:
-                    logger.info(f"Early stopping at TTT step {step} (patience: {patience_limit}, best_loss: {best_loss:.4f}, best_acc: {best_accuracy:.4f})")
+                if patience_counter >= max_patience:
+                    logger.info(f"Early stopping at TTT step {step} (patience: {max_patience}, best_loss: {best_loss:.4f}, best_acc: {best_accuracy:.4f})")
                     break
                 
                 if step % 4 == 0:
