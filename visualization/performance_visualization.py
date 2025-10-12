@@ -1003,9 +1003,9 @@ class PerformanceVisualizer:
         if scenario_names is None:
             scenario_names = ['Scenario 1', 'Scenario 2', 'Scenario 3', 'Scenario 4', 'Scenario 5']
         
-        # Extract metrics for comparison - handle both old and new key formats
-        base_metrics = ['accuracy_mean', 'precision_mean', 'recall_mean', 'macro_f1_mean', 'mcc_mean']
-        ttt_metrics = ['accuracy_mean', 'precision_mean', 'recall_mean', 'macro_f1_mean', 'mcc_mean']
+        # Extract metrics for comparison - handle both direct evaluation and k-fold formats
+        base_metrics = ['accuracy', 'precision', 'recall', 'f1_score', 'mcc']
+        ttt_metrics = ['accuracy', 'precision', 'recall', 'f1_score', 'mcc']
         
         # Calculate metrics from available data
         base_values = []
@@ -1016,40 +1016,44 @@ class PerformanceVisualizer:
         ttt_cm = ttt_results.get('confusion_matrix', [[0, 0], [0, 0]])
         
         for metric in base_metrics:
-            if metric == 'accuracy_mean':
-                base_val = base_results.get('accuracy_mean', 0)
-                ttt_val = ttt_results.get('accuracy_mean', 0)
-            elif metric == 'precision_mean':
+            if metric == 'accuracy':
+                # Try both formats: direct and k-fold
+                base_val = base_results.get('accuracy', base_results.get('accuracy_mean', 0))
+                ttt_val = ttt_results.get('accuracy', ttt_results.get('accuracy_mean', 0))
+            elif metric == 'precision':
                 # Calculate precision from confusion matrix
                 if len(base_cm) == 2 and len(base_cm[0]) == 2:
                     tp, fp = base_cm[1][1], base_cm[0][1]
                     base_val = tp / (tp + fp) if (tp + fp) > 0 else 0
                 else:
-                    base_val = 0
+                    base_val = base_results.get('precision', base_results.get('precision_mean', 0))
                 if len(ttt_cm) == 2 and len(ttt_cm[0]) == 2:
                     tp, fp = ttt_cm[1][1], ttt_cm[0][1]
                     ttt_val = tp / (tp + fp) if (tp + fp) > 0 else 0
                 else:
-                    ttt_val = 0
-            elif metric == 'recall_mean':
+                    ttt_val = ttt_results.get('precision', ttt_results.get('precision_mean', 0))
+            elif metric == 'recall':
                 # Calculate recall from confusion matrix
                 if len(base_cm) == 2 and len(base_cm[0]) == 2:
                     tp, fn = base_cm[1][1], base_cm[1][0]
                     base_val = tp / (tp + fn) if (tp + fn) > 0 else 0
                 else:
-                    base_val = 0
+                    base_val = base_results.get('recall', base_results.get('recall_mean', 0))
                 if len(ttt_cm) == 2 and len(ttt_cm[0]) == 2:
                     tp, fn = ttt_cm[1][1], ttt_cm[1][0]
                     ttt_val = tp / (tp + fn) if (tp + fn) > 0 else 0
                 else:
-                    ttt_val = 0
-            elif metric == 'macro_f1_mean':
-                base_val = base_results.get('macro_f1_mean', 0)
-                ttt_val = ttt_results.get('macro_f1_mean', 0)
-            elif metric == 'mcc_mean':
-                base_val = base_results.get('mcc_mean', 0)
-                ttt_val = ttt_results.get('mcc_mean', 0)
+                    ttt_val = ttt_results.get('recall', ttt_results.get('recall_mean', 0))
+            elif metric == 'f1_score':
+                # Try both formats: direct and k-fold
+                base_val = base_results.get('f1_score', base_results.get('macro_f1_mean', 0))
+                ttt_val = ttt_results.get('f1_score', ttt_results.get('macro_f1_mean', 0))
+            elif metric == 'mcc':
+                # Try both formats: direct and k-fold (note: mccc vs mcc)
+                base_val = base_results.get('mcc', base_results.get('mccc', base_results.get('mcc_mean', 0)))
+                ttt_val = ttt_results.get('mcc', ttt_results.get('mccc', ttt_results.get('mcc_mean', 0)))
             else:
+                # Fallback to direct key lookup
                 base_val = base_results.get(metric, 0)
                 ttt_val = ttt_results.get(metric, 0)
             
