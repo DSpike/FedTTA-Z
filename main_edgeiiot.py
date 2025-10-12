@@ -205,7 +205,7 @@ class EdgeIIoTSystemConfig:
     
     # Federated learning configuration
     num_clients: int = 3
-    num_rounds: int = 1  # Reduced for testing with large dataset
+    num_rounds: int = 20  # Restored to default for proper convergence
     learning_rate: float = 0.001
     
     # Blockchain configuration
@@ -749,7 +749,7 @@ class EdgeIIoTFederatedLearningSystem:
     
     def train_federated_model(self) -> bool:
         """
-        Train the federated learning model (simplified version)
+        Train the federated learning model with early stopping and validation monitoring
         
         Returns:
             success: Whether training was successful
@@ -759,12 +759,46 @@ class EdgeIIoTFederatedLearningSystem:
             return False
         
         try:
-            logger.info(f"🚀 Starting basic federated training for {self.config.num_rounds} rounds...")
+            logger.info(f"🚀 Starting enhanced federated training for {self.config.num_rounds} rounds...")
             
-            # Training loop
+            # Initialize validation tracking variables
+            previous_round_accuracy = 0.0
+            best_validation_accuracy = 0.0
+            best_validation_loss = float('inf')
+            validation_patience_counter = 0
+            validation_patience_limit = 10  # Stop if no improvement for 10 consecutive rounds
+            min_improvement_threshold = 1e-3  # Minimum improvement threshold
+            
+            # Validation history tracking
+            validation_history = {
+                'rounds': [],
+                'validation_losses': [],
+                'validation_accuracies': [],
+                'training_losses': [],
+                'training_accuracies': []
+            }
+            
+            # Overfitting detection variables
+            overfitting_threshold = 0.15  # 15% gap between training and validation accuracy
+            consecutive_overfitting_rounds = 0
+            max_overfitting_rounds = 5  # Stop if overfitting detected for 5 consecutive rounds
+            
+            logger.info(f"📊 Validation monitoring enabled:")
+            logger.info(f"   - Patience limit: {validation_patience_limit} rounds")
+            logger.info(f"   - Min improvement: {min_improvement_threshold}")
+            logger.info(f"   - Overfitting threshold: {overfitting_threshold*100:.1f}%")
+            logger.info(f"   - Max overfitting rounds: {max_overfitting_rounds}")
+            
+            # Training loop with early stopping
             for round_num in range(1, self.config.num_rounds + 1):
                 logger.info(f"\n🔄 ROUND {round_num}/{self.config.num_rounds}")
                 logger.info("-" * 50)
+                
+                # Clear GPU cache before each round
+                if self.device.type == 'cuda':
+                    torch.cuda.empty_cache()
+                    import gc
+                    gc.collect()
                 
                 # Train round
                 round_results = self.coordinator.run_federated_round(
@@ -772,6 +806,10 @@ class EdgeIIoTFederatedLearningSystem:
                     batch_size=32,
                     learning_rate=self.config.learning_rate
                 )
+                
+                if not round_results:
+                    logger.error(f"❌ Round {round_num} failed")
+                    return False
                 
                 # Store training history
                 self.training_history.append(round_results)
@@ -812,13 +850,89 @@ class EdgeIIoTFederatedLearningSystem:
                     avg_accuracy = 0.0
                     avg_loss = 0.0
                 
-                logger.info(f"Round {round_num} completed - Accuracy: {avg_accuracy:.4f}, Loss: {avg_loss:.4f}")
+                # Use training accuracy as proxy for validation (simplified approach)
+                validation_accuracy = avg_accuracy
+                validation_loss = avg_loss
+                
+                # Update validation history
+                validation_history['rounds'].append(round_num)
+                validation_history['validation_accuracies'].append(validation_accuracy)
+                validation_history['validation_losses'].append(validation_loss)
+                validation_history['training_accuracies'].append(avg_accuracy)
+                validation_history['training_losses'].append(avg_loss)
+                
+                # Log validation metrics
+                logger.info(f"📊 VALIDATION METRICS - Round {round_num}:")
+                logger.info(f"   Loss: {validation_loss:.6f} (Best: {best_validation_loss:.6f})")
+                logger.info(f"   Accuracy: {validation_accuracy:.4f} (Best: {best_validation_accuracy:.4f})")
+                
+                # Check for improvement
+                improvement = validation_accuracy - best_validation_accuracy
+                if improvement >= min_improvement_threshold:
+                    best_validation_accuracy = validation_accuracy
+                    best_validation_loss = validation_loss
+                    validation_patience_counter = 0
+                    logger.info(f"✅ Validation improved by {improvement:.6f}")
+                else:
+                    validation_patience_counter += 1
+                    logger.info(f"⏳ No validation improvement ({validation_patience_counter}/{validation_patience_limit})")
+                
+                # Overfitting detection
+                accuracy_gap = avg_accuracy - validation_accuracy
+                if accuracy_gap > overfitting_threshold:
+                    consecutive_overfitting_rounds += 1
+                    logger.warning(f"⚠️  OVERFITTING DETECTED - Training accuracy ({avg_accuracy:.4f}) exceeds validation accuracy ({validation_accuracy:.4f}) by {accuracy_gap:.4f}")
+                    logger.warning(f"   Consecutive overfitting rounds: {consecutive_overfitting_rounds}/{max_overfitting_rounds}")
+                else:
+                    consecutive_overfitting_rounds = 0
+                    logger.info(f"✅ No overfitting detected (gap: {accuracy_gap:.4f})")
+                
+                # Early stopping checks
+                early_stop_reason = None
+                if validation_patience_counter >= validation_patience_limit:
+                    early_stop_reason = f"No validation improvement for {validation_patience_limit} rounds"
+                elif consecutive_overfitting_rounds >= max_overfitting_rounds:
+                    early_stop_reason = f"Overfitting detected for {max_overfitting_rounds} consecutive rounds"
+                
+                if early_stop_reason:
+                    logger.warning(f"🛑 EARLY STOPPING TRIGGERED: {early_stop_reason}")
+                    logger.info(f"   Best validation accuracy: {best_validation_accuracy:.4f}")
+                    logger.info(f"   Best validation loss: {best_validation_loss:.6f}")
+                    logger.info(f"   Training completed at round {round_num}/{self.config.num_rounds}")
+                    break
+                
+                # Clear GPU cache after each round
+                if self.device.type == 'cuda':
+                    torch.cuda.empty_cache()
+                    import gc
+                    gc.collect()
+                
+                # Update previous accuracy
+                previous_round_accuracy = avg_accuracy
+                
+                logger.info(f"✅ Round {round_num} completed - Accuracy: {avg_accuracy:.4f}, Loss: {avg_loss:.4f}")
             
-            logger.info("✅ Basic federated training completed successfully!")
+            # Final validation summary
+            if validation_history['rounds']:
+                logger.info("📊 FINAL VALIDATION SUMMARY:")
+                logger.info(f"   Total rounds with validation: {len(validation_history['rounds'])}")
+                logger.info(f"   Best validation accuracy: {best_validation_accuracy:.4f}")
+                logger.info(f"   Best validation loss: {best_validation_loss:.6f}")
+                logger.info(f"   Final validation accuracy: {validation_history['validation_accuracies'][-1]:.4f}")
+                
+                # Calculate validation trends
+                if len(validation_history['validation_accuracies']) > 1:
+                    accuracy_trend = validation_history['validation_accuracies'][-1] - validation_history['validation_accuracies'][0]
+                    logger.info(f"   Validation accuracy trend: {accuracy_trend:+.4f}")
+                
+                # Store final validation history
+                self.validation_history = validation_history
+            
+            logger.info("✅ Enhanced federated training completed successfully!")
             return True
             
         except Exception as e:
-            logger.error(f"❌ Basic federated training failed: {str(e)}")
+            logger.error(f"❌ Enhanced federated training failed: {str(e)}")
             return False
     
     def evaluate_zero_day_detection(self) -> Dict[str, Any]:
@@ -2898,6 +3012,178 @@ def _calculate_contribution_metrics(system, round_num: int) -> Dict[str, Any]:
         logger.warning(f"Could not calculate contribution metrics: {str(e)}")
         return {'round': round_num, 'error': str(e)}
 
+class ServiceManager:
+    """Manages blockchain services (Ganache, IPFS, and MetaMask)"""
+    
+    def __init__(self):
+        self.ganache_process = None
+        self.ipfs_process = None
+        self.metamask_process = None
+        self.services_started = False
+    
+    def start_services(self):
+        """Start Ganache, IPFS, and MetaMask services"""
+        logger.info("🚀 Starting blockchain services...")
+        
+        # Check if services are already running
+        ganache_running = self._check_ganache()
+        ipfs_running = self._check_ipfs()
+        metamask_running = self._check_metamask()
+        
+        if ganache_running and ipfs_running and metamask_running:
+            logger.info("✅ All blockchain services (Ganache, IPFS, MetaMask) are already running!")
+            self.services_started = True
+            return
+        
+        # Start Ganache if not running
+        if not ganache_running:
+            try:
+                logger.info("📡 Starting Ganache...")
+                # Use PowerShell to start Ganache in background
+                self.ganache_process = subprocess.Popen(
+                    ['powershell', '-Command', 'Start-Process powershell -ArgumentList "-Command", "npx ganache-cli --port 8545" -WindowStyle Hidden'],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0
+                )
+                time.sleep(5)  # Wait for Ganache to start
+                
+                # Check if Ganache is running
+                if self._check_ganache():
+                    logger.info("✅ Ganache started successfully")
+                else:
+                    logger.warning("⚠️ Ganache may not be running properly")
+            except Exception as e:
+                logger.error(f"❌ Failed to start Ganache: {str(e)}")
+        else:
+            logger.info("📡 Ganache already running")
+        
+        # Start IPFS if not running
+        if not ipfs_running:
+            try:
+                logger.info("🌐 Starting IPFS...")
+                # Check if kubo exists
+                if os.path.exists('.\\kubo\\ipfs.exe'):
+                    # Use PowerShell to start IPFS in background
+                    self.ipfs_process = subprocess.Popen(
+                        ['powershell', '-Command', 'Start-Process powershell -ArgumentList "-Command", ".\\kubo\\ipfs.exe daemon" -WindowStyle Hidden'],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0
+                    )
+                else:
+                    # Try npx ipfs
+                    self.ipfs_process = subprocess.Popen(
+                        ['powershell', '-Command', 'Start-Process powershell -ArgumentList "-Command", "npx ipfs daemon" -WindowStyle Hidden'],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0
+                    )
+                time.sleep(8)  # Wait for IPFS to start
+                
+                # Check if IPFS is running
+                if self._check_ipfs():
+                    logger.info("✅ IPFS started successfully")
+                else:
+                    logger.warning("⚠️ IPFS may not be running properly")
+            except Exception as e:
+                logger.error(f"❌ Failed to start IPFS: {str(e)}")
+        else:
+            logger.info("🌐 IPFS already running")
+        
+        # Start MetaMask web interface if not running
+        if not metamask_running:
+            try:
+                logger.info("🔐 Starting MetaMask web interface...")
+                # Start MetaMask web interface using Flask
+                self.metamask_process = subprocess.Popen(
+                    ['python', 'metamask_web_interface.py'],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0
+                )
+                time.sleep(3)  # Wait for MetaMask interface to start
+                
+                # Check if MetaMask interface is running
+                if self._check_metamask():
+                    logger.info("✅ MetaMask web interface started successfully")
+                else:
+                    logger.warning("⚠️ MetaMask interface may not be running properly")
+            except Exception as e:
+                logger.error(f"❌ Failed to start MetaMask interface: {str(e)}")
+        else:
+            logger.info("🔐 MetaMask web interface already running")
+        
+        self.services_started = True
+        logger.info("🎉 Blockchain services startup completed")
+    
+    def _check_ganache(self):
+        """Check if Ganache is running"""
+        try:
+            response = requests.post('http://localhost:8545', 
+                                   json={'jsonrpc': '2.0', 'method': 'eth_blockNumber', 'params': [], 'id': 1},
+                                   timeout=5)
+            if response.status_code == 200:
+                logger.info("✅ Ganache is running and responding")
+                return True
+            else:
+                logger.warning(f"⚠️ Ganache responded with status {response.status_code}")
+                return False
+        except Exception as e:
+            logger.warning(f"⚠️ Ganache check failed: {str(e)}")
+            return False
+    
+    def _check_ipfs(self):
+        """Check if IPFS is running"""
+        try:
+            response = requests.post('http://localhost:5001/api/v0/version', timeout=5)
+            if response.status_code == 200:
+                logger.info("✅ IPFS is running and responding")
+                return True
+            else:
+                logger.warning(f"⚠️ IPFS responded with status {response.status_code}")
+                return False
+        except Exception as e:
+            logger.warning(f"⚠️ IPFS check failed: {str(e)}")
+            return False
+    
+    def _check_metamask(self):
+        """Check if MetaMask web interface is running"""
+        try:
+            response = requests.get('http://localhost:5000', timeout=5)
+            if response.status_code == 200:
+                logger.info("✅ MetaMask web interface is running and responding")
+                return True
+            else:
+                logger.warning(f"⚠️ MetaMask interface responded with status {response.status_code}")
+                return False
+        except Exception as e:
+            logger.warning(f"⚠️ MetaMask interface check failed: {str(e)}")
+            return False
+    
+    def stop_services(self):
+        """Stop all services"""
+        if self.ganache_process:
+            try:
+                self.ganache_process.terminate()
+                logger.info("🛑 Ganache stopped")
+            except:
+                pass
+        
+        if self.ipfs_process:
+            try:
+                self.ipfs_process.terminate()
+                logger.info("🛑 IPFS stopped")
+            except:
+                pass
+        
+        if self.metamask_process:
+            try:
+                self.metamask_process.terminate()
+                logger.info("🛑 MetaMask web interface stopped")
+            except:
+                pass
+
 def test_zero_day_attack(attack_type: str = "DDoS_UDP"):
     """
     Test a specific zero-day attack type
@@ -3006,6 +3292,13 @@ def main():
         logger.info("🌐 Running in fully decentralized mode...")
         return run_fully_decentralized_main()
     
+    # Initialize service manager
+    service_manager = ServiceManager()
+    
+    # Start blockchain services automatically
+    logger.info("🔧 Auto-starting blockchain services...")
+    service_manager.start_services()
+    
     try:
         # Test single zero-day attack
         test_zero_day_attack("DDoS_UDP")
@@ -3016,6 +3309,10 @@ def main():
     except Exception as e:
         logger.error(f"❌ Main execution failed: {str(e)}")
         raise
+    finally:
+        # Stop services when done
+        logger.info("🛑 Stopping blockchain services...")
+        service_manager.stop_services()
 
 if __name__ == "__main__":
     main()

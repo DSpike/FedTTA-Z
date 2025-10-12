@@ -1636,11 +1636,11 @@ class BlockchainFederatedIncentiveSystem:
             if not client_accuracies:
                 base_accuracy = getattr(self, 'final_evaluation_results', {}).get('accuracy', 0.5)
                 # Add some variation to differentiate clients
-                client_accuracies = {
+            client_accuracies = {
                     'client_1': base_accuracy + 0.01,  # Slightly better
                     'client_2': base_accuracy,          # Baseline
                     'client_3': base_accuracy - 0.01   # Slightly worse
-                }
+            }
             
             logger.info(f"Using differentiated client accuracies: {client_accuracies}")
             return client_accuracies

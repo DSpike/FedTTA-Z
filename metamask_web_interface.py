@@ -190,16 +190,33 @@ HTML_TEMPLATE = """
             try {
                 updateStatus('Authenticating wallet...', 'info');
                 
-                // Create authentication message
-                const message = `Blockchain Federated Learning Authentication\\n\\nWallet: ${account}\\nTimestamp: ${Date.now()}`;
-                
-                // Sign message with MetaMask
-                const signature = await window.ethereum.request({
-                    method: 'personal_sign',
-                    params: [message, account]
+                // First, get the challenge from the backend
+                const challengeResponse = await fetch('/get-challenge', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        wallet_address: account
+                    })
                 });
                 
-                // Send to backend
+                const challengeData = await challengeResponse.json();
+                
+                if (!challengeData.success) {
+                    updateStatus('Failed to get challenge: ' + challengeData.error, 'error');
+                    return;
+                }
+                
+                const challenge = challengeData.challenge;
+                
+                // Sign the challenge message with MetaMask
+                const signature = await window.ethereum.request({
+                    method: 'personal_sign',
+                    params: [challenge, account]
+                });
+                
+                // Send to backend for authentication
                 const response = await fetch('/authenticate', {
                     method: 'POST',
                     headers: {
@@ -208,7 +225,7 @@ HTML_TEMPLATE = """
                     body: JSON.stringify({
                         wallet_address: account,
                         signature: signature,
-                        message: message
+                        message: challenge
                     })
                 });
                 
@@ -294,6 +311,29 @@ def index():
     """Main MetaMask interface"""
     return render_template_string(HTML_TEMPLATE)
 
+@app.route('/get-challenge', methods=['POST'])
+def get_challenge():
+    """Get authentication challenge for wallet"""
+    try:
+        data = request.get_json()
+        wallet_address = data.get('wallet_address')
+        
+        if not wallet_address:
+            return jsonify({'success': False, 'error': 'Wallet address required'})
+        
+        # Generate challenge
+        challenge = authenticator.generate_challenge(wallet_address)
+        
+        return jsonify({
+            'success': True,
+            'challenge': challenge,
+            'wallet_address': wallet_address
+        })
+        
+    except Exception as e:
+        logger.error(f"Challenge generation error: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/authenticate', methods=['POST'])
 def authenticate():
     """Handle wallet authentication"""
@@ -306,7 +346,7 @@ def authenticate():
         if not all([wallet_address, signature, message]):
             return jsonify({'success': False, 'error': 'Missing authentication data'})
         
-        # Authenticate with MetaMask
+        # Authenticate with MetaMask (challenge should already be generated)
         auth_result = identity_manager.authenticate_participant(wallet_address, signature)
         
         if auth_result.success:
