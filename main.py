@@ -1917,9 +1917,26 @@ class BlockchainFederatedIncentiveSystem:
         try:
             logger.info("Evaluating zero-day detection performance...")
             
-            # Get test data
+            # Get test data first
             X_test = self.preprocessed_data['X_test']
             y_test = self.preprocessed_data['y_test']
+            
+            # Run data leakage detection tests
+            logger.info("🔍 Running data leakage detection tests...")
+            try:
+                from data_leakage_detection import DataLeakageDetector
+                detector = DataLeakageDetector()
+                leakage_results = detector.run_all_tests(self.coordinator.model, X_test, y_test)
+                
+                logger.info(f"Data leakage detection: {leakage_results['overall']['status']}")
+                logger.info(f"Score: {leakage_results['overall']['overall_score']:.2f}")
+                
+                # Store leakage results
+                self.data_leakage_results = leakage_results
+                
+            except Exception as e:
+                logger.warning(f"Data leakage detection failed: {str(e)}")
+                self.data_leakage_results = {'overall': {'status': 'SKIPPED', 'error': str(e)}}
             
             # Get support set (training data for few-shot learning)
             X_support = self.preprocessed_data['X_train']
@@ -2959,12 +2976,12 @@ class BlockchainFederatedIncentiveSystem:
             y_test_subset = y_test[:subset_size]
             zero_day_mask_subset = zero_day_mask[:subset_size]
             
-            # Create support and query sets for few-shot learning (enhanced support for better generalization)
-            support_size = min(50, len(X_test_subset) // 2)  # Use 50 samples for few-shot adaptation
+            # Create support and query sets for few-shot learning (conservative support size to prevent data leakage)
+            support_size = min(20, len(X_test_subset) // 10)  # Use only 10% of test data for adaptation
             query_size = len(X_test_subset) - support_size
             
             # Log the selected support set size for debugging and monitoring
-            logger.info(f"TTT: Using support set size {support_size} (50% of {len(X_test_subset)} test samples)")
+            logger.info(f"TTT: Using conservative support set size {support_size} (10% of {len(X_test_subset)} test samples)")
             
             # Use SAME fixed random seed for reproducible evaluation (same as base model)
             torch.manual_seed(42)  # Same seed as base model for fair comparison
@@ -3376,7 +3393,7 @@ class BlockchainFederatedIncentiveSystem:
             best_loss = float('inf')
             best_accuracy = 0.0
             patience_counter = 0
-            patience_limit = 8  # Increased patience for better adaptation
+            max_patience = 8  # Stop if no improvement for 8 consecutive steps
             min_improvement = 1e-4  # Minimum improvement threshold
             
             # SAFETY MEASURE: Add timeout mechanism

@@ -2098,9 +2098,9 @@ class EdgeIIoTFederatedLearningSystem:
                     logger.info(f"  📊 Processing meta-task {task_idx + 1}/{num_meta_tasks}...")
                 
                 try:
-                    # Create stratified support-query split
+                    # Create stratified support-query split (conservative support size to prevent data leakage)
                     support_x, query_x, support_y, query_y = train_test_split(
-                        X_subset, y_subset, test_size=0.5, stratify=y_subset, random_state=42 + task_idx
+                        X_subset, y_subset, test_size=0.8, stratify=y_subset, random_state=42 + task_idx
                     )
                     
                     # Convert to tensors and move to device
