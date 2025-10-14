@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Blockchain Federated Learning - UNSW-NB15 Preprocessor
-Implements the 6-step preprocessing pipeline for zero-day detection
+Implements the 5-step preprocessing pipeline for zero-day detection
 """
 
 import pandas as pd
@@ -11,7 +11,6 @@ import torch.nn as nn
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
-from scipy.stats import pearsonr
 import logging
 import os
 import pickle
@@ -26,7 +25,7 @@ logger = logging.getLogger(__name__)
 class UNSWPreprocessor:
     """
     UNSW-NB15 Dataset Preprocessor for Blockchain Federated Learning
-    Implements 6-step preprocessing pipeline for zero-day detection
+    Implements 5-step preprocessing pipeline for zero-day detection
     """
     
     def __init__(self, data_path: str = "UNSW_NB15_training-set.csv", test_path: str = "UNSW_NB15_testing-set.csv"):
@@ -42,7 +41,6 @@ class UNSWPreprocessor:
         self.scaler = StandardScaler()
         self.label_encoders = {}
         self.target_encoders = {}
-        self.selected_features = None
         self.feature_names = None
         
         # UNSW-NB15 attack types
@@ -116,15 +114,18 @@ class UNSWPreprocessor:
         """
         logger.info("Step 2: Feature Engineering (45 → 49 features)")
         
-        # Create new features
-        df['packet_size_ratio'] = df['sbytes'] / (df['dbytes'] + 1)
-        df['packets_per_second'] = df['spkts'] / (df['dur'] + 1)
-        df['is_tcp'] = (df['proto'] == 'tcp').astype(int)
-        df['is_http'] = (df['service'] == 'http').astype(int)
+        # Add high-appropriateness features
+        #Captures traffic asymmetry, critical for detecting attacks like Backdoors and Exploits
+        df['packet_size_ratio'] = df['sbytes'] / (df['dbytes'] + 1) 
         
-        logger.info(f"  Added 4 new features: packet_size_ratio, packets_per_second, is_tcp, is_http")
+        #Measures source packet rate, a key indicator for rate-based attacks (DoS, Fuzzers, Reconnaissance)
+        df['packets_per_second'] = df['spkts'] / (df['dur'] + 1) 
+        
+        #Combines TCP-specificity (~80% of flows) with packet rate, highlighting TCP-based attack bursts
+        df['tcp_rate'] = (df['proto'] == 'tcp').astype(int) * df['packets_per_second'] 
+        
+        logger.info(f"  Added 3 features: packet_size_ratio, packets_per_second, tcp_rate")
         logger.info(f"  New shape: {df.shape}")
-        
         return df
     
     def step3_data_cleaning(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -219,67 +220,11 @@ class UNSWPreprocessor:
         logger.info(f"  Final shape after encoding: {df.shape}")
         return df
     
-    def step5_feature_selection(self, df: pd.DataFrame, target_col: str = 'label', n_features: int = 30) -> pd.DataFrame:
-        """
-        Step 5: Feature Selection using Pearson Correlation
-        
-        Args:
-            df: Input dataframe
-            target_col: Target column name
-            n_features: Number of features to select
-            
-        Returns:
-            df: Dataframe with selected features
-        """
-        logger.info(f"Step 5: Feature Selection (selecting top {n_features} features)")
-        
-        if target_col not in df.columns:
-            logger.warning(f"Target column '{target_col}' not found. Skipping feature selection.")
-            return df
-        
-        # Calculate Pearson correlation for each feature
-        correlations = {}
-        p_values = {}
-        
-        feature_cols = [col for col in df.columns if col != target_col]
-        
-        for col in feature_cols:
-            if df[col].dtype in ['int64', 'float64']:
-                corr, p_val = pearsonr(df[col], df[target_col])
-                correlations[col] = abs(corr)
-                p_values[col] = p_val
-        
-        # Filter by statistical significance (p < 0.05)
-        significant_features = [col for col, p_val in p_values.items() if p_val < 0.05]
-        logger.info(f"  {len(significant_features)} features are statistically significant (p < 0.05)")
-        
-        # Select top N features by absolute correlation
-        sorted_features = sorted(correlations.items(), key=lambda x: x[1], reverse=True)
-        selected_features = [feat for feat, _ in sorted_features[:n_features] if feat in significant_features]
-        
-        # If we don't have enough significant features, take top N regardless
-        if len(selected_features) < n_features:
-            selected_features = [feat for feat, _ in sorted_features[:n_features]]
-        
-        # Add target column and attack_cat column to selected features
-        selected_features.append(target_col)
-        if 'attack_cat' in df.columns:
-            selected_features.append('attack_cat')
-        
-        # Filter dataframe
-        df_selected = df[selected_features].copy()
-        self.selected_features = [feat for feat in selected_features if feat not in [target_col, 'attack_cat']]
-        
-        logger.info(f"  Selected {len(self.selected_features)} features")
-        logger.info(f"  Top 5 features: {[feat for feat, _ in sorted_features[:5]]}")
-        logger.info(f"  Final shape: {df_selected.shape}")
-        
-        return df_selected
     
-    def step6_feature_scaling(self, train_df: pd.DataFrame, val_df: pd.DataFrame = None, 
+    def step5_feature_scaling(self, train_df: pd.DataFrame, val_df: pd.DataFrame = None, 
                             test_df: pd.DataFrame = None) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """
-        Step 6: Feature Scaling using StandardScaler
+        Step 5: Feature Scaling using StandardScaler
         
         Args:
             train_df: Training dataframe
@@ -289,7 +234,7 @@ class UNSWPreprocessor:
         Returns:
             Tuple of scaled dataframes
         """
-        logger.info("Step 6: Feature Scaling")
+        logger.info("Step 5: Feature Scaling")
         
         # Identify feature columns (exclude target columns and attack_cat)
         feature_cols = [col for col in train_df.columns if col not in ['label', 'binary_label', 'attack_cat']]
@@ -488,7 +433,7 @@ class UNSWPreprocessor:
         split_data = self.create_zero_day_split(train_df, test_df, zero_day_attack)
         
         # Apply feature scaling
-        train_scaled, val_scaled, test_scaled = self.step6_feature_scaling(
+        train_scaled, val_scaled, test_scaled = self.step5_feature_scaling(
             split_data['train'], split_data['val'], split_data['test']
         )
         
@@ -523,7 +468,6 @@ class UNSWPreprocessor:
             'y_test': y_test,
             'zero_day_indices': zero_day_indices,
             'feature_names': feature_cols,
-            'selected_features': self.selected_features,
             'scaler': self.scaler,
             'target_encoders': self.target_encoders,
             'zero_day_attack': zero_day_attack,
@@ -539,7 +483,6 @@ class UNSWPreprocessor:
         preprocessor_state = {
             'scaler': self.scaler,
             'target_encoders': self.target_encoders,
-            'selected_features': self.selected_features,
             'feature_names': self.feature_names,
             'attack_types': self.attack_types
         }
@@ -556,7 +499,6 @@ class UNSWPreprocessor:
         
         self.scaler = preprocessor_state['scaler']
         self.target_encoders = preprocessor_state['target_encoders']
-        self.selected_features = preprocessor_state['selected_features']
         self.feature_names = preprocessor_state['feature_names']
         self.attack_types = preprocessor_state['attack_types']
         
