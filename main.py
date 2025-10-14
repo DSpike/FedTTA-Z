@@ -114,7 +114,7 @@ class EnhancedSystemConfig:
     zero_day_attack: str = "DoS"
     
     # Model configuration (restored to best performing)
-    input_dim: int = 57  # Use all original features, let multi-scale extractors learn importance
+    input_dim: int = 56  # Use all features after preprocessing (45 original + 3 engineered + 8 encoded)
     hidden_dim: int = 128
     embedding_dim: int = 64
     
@@ -486,9 +486,9 @@ class BlockchainFederatedIncentiveSystem:
             logger.info(f"Generated challenge for client {client_id}: {challenge[:50]}...")
             
             # In a real implementation, this would be signed by the client's MetaMask
-            # For now, we'll simulate the signature verification
+            # For now, we'll simulate the signature verification with proper hex format
             # In production, the client would sign the challenge with their private key
-            simulated_signature = f"simulated_signature_{client_id}_{int(time.time())}"
+            simulated_signature = f"0x{'0' * 130}"  # Proper hex signature format
             
             # Verify signature and authenticate wallet
             auth_result = self.authenticator.authenticate_wallet(wallet_address, simulated_signature)
@@ -2773,11 +2773,28 @@ class BlockchainFederatedIncentiveSystem:
                     # Calculate confusion matrix
                     from sklearn.metrics import confusion_matrix
                     cm = confusion_matrix(y_test_np, final_predictions)
+                    
+                    # Handle different confusion matrix shapes properly
+                    if cm.shape == (2, 2):
+                        tn, fp, fn, tp = cm.ravel()
+                    elif cm.shape == (1, 1):
+                        # All predictions are the same class
+                        if y_test_np[0] == 0:  # All normal
+                            tn, fp, fn, tp = cm[0, 0], 0, 0, 0
+                        else:  # All attack
+                            tn, fp, fn, tp = 0, 0, 0, cm[0, 0]
+                    else:
+                        # Fallback: create 2x2 matrix
+                        tn = int(np.sum((y_test_np == 0) & (final_predictions == 0)))
+                        fp = int(np.sum((y_test_np == 0) & (final_predictions == 1)))
+                        fn = int(np.sum((y_test_np == 1) & (final_predictions == 0)))
+                        tp = int(np.sum((y_test_np == 1) & (final_predictions == 1)))
+                    
                     confusion_matrix_dict = {
-                        'tn': int(cm[0, 0]) if cm.shape == (2, 2) else 0,
-                        'fp': int(cm[0, 1]) if cm.shape == (2, 2) else 0,
-                        'fn': int(cm[1, 0]) if cm.shape == (2, 2) else 0,
-                        'tp': int(cm[1, 1]) if cm.shape == (2, 2) else 0
+                        'tn': int(tn),
+                        'fp': int(fp),
+                        'fn': int(fn),
+                        'tp': int(tp)
                     }
                     
                     results = {
@@ -3121,7 +3138,22 @@ class BlockchainFederatedIncentiveSystem:
                 
                 # Confusion matrix
                 cm = confusion_matrix(query_y_np, predictions_np)
-                tn, fp, fn, tp = cm.ravel() if cm.size == 4 else (0, 0, 0, 0)
+                
+                # Handle different confusion matrix shapes properly
+                if cm.shape == (2, 2):
+                    tn, fp, fn, tp = cm.ravel()
+                elif cm.shape == (1, 1):
+                    # All predictions are the same class
+                    if query_y_np[0] == 0:  # All normal
+                        tn, fp, fn, tp = cm[0, 0], 0, 0, 0
+                    else:  # All attack
+                        tn, fp, fn, tp = 0, 0, 0, cm[0, 0]
+                else:
+                    # Fallback: create 2x2 matrix
+                    tn = int(np.sum((query_y_np == 0) & (predictions_np == 0)))
+                    fp = int(np.sum((query_y_np == 0) & (predictions_np == 1)))
+                    fn = int(np.sum((query_y_np == 1) & (predictions_np == 0)))
+                    tp = int(np.sum((query_y_np == 1) & (predictions_np == 1)))
                 
                 # Compute Matthews Correlation Coefficient (MCCC)
                 try:
@@ -3183,8 +3215,8 @@ class BlockchainFederatedIncentiveSystem:
             X_np = X_subset.cpu().numpy()
             y_np = y_subset.cpu().numpy()
             
-            # Run 10 meta-tasks (reduced for testing to prevent long execution)
-            num_meta_tasks = 10
+            # Run 20 meta-tasks (increased for better statistical robustness)
+            num_meta_tasks = 20
             task_metrics = {
                 'accuracy': [],
                 'precision': [],
@@ -3903,7 +3935,7 @@ def main():
         enable_incentives=True,
         base_reward=100,
         max_reward=1000,
-        zero_day_attack="Analysis",  # Set to Analysis attack as requested
+        zero_day_attack="Exploits",  # Testing with Exploits attack type
         fully_decentralized=False  # 🔧 TEMPORARILY DISABLED FOR TESTING
     )
     
