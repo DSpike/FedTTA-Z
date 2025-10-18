@@ -25,6 +25,7 @@ from sklearn.metrics import roc_curve, roc_auc_score
 from preprocessing.blockchain_federated_unsw_preprocessor import UNSWPreprocessor
 from models.transductive_fewshot_model import TransductiveFewShotModel, create_meta_tasks, TransductiveLearner
 from config import get_config, update_config
+from config_validator import ConfigValidator
 from coordinators.blockchain_fedavg_coordinator import BlockchainFedAVGCoordinator
 from blockchain.blockchain_ipfs_integration import BlockchainIPFSIntegration, FEDERATED_LEARNING_ABI
 from blockchain.metamask_auth_system import MetaMaskAuthenticator, DecentralizedIdentityManager
@@ -199,10 +200,9 @@ class EnhancedSystemConfig:
     # Default value, will be overridden by centralized config
     zero_day_attack: str = "DoS"
     
-    # Model configuration (restored to best performing)
-    # Use all features after preprocessing (45 original + 3 engineered + 8
-    # encoded)
-    input_dim: int = 56
+    # Model configuration (aligned with SystemConfig)
+    # Updated after IGRF-RFE feature selection (43 features selected)
+    input_dim: int = 43
     hidden_dim: int = 128
     embedding_dim: int = 64
     
@@ -211,15 +211,15 @@ class EnhancedSystemConfig:
     # Length of sequences for TCN processing (optimized)
     sequence_length: int = 30
     sequence_stride: int = 15  # Stride for sequence creation
-    meta_epochs: int = 3  # Reduced epochs for TCN stability
+    meta_epochs: int = 5  # Reduced epochs for TCN stability
     
     # Prototype update weights (configurable for different data distributions)
     support_weight: float = 0.3  # Weight for support set contribution
     test_weight: float = 0.7     # Weight for test set contribution
     
-    # Federated learning configuration (optimized for better performance)
-    num_clients: int = 3
-    num_rounds: int = 5  # Reduced rounds for testing
+    # Federated learning configuration (aligned with SystemConfig)
+    num_clients: int = 10
+    num_rounds: int = 15  # Increased rounds for better federated learning convergence
     local_epochs: int = 50  # Increased for better performance
     learning_rate: float = 0.001
     
@@ -257,6 +257,44 @@ class EnhancedSystemConfig:
     
     # Decentralization configuration
     fully_decentralized: bool = False  # Set to True for 100% decentralized system
+    
+    # Few-shot learning configuration (aligned with SystemConfig)
+    n_way: int = 2  # Number of classes per task
+    k_shot: int = 50  # Number of support samples per class
+    n_query: int = 100  # Number of query samples per class
+
+
+def ensure_config_sync():
+    """Ensure EnhancedSystemConfig is synchronized with SystemConfig"""
+    try:
+        validator = ConfigValidator()
+        central_config = get_config()
+        
+        # Create a temporary EnhancedSystemConfig for validation
+        temp_enhanced = EnhancedSystemConfig()
+        
+        # Validate configuration
+        validation = validator.validate_enhanced_config(temp_enhanced)
+        
+        if not validation.is_valid:
+            logger.warning("⚠️ Configuration drift detected!")
+            for field, expected, actual in validation.discrepancies:
+                logger.warning(f"  {field}: expected {expected}, got {actual}")
+            
+            # Auto-fix if possible
+            if validator.auto_fix_enhanced_config(temp_enhanced):
+                logger.info("✅ Configuration automatically synchronized")
+            else:
+                logger.error("❌ Manual configuration synchronization required")
+                raise ValueError("Configuration drift detected - manual fix required")
+        else:
+            logger.info("✅ Configuration validation passed")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Configuration validation failed: {str(e)}")
+        return False
 
 
 class SecureBlockchainFederatedIncentiveSystem:
@@ -1163,11 +1201,11 @@ class BlockchainFederatedIncentiveSystem:
           # ← LOCAL DATA ONLY (keep as tensor)
                     client.train_labels,
         # ← LOCAL DATA ONLY (keep as tensor)
-                    n_way=2,
+                    n_way=self.config.n_way,
                    # Binary classification (Normal vs Attack)
-                    k_shot=50,
-                 # 50-shot learning (5 samples per class)
-                    n_query=100,           # 100 query samples
+                    k_shot=self.config.k_shot,
+                 # k-shot learning from config
+                    n_query=self.config.n_query,           # Query samples from config
                     n_tasks=5,             # Fewer tasks per client (5 vs 10)
                     phase="training",
                     normal_query_ratio=0.8,  # 80% Normal samples in query set for training
@@ -2982,10 +3020,8 @@ class BlockchainFederatedIncentiveSystem:
                             client_id = f'client_{i+1}'
                             if client_id in client_performance_data:
                                 # Get real accuracy from client training
-                                client_accuracy = getattr(
-    client_update, 'validation_accuracy', 0.5)
-                                client_loss = getattr(
-    client_update, 'training_loss', 0.5)
+                                client_accuracy = getattr( client_update, 'validation_accuracy', 0.5)
+                                client_loss = getattr(client_update, 'training_loss', 0.5)
                                 
                                 # Calculate derived metrics
                                 client_f1 = max(
@@ -3039,8 +3075,7 @@ class BlockchainFederatedIncentiveSystem:
                     if latest_round and 'client_updates' in latest_round:
                         for i, client_update in enumerate(
                             latest_round['client_updates']):
-                            client_accuracy = getattr(
-    client_update, 'validation_accuracy', 0.5)
+                            client_accuracy = getattr(client_update, 'validation_accuracy', 0.5)
                             client_f1 = max(
                                 0.1, min(0.99, client_accuracy * 0.95))
                             
@@ -3542,7 +3577,7 @@ class BlockchainFederatedIncentiveSystem:
 
                     meta_tasks = create_meta_tasks(
                         X_test_tensor, y_test_tensor,  # Use 10-class labels directly
-                        n_way=2, k_shot=50, n_query=100,   # Binary classification for zero-day detection
+                        n_way=self.config.n_way, k_shot=self.config.k_shot, n_query=self.config.n_query,   # Binary classification for zero-day detection
                         phase="testing",
                         normal_query_ratio=0.9,  # 90% Normal samples in query set for testing
                         zero_day_attack_label=None  # No exclusion for testing phase
@@ -5831,6 +5866,11 @@ def main():
     logger.info("🚀 Enhanced Blockchain-Enabled Federated Learning with Incentive Mechanisms")
     logger.info("=" * 80)
     
+    # Ensure configuration synchronization before starting
+    if not ensure_config_sync():
+        logger.error("❌ Configuration validation failed - exiting")
+        return
+    
     # Check if fully decentralized mode is requested
     import sys
     fully_decentralized = '--decentralized' in sys.argv or '--fully-decentralized' in sys.argv
@@ -5868,7 +5908,10 @@ def main():
         sequence_length=config.sequence_length,
         sequence_stride=config.sequence_stride,
         meta_epochs=config.meta_epochs,
-        fully_decentralized=config.fully_decentralized
+        fully_decentralized=config.fully_decentralized,
+        n_way=config.n_way,
+        k_shot=config.k_shot,
+        n_query=config.n_query
     )
     
     # WandB integration removed
