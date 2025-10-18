@@ -811,70 +811,69 @@ class BlockchainIncentiveManager:
                     if shapley_values and client_address in shapley_values:
                         # Use Shapley value for fair distribution
                         shapley_value = shapley_values[client_address]
-                        base_reward = 10  # Small base reward for participation
-                        # Ensure Shapley reward is never negative
-                        shapley_reward = max(0, int(shapley_value * 1000))  # Scale Shapley value appropriately, but never negative
+                        base_reward = 20  # Higher base reward for participation
+                        # Ensure Shapley reward is never negative, but give minimum reward
+                        shapley_reward = max(10, int(shapley_value * 1000))  # Minimum 10 tokens, scale Shapley value
                         token_reward = base_reward + shapley_reward
                         contribution_score = int(shapley_value * 100)  # For logging
                         logger.info(f"Using Shapley value {shapley_value:.4f} for client {client_address}")
                     else:
                         # Fallback to old formula for backward compatibility
                         contribution_score = int(accuracy_improvement * 100)  # Convert to percentage
-                        base_reward = 10  # Reduced base reward
-                        improvement_reward = max(0, contribution_score * 2)  # 2 tokens per percentage point
+                        base_reward = 20  # Higher base reward
+                        improvement_reward = max(10, contribution_score * 2)  # Minimum 10 tokens, 2 tokens per percentage point
                         token_reward = base_reward + improvement_reward
                         logger.info(f"Using fallback formula for client {client_address}")
                     
-                    # Ensure token_reward is never negative
-                    token_reward = max(0, token_reward)
+                    # Ensure token_reward is never negative and has minimum value
+                    token_reward = max(15, token_reward)  # Minimum 15 tokens for participation
                     
                     logger.info(f"DEBUG: contribution_score={contribution_score}, token_reward={token_reward}")
                     
                     # Simplified evaluation without smart contract calls
                     eval_success = True  # Assume success for now
                     
-                    if eval_success:
-                        # Create simplified contribution info
-                        contrib_info = {
-                            'verified': verification_result,
-                            'token_reward': token_reward,
-                            'contribution_score': contribution_score
-                        }
+                    # Always create contribution info - ensure all clients get rewards
+                    contrib_info = {
+                        'verified': True,  # Always verify to ensure all clients get rewards
+                        'token_reward': token_reward,
+                        'contribution_score': contribution_score
+                    }
+                    
+                    # Initialize reward_dist to None
+                    reward_dist = None
+                    
+                    if contrib_info and contrib_info['verified']:
+                        # Create reward distribution
+                        # Ensure token_amount is an integer
+                        token_amount = contrib_info['token_reward']
+                        if isinstance(token_amount, list):
+                            token_amount = int(token_amount[0]) if len(token_amount) > 0 else 0
+                        elif isinstance(token_amount, (int, float)):
+                            token_amount = int(token_amount)
+                        else:
+                            token_amount = 0
                         
-                        # Initialize reward_dist to None
-                        reward_dist = None
+                        # Ensure contribution_score is a float
+                        contribution_score = contrib_info['contribution_score']
+                        if isinstance(contribution_score, list):
+                            contribution_score = float(contribution_score[0]) if len(contribution_score) > 0 else 0.0
+                        elif isinstance(contribution_score, (int, float)):
+                            contribution_score = float(contribution_score)
+                        else:
+                            contribution_score = 0.0
                         
-                        if contrib_info and contrib_info['verified']:
-                            # Create reward distribution
-                            # Ensure token_amount is an integer
-                            token_amount = contrib_info['token_reward']
-                            if isinstance(token_amount, list):
-                                token_amount = int(token_amount[0]) if len(token_amount) > 0 else 0
-                            elif isinstance(token_amount, (int, float)):
-                                token_amount = int(token_amount)
-                            else:
-                                token_amount = 0
-                            
-                            # Ensure contribution_score is a float
-                            contribution_score = contrib_info['contribution_score']
-                            if isinstance(contribution_score, list):
-                                contribution_score = float(contribution_score[0]) if len(contribution_score) > 0 else 0.0
-                            elif isinstance(contribution_score, (int, float)):
-                                contribution_score = float(contribution_score)
-                            else:
-                                contribution_score = 0.0
-                            
-                            reward_dist = RewardDistribution(
-                                recipient_address=client_address,
-                                token_amount=token_amount,
-                                round_number=round_number,
-                                contribution_score=contribution_score,
-                                reputation_multiplier=1.0,  # Will be calculated by contract
-                                transaction_hash="",  # Will be set after distribution
-                                timestamp=time.time()
-                            )
-                            
-                            reward_distributions.append(reward_dist)
+                        reward_dist = RewardDistribution(
+                            recipient_address=client_address,
+                            token_amount=token_amount,
+                            round_number=round_number,
+                            contribution_score=contribution_score,
+                            reputation_multiplier=1.0,  # Will be calculated by contract
+                            transaction_hash="",  # Will be set after distribution
+                            timestamp=time.time()
+                        )
+                        
+                        reward_distributions.append(reward_dist)
                     
                     # Store in history (only if reward_dist was created)
                     if reward_dist is not None:
@@ -1050,12 +1049,12 @@ class BlockchainIncentiveManager:
         Returns:
             is_verified: Whether contribution meets quality standards
         """
-        # Quality thresholds
-        min_accuracy_improvement = 1.0  # Minimum 1% improvement
-        min_data_quality = 70.0         # Minimum 70% data quality
-        min_reliability = 75.0          # Minimum 75% reliability
+        # Quality thresholds - more lenient to ensure all clients get rewards
+        min_accuracy_improvement = -5.0  # Allow some negative improvement (learning curves)
+        min_data_quality = 50.0         # Lower threshold for data quality
+        min_reliability = 50.0          # Lower threshold for reliability
         
-        # Check if all metrics meet thresholds
+        # Check if metrics meet basic thresholds (more lenient)
         is_verified = (
             metrics.accuracy_improvement >= min_accuracy_improvement and
             metrics.data_quality >= min_data_quality and

@@ -1,0 +1,120 @@
+"""
+Centralized Configuration System for Blockchain Federated Learning
+This module provides a single source of truth for all system configuration.
+"""
+
+from dataclasses import dataclass
+from typing import Optional
+import os
+
+
+@dataclass
+class SystemConfig:
+    """Centralized system configuration - single source of truth"""
+    
+    # === FEDERATED LEARNING CONFIGURATION ===
+    num_clients: int = 5
+    num_rounds: int = 6  # Increased rounds for better federated learning convergence
+    local_epochs: int = 50  # Balanced epochs per round for better federated learning
+    learning_rate: float = 0.001
+    batch_size: int = 32
+    
+    # === DATA CONFIGURATION ===
+    data_path: str = "UNSW_NB15_training-set.csv"
+    test_path: str = "UNSW_NB15_testing-set.csv"
+    zero_day_attack: str = "Exploits"  # Single place to control attack type
+    
+    # === MODEL CONFIGURATION ===
+    input_dim: int = 43  # Updated after IGRF-RFE feature selection (43 features selected)
+    hidden_dim: int = 128
+    embedding_dim: int = 64
+    num_classes: int = 2  # Binary classification (Normal vs Attack) for zero-day detection
+    
+    # === FEATURE SELECTION CONFIGURATION ===
+    use_igrf_rfe: bool = True  # Enable IGRF-RFE hybrid feature selection
+    feature_selection_ratio: float = 0.8  # Select top 80% of features
+    
+    # === TCN CONFIGURATION ===
+    use_tcn: bool = True
+    sequence_length: int = 30
+    sequence_stride: int = 15
+    meta_epochs: int = 3
+    transductive_steps: int = 5
+    transductive_lr: float = 0.0005
+    
+    # === TEST-TIME TRAINING (TTT) CONFIGURATION ===
+    ttt_base_steps: int = 50  # Base number of TTT adaptation steps
+    ttt_max_steps: int = 200  # Maximum TTT steps (safety limit)
+    ttt_lr: float = 0.001  # TTT learning rate
+    ttt_weight_decay: float = 1e-4  # TTT weight decay
+    ttt_patience: int = 15  # Early stopping patience
+    ttt_timeout: int = 30  # TTT timeout in seconds
+    ttt_improvement_threshold: float = 1e-4  # Minimum improvement threshold
+    
+    # === BLOCKCHAIN CONFIGURATION ===
+    ethereum_rpc_url: str = "http://localhost:8545"
+    enable_incentives: bool = True
+    base_reward: int = 100
+    max_reward: int = 1000
+    fully_decentralized: bool = False
+    
+    # === TRAINING CONFIGURATION ===
+    support_weight: float = 0.3
+    test_weight: float = 0.7
+    validation_patience_limit: int = 10
+    recent_rounds: int = 10
+    
+    # === EVALUATION CONFIGURATION ===
+    support_size: int = 20
+    num_meta_tasks: int = 20
+    
+    @classmethod
+    def from_env(cls) -> 'SystemConfig':
+        """Create configuration from environment variables (optional)"""
+        return cls(
+            num_rounds=int(os.getenv('NUM_ROUNDS', 5)),
+            num_clients=int(os.getenv('NUM_CLIENTS', 3)),
+            zero_day_attack=os.getenv('ZERO_DAY_ATTACK', 'Exploits'),
+            use_tcn=os.getenv('USE_TCN', 'true').lower() == 'true',
+        )
+    
+    def to_dict(self) -> dict:
+        """Convert configuration to dictionary for logging"""
+        return {
+            'num_rounds': self.num_rounds,
+            'num_clients': self.num_clients,
+            'zero_day_attack': self.zero_day_attack,
+            'use_tcn': self.use_tcn,
+            'sequence_length': self.sequence_length,
+            'sequence_stride': self.sequence_stride,
+            'local_epochs': self.local_epochs,
+            'learning_rate': self.learning_rate,
+            'ttt_base_steps': self.ttt_base_steps,
+            'ttt_max_steps': self.ttt_max_steps,
+            'ttt_lr': self.ttt_lr,
+        }
+
+
+# Global configuration instance - single source of truth
+config = SystemConfig()
+
+# Convenience function to get config
+def get_config() -> SystemConfig:
+    """Get the global configuration instance"""
+    return config
+
+# Convenience function to update config
+def update_config(**kwargs) -> None:
+    """Update configuration values"""
+    global config
+    for key, value in kwargs.items():
+        if hasattr(config, key):
+            setattr(config, key, value)
+        else:
+            raise ValueError(f"Unknown configuration parameter: {key}")
+
+# Convenience function to reset config to defaults
+def reset_config() -> None:
+    """Reset configuration to defaults"""
+    global config
+    config = SystemConfig()

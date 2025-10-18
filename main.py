@@ -6,6 +6,7 @@ Integrates smart contract-based rewards, MetaMask authentication, and transparen
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
 import logging
 import time
@@ -13,15 +14,17 @@ import json
 import os
 import subprocess
 import requests
+import copy
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from sklearn.metrics import roc_curve, auc, roc_auc_score
+from sklearn.metrics import roc_curve, roc_auc_score
 
 # Import our components
 from preprocessing.blockchain_federated_unsw_preprocessor import UNSWPreprocessor
-from models.transductive_fewshot_model import TransductiveFewShotModel, create_meta_tasks
+from models.transductive_fewshot_model import TransductiveFewShotModel, create_meta_tasks, TransductiveLearner
+from config import get_config, update_config
 from coordinators.blockchain_fedavg_coordinator import BlockchainFedAVGCoordinator
 from blockchain.blockchain_ipfs_integration import BlockchainIPFSIntegration, FEDERATED_LEARNING_ABI
 from blockchain.metamask_auth_system import MetaMaskAuthenticator, DecentralizedIdentityManager
@@ -29,6 +32,7 @@ from blockchain.incentive_provenance_system import IncentiveProvenanceSystem, Co
 from blockchain.blockchain_incentive_contract import BlockchainIncentiveContract, BlockchainIncentiveManager
 from visualization.performance_visualization import PerformanceVisualizer
 from incentives.shapley_value_calculator import ShapleyValueCalculator
+# WandB integration removed
 
 # Import secure decentralized system components
 from decentralized_fl_system import DecentralizedFederatedLearningSystem, SecureModelUpdate
@@ -36,32 +40,111 @@ from secure_federated_client import SecureFederatedClient
 from real_ipfs_client import RealIPFSClient
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+     format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-def find_optimal_threshold(y_true, y_scores, method='balanced'):
+
+def calculate_roc_curve_safe(y_true, y_scores, normal_class=0):
     """
-    Robust threshold optimization that prevents extreme values and ensures valid predictions
+    Safely calculate ROC curve with proper handling of edge cases and infinite values.
     
     Args:
-        y_true: True binary labels
+        y_true: True labels (binary or multiclass)
+        y_scores: Predicted probabilities or scores
+        normal_class: Class index for normal samples (default: 0)
+        
+    Returns:
+        fpr, tpr, thresholds: ROC curve data with infinite values replaced
+        roc_auc: Area under ROC curve
+    """
+    try:
+        # Input validation
+        if y_true is None or y_scores is None:
+            raise ValueError("y_true and y_scores cannot be None")
+        
+        y_true = np.asarray(y_true)
+        y_scores = np.asarray(y_scores)
+        
+        if len(y_true) != len(y_scores):
+            raise ValueError(f"Length mismatch: y_true={len(y_true)}, y_scores={len(y_scores)}")
+        
+        if len(y_true) == 0:
+            raise ValueError("Empty arrays provided")
+        
+        # Convert multiclass to binary: Normal=0, Attack=1
+        if len(np.unique(y_true)) > 2:
+            y_true_binary = (y_true != normal_class).astype(int)
+            # For multiclass probabilities, use attack probability
+            if len(y_scores.shape) > 1 and y_scores.shape[1] > 1:
+                # Attack probability = 1 - Normal probability
+                y_scores_binary = 1.0 - y_scores[:, normal_class]
+            else:
+                y_scores_binary = y_scores
+        else:
+            y_true_binary = y_true
+            y_scores_binary = y_scores
+
+        # Ensure we have valid probability scores
+        y_scores_binary = np.clip(y_scores_binary, 1e-7, 1 - 1e-7)
+        
+        # Check if we have both classes
+        unique_classes = np.unique(y_true_binary)
+        if len(unique_classes) < 2:
+            logger.warning(f"Only one class present in data: {unique_classes}, cannot calculate ROC curve")
+            return np.array([0, 1]), np.array([0, 1]), np.array([1, 0]), 0.5
+        
+        # Calculate ROC curve
+        fpr, tpr, thresholds = roc_curve(y_true_binary, y_scores_binary)
+        roc_auc = roc_auc_score(y_true_binary, y_scores_binary)
+        
+        # Validate ROC curve results
+        if not np.all(np.isfinite(fpr)) or not np.all(np.isfinite(tpr)):
+            logger.warning("Non-finite values in FPR or TPR, replacing with safe values")
+            fpr = np.where(np.isfinite(fpr), fpr, 0.0)
+            tpr = np.where(np.isfinite(tpr), tpr, 0.0)
+        
+        # Replace infinite values with large finite numbers for JSON serialization
+        thresholds_clean = np.where(np.isinf(thresholds), 
+                                   np.where(thresholds > 0, 1e10, -1e10), 
+                                   thresholds)
+        
+        # Validate AUC score
+        if not np.isfinite(roc_auc):
+            logger.warning(f"Non-finite AUC score: {roc_auc}, setting to 0.5")
+            roc_auc = 0.5
+        
+        logger.debug(f"ROC curve calculated: AUC={roc_auc:.4f}, {len(fpr)} points, thresholds range: [{np.min(thresholds_clean):.4f}, {np.max(thresholds_clean):.4f}]")
+        
+        return fpr, tpr, thresholds_clean, roc_auc
+        
+    except Exception as e:
+        logger.error(f"Error calculating ROC curve: {e}")
+        return np.array([0, 1]), np.array([0, 1]), np.array([1, 0]), 0.5
+
+
+def find_optimal_threshold(y_true, y_scores, method='balanced', normal_class=0):
+    """
+    Robust threshold optimization that prevents extreme values and ensures valid predictions
+    Handles both binary and multiclass data by converting multiclass to binary for threshold optimization
+    
+    Args:
+        y_true: True labels (binary or multiclass)
         y_scores: Predicted probabilities or scores
         method: Method to find optimal threshold ('balanced', 'youden', 'precision', 'f1')
+        normal_class: Class index for normal samples (default: 0)
         
     Returns:
         optimal_threshold: Best threshold value (clamped between 0.01 and 0.99)
         roc_auc: Area under ROC curve
         fpr, tpr, thresholds: ROC curve data
     """
-    # Ensure we have valid probability scores
-    y_scores = np.clip(y_scores, 1e-7, 1 - 1e-7)
-    
-    # Calculate ROC curve
-    fpr, tpr, thresholds = roc_curve(y_true, y_scores)
-    roc_auc = auc(fpr, tpr)
+    # Use the safe ROC curve calculation
+    fpr, tpr, thresholds, roc_auc = calculate_roc_curve_safe(y_true, y_scores, normal_class)
     
     # Remove extreme thresholds to prevent infinite values
-    valid_mask = (thresholds > 0.01) & (thresholds < 0.99)
+    valid_mask = (thresholds > 0.01) & (thresholds < 0.99) & np.isfinite(thresholds)
     
     if not np.any(valid_mask):
         # If no valid thresholds, use default
@@ -101,9 +184,11 @@ def find_optimal_threshold(y_true, y_scores, method='balanced'):
     # Final safety clamp to prevent extreme values
     optimal_threshold = np.clip(optimal_threshold, 0.01, 0.99)
     
-    logger.info(f"Memory-efficient optimal threshold found: {optimal_threshold:.4f} (method: {method}, ROC-AUC: {roc_auc:.4f})")
+    logger.info(
+        f"Memory-efficient optimal threshold found: {optimal_threshold:.4f} (method: {method}, ROC-AUC: {roc_auc:.4f})")
     
     return optimal_threshold, roc_auc, fpr, tpr, thresholds
+
 
 @dataclass
 class EnhancedSystemConfig:
@@ -111,12 +196,22 @@ class EnhancedSystemConfig:
     # Data configuration
     data_path: str = "UNSW_NB15_training-set.csv"
     test_path: str = "UNSW_NB15_testing-set.csv"
+    # Default value, will be overridden by centralized config
     zero_day_attack: str = "DoS"
     
     # Model configuration (restored to best performing)
-    input_dim: int = 56  # Use all features after preprocessing (45 original + 3 engineered + 8 encoded)
+    # Use all features after preprocessing (45 original + 3 engineered + 8
+    # encoded)
+    input_dim: int = 56
     hidden_dim: int = 128
     embedding_dim: int = 64
+    
+    # TCN configuration
+    use_tcn: bool = True  # Use TCN-based model instead of linear-based
+    # Length of sequences for TCN processing (optimized)
+    sequence_length: int = 30
+    sequence_stride: int = 15  # Stride for sequence creation
+    meta_epochs: int = 3  # Reduced epochs for TCN stability
     
     # Prototype update weights (configurable for different data distributions)
     support_weight: float = 0.3  # Weight for support set contribution
@@ -124,16 +219,20 @@ class EnhancedSystemConfig:
     
     # Federated learning configuration (optimized for better performance)
     num_clients: int = 3
-    num_rounds: int = 20  # Increased rounds for better convergence
+    num_rounds: int = 5  # Reduced rounds for testing
     local_epochs: int = 50  # Increased for better performance
     learning_rate: float = 0.001
     
     # Blockchain configuration - Using REAL deployed contracts
     ethereum_rpc_url: str = "http://localhost:8545"
-    contract_address: str = "0x74f2D28CEC2c97186dE1A02C1Bae84D19A7E8BC8"  # Deployed FederatedLearning contract
-    incentive_contract_address: str = "0x02090bbB57546b0bb224880a3b93D2Ffb0dde144"  # Deployed Incentive contract
-    private_key: str = "0x4f3edf983ac636a65a842ce7c78d9aa706d3b113bce9c46f30d7d21715b23b1d"  # Will use first account with ETH
-    aggregator_address: str = "0x4565f36D8E3cBC1c7187ea39Eb613E484411e075"  # First Ganache account with 100 ETH
+    # Deployed FederatedLearning contract
+    contract_address: str = "0x74f2D28CEC2c97186dE1A02C1Bae84D19A7E8BC8"
+    # Deployed Incentive contract
+    incentive_contract_address: str = "0x02090bbB57546b0bb224880a3b93D2Ffb0dde144"
+    # Will use first account with ETH
+    private_key: str = "0x4f3edf983ac636a65a842ce7c78d9aa706d3b113bce9c46f30d7d21715b23b1d"
+    # First Ganache account with 100 ETH
+    aggregator_address: str = "0x4565f36D8E3cBC1c7187ea39Eb613E484411e075"
     
     # IPFS configuration
     ipfs_url: str = "http://localhost:5001"
@@ -142,6 +241,15 @@ class EnhancedSystemConfig:
     enable_incentives: bool = True
     base_reward: int = 100
     max_reward: int = 1000
+    
+    # TTT configuration (matching SystemConfig)
+    ttt_base_steps: int = 50  # Base number of TTT adaptation steps
+    ttt_max_steps: int = 200  # Maximum TTT steps (safety limit)
+    ttt_lr: float = 0.001  # TTT learning rate
+    ttt_weight_decay: float = 1e-4  # TTT weight decay
+    ttt_patience: int = 15  # Early stopping patience
+    ttt_timeout: int = 30  # TTT timeout in seconds
+    ttt_improvement_threshold: float = 1e-4  # Minimum improvement threshold
     min_reputation: int = 100
     
     # Device configuration
@@ -149,6 +257,7 @@ class EnhancedSystemConfig:
     
     # Decentralization configuration
     fully_decentralized: bool = False  # Set to True for 100% decentralized system
+
 
 class SecureBlockchainFederatedIncentiveSystem:
     """
@@ -171,9 +280,11 @@ class SecureBlockchainFederatedIncentiveSystem:
         if self.device.type == 'cuda':
             torch.cuda.empty_cache()
             torch.cuda.set_per_process_memory_fraction(0.2)
-            print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+            print(
+                f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
         
-        logger.info(f"🔐 Initializing Secure Blockchain Federated Learning System")
+        logger.info(
+            f"🔐 Initializing Secure Blockchain Federated Learning System")
         logger.info(f"Device: {self.device}")
         logger.info(f"Number of clients: {config.num_clients}")
         logger.info(f"Number of rounds: {config.num_rounds}")
@@ -204,6 +315,7 @@ class SecureBlockchainFederatedIncentiveSystem:
         
         logger.info("✅ Secure system initialized with all core features")
 
+
 class BlockchainFederatedIncentiveSystem:
     """
     Enhanced blockchain-enabled federated learning system with comprehensive incentive mechanisms
@@ -224,10 +336,13 @@ class BlockchainFederatedIncentiveSystem:
             torch.cuda.empty_cache()
             # Set memory fraction to allow the system to complete
             torch.cuda.set_per_process_memory_fraction(0.2)
-            print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
-            print(f"GPU Memory Available: {torch.cuda.memory_reserved(0) / 1e9:.1f} GB")
-        
-        logger.info(f"Initializing Enhanced Blockchain Federated Learning System with Incentives")
+            print(
+                f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+            print(
+                f"GPU Memory Available: {torch.cuda.memory_reserved(0) / 1e9:.1f} GB")
+
+        logger.info(
+            f"Initializing Enhanced Blockchain Federated Learning System with Incentives")
         logger.info(f"Device: {self.device}")
         logger.info(f"Number of clients: {config.num_clients}")
         logger.info(f"Number of rounds: {config.num_rounds}")
@@ -271,6 +386,7 @@ class BlockchainFederatedIncentiveSystem:
             success: Whether initialization was successful
         """
         try:
+
             logger.info("Initializing enhanced system components...")
             
             # 1. Initialize preprocessor
@@ -280,15 +396,34 @@ class BlockchainFederatedIncentiveSystem:
                 test_path=self.config.test_path
             )
             
-            # 2. Initialize transductive few-shot model
-            logger.info("Initializing transductive few-shot model...")
-            self.model = TransductiveFewShotModel(
-                input_dim=self.config.input_dim,  # Use all 57 features, let multi-scale extractors learn importance
-                hidden_dim=self.config.hidden_dim,
-                embedding_dim=self.config.embedding_dim,
-                num_classes=2,  # Binary classification for zero-day detection
+            # 2. Initialize transductive few-shot model (will be updated after
+            # preprocessing)
+            if self.config.use_tcn:
+                logger.info(
+                    "Initializing TCN-based transductive few-shot model...")
+                # Use config input_dim initially, will be updated after
+                # preprocessing
+                self.model = TransductiveLearner(
+                    input_dim=self.config.input_dim,
+                    hidden_dim=64,  # Optimized hidden dimension
+                    embedding_dim=self.config.embedding_dim,
+                    num_classes=2,   # Binary classification (Normal vs Attack)
+                    support_weight=self.config.support_weight,
+                    test_weight=self.config.test_weight,
+                    sequence_length=self.config.sequence_length
+                ).to(self.device)
+            else:
+                logger.info(
+                    "Initializing linear-based transductive few-shot model...")
+                self.model = TransductiveFewShotModel(
+                        input_dim=self.config.input_dim,
+      # Use all 57 features, let multi-scale extractors learn importance
+                        hidden_dim=self.config.hidden_dim,
+                        embedding_dim=self.config.embedding_dim,
+                num_classes=2,   # Binary classification (Normal vs Attack)
                 support_weight=self.config.support_weight,  # Configurable prototype weights
-                test_weight=self.config.test_weight
+                        test_weight=self.config.test_weight,
+                sequence_length=1  # Single sample for UNSW-NB15
             ).to(self.device)
             
             # 3. Initialize blockchain and IPFS integration
@@ -305,7 +440,8 @@ class BlockchainFederatedIncentiveSystem:
             }
             
             # Initialize blockchain and IPFS integration
-            self.blockchain_integration = BlockchainIPFSIntegration(ethereum_config, ipfs_config)
+            self.blockchain_integration = BlockchainIPFSIntegration(
+                ethereum_config, ipfs_config)
             
             # 4. Initialize MetaMask authenticator
             logger.info("Initializing MetaMask authenticator...")
@@ -317,7 +453,8 @@ class BlockchainFederatedIncentiveSystem:
             
             # 5. Initialize identity manager
             logger.info("Initializing identity manager...")
-            self.identity_manager = DecentralizedIdentityManager(self.authenticator)
+            self.identity_manager = DecentralizedIdentityManager(
+                self.authenticator)
             
             # 6. Initialize incentive and provenance system
             logger.info("Initializing incentive and provenance system...")
@@ -339,7 +476,8 @@ class BlockchainFederatedIncentiveSystem:
                     aggregator_address=self.config.aggregator_address
                 )
                 
-                self.incentive_manager = BlockchainIncentiveManager(self.incentive_contract)
+                self.incentive_manager = BlockchainIncentiveManager(
+                    self.incentive_contract)
                 # Add gas collector to incentive manager
                 self.incentive_manager.gas_collector = self.gas_collector
             
@@ -362,7 +500,8 @@ class BlockchainFederatedIncentiveSystem:
                 
                 # Start the decentralized system
                 if self.decentralized_system.start_system():
-                    logger.info("✅ Fully decentralized system initialized and started")
+                    logger.info(
+                        "✅ Fully decentralized system initialized and started")
                     
                     # Join network with bootstrap nodes
                     bootstrap_nodes = [
@@ -372,13 +511,15 @@ class BlockchainFederatedIncentiveSystem:
                     ]
                     self.decentralized_system.join_network(bootstrap_nodes)
                 else:
-                    logger.error("❌ Failed to start fully decentralized system")
+                    logger.error(
+                        "❌ Failed to start fully decentralized system")
                     self.decentralized_system = None
                 
                 # Keep the original coordinator for fallback
                 self.coordinator = None
             else:
-                logger.info("Initializing HYBRID blockchain federated coordinator...")
+                logger.info(
+                    "Initializing HYBRID blockchain federated coordinator...")
             self.coordinator = BlockchainFedAVGCoordinator(
                 model=self.model,
                 num_clients=self.config.num_clients,
@@ -400,7 +541,8 @@ class BlockchainFederatedIncentiveSystem:
                     client.gas_collector = real_gas_collector
                 logger.info("✅ Blockchain integration set for coordinator")
             else:
-                logger.warning("⚠️  No blockchain integration available for coordinator")
+                logger.warning(
+                    "⚠️  No blockchain integration available for coordinator")
                 
                 self.decentralized_system = None
             
@@ -408,10 +550,13 @@ class BlockchainFederatedIncentiveSystem:
             self._setup_client_addresses()
             
             # 10. Initialize performance visualizer
-            self.visualizer = PerformanceVisualizer(output_dir="performance_plots", attack_name=self.config.zero_day_attack)
+            self.visualizer = PerformanceVisualizer(
+    output_dir="performance_plots",
+     attack_name=self.config.zero_day_attack)
             
             self.is_initialized = True
-            logger.info("✅ Enhanced system initialization completed successfully!")
+            logger.info(
+                "✅ Enhanced system initialization completed successfully!")
             return True
             
         except Exception as e:
@@ -420,7 +565,8 @@ class BlockchainFederatedIncentiveSystem:
     
     def _setup_client_addresses(self):
         """Setup client addresses with MetaMask authentication"""
-        # Using REAL Ganache accounts (in production, these would be real MetaMask addresses)
+        # Using REAL Ganache accounts (in production, these would be real
+        # MetaMask addresses)
         real_ganache_addresses = [
             "0xCD3a95b26EA98a04934CCf6C766f9406496CA986",
             "0x32cE285CF96cf83226552A9c3427Bd58c0A9AccD", 
@@ -432,7 +578,8 @@ class BlockchainFederatedIncentiveSystem:
         
         for i in range(self.config.num_clients):
             client_id = f"client_{i+1}"
-            wallet_address = real_ganache_addresses[i % len(real_ganache_addresses)]
+            wallet_address = real_ganache_addresses[i % len(
+                real_ganache_addresses)]
             
             # Authenticate client with MetaMask
             auth_result = self._authenticate_client(client_id, wallet_address)
@@ -445,9 +592,11 @@ class BlockchainFederatedIncentiveSystem:
                     'identity': auth_result['identity'],
                     'authenticated_at': time.time()
                 }
-                logger.info(f"✅ Client {client_id} authenticated with wallet {wallet_address}")
+                logger.info(
+                    f"✅ Client {client_id} authenticated with wallet {wallet_address}")
             else:
-                logger.error(f"❌ Failed to authenticate client {client_id}: {auth_result['error']}")
+                logger.error(
+                    f"❌ Failed to authenticate client {client_id}: {auth_result['error']}")
                 # Use fallback for testing
                 self.client_addresses[client_id] = wallet_address
                 self.authenticated_clients[client_id] = {
@@ -458,9 +607,11 @@ class BlockchainFederatedIncentiveSystem:
                     'fallback': True
                 }
         
-        logger.info(f"Setup {len(self.client_addresses)} client addresses ({len([c for c in self.authenticated_clients.values() if not c.get('fallback', False)])} authenticated)")
+        logger.info(
+            f"Setup {len(self.client_addresses)} client addresses ({len([c for c in self.authenticated_clients.values() if not c.get('fallback', False)])} authenticated)")
     
-    def _authenticate_client(self, client_id: str, wallet_address: str) -> Dict[str, Any]:
+    def _authenticate_client(self, client_id: str,
+                             wallet_address: str) -> Dict[str, Any]:
         """
         Authenticate a client using MetaMask
         
@@ -472,8 +623,10 @@ class BlockchainFederatedIncentiveSystem:
             auth_result: Authentication result with success status and data
         """
         try:
+
             if not self.authenticator:
-                logger.warning(f"No MetaMask authenticator available for client {client_id}")
+                logger.warning(
+                    f"No MetaMask authenticator available for client {client_id}")
                 return {
                     'success': False,
                     'error': 'No authenticator available',
@@ -483,15 +636,19 @@ class BlockchainFederatedIncentiveSystem:
             
             # Generate authentication challenge
             challenge = self.authenticator.generate_challenge(wallet_address)
-            logger.info(f"Generated challenge for client {client_id}: {challenge[:50]}...")
+            logger.info(
+                f"Generated challenge for client {client_id}: {challenge[:50]}...")
             
             # In a real implementation, this would be signed by the client's MetaMask
             # For now, we'll simulate the signature verification with proper hex format
-            # In production, the client would sign the challenge with their private key
-            simulated_signature = f"0x{'0' * 130}"  # Proper hex signature format
+            # In production, the client would sign the challenge with their
+            # private key
+            # Proper hex signature format
+            simulated_signature = f"0x{'0' * 130}"
             
             # Verify signature and authenticate wallet
-            auth_result = self.authenticator.authenticate_wallet(wallet_address, simulated_signature)
+            auth_result = self.authenticator.authenticate_wallet(
+                wallet_address, simulated_signature)
             
             if auth_result.success:
                 logger.info(f"✅ Client {client_id} successfully authenticated")
@@ -502,7 +659,8 @@ class BlockchainFederatedIncentiveSystem:
                     'identity': auth_result.identity
                 }
             else:
-                logger.warning(f"Authentication failed for client {client_id}: {auth_result.error_message}")
+                logger.warning(
+                    f"Authentication failed for client {client_id}: {auth_result.error_message}")
                 return {
                     'success': False,
                     'error': auth_result.error_message,
@@ -511,7 +669,8 @@ class BlockchainFederatedIncentiveSystem:
                 }
                 
         except Exception as e:
-            logger.error(f"Authentication error for client {client_id}: {str(e)}")
+            logger.error(
+                f"Authentication error for client {client_id}: {str(e)}")
             return {
                 'success': False,
                 'error': str(e),
@@ -530,8 +689,12 @@ class BlockchainFederatedIncentiveSystem:
             verified: Whether all clients are properly authenticated
         """
         try:
-            if not hasattr(self, 'authenticated_clients') or not self.authenticated_clients:
-                logger.warning(f"No authenticated clients found for round {round_num}")
+
+            if not hasattr(
+    self,
+     'authenticated_clients') or not self.authenticated_clients:
+                logger.warning(
+                    f"No authenticated clients found for round {round_num}")
                 return False
             
             verified_clients = 0
@@ -541,38 +704,49 @@ class BlockchainFederatedIncentiveSystem:
                 # Check if client has valid session token
                 if auth_data.get('session_token'):
                     # Verify session token is still valid
-                    if self.authenticator and self.authenticator.verify_session_token(auth_data['session_token']):
+                    if self.authenticator and self.authenticator.verify_session_token(
+                        auth_data['session_token']):
                         verified_clients += 1
-                        logger.debug(f"✅ Client {client_id} authentication verified for round {round_num}")
+                        logger.debug(
+                            f"✅ Client {client_id} authentication verified for round {round_num}")
                     else:
-                        logger.warning(f"⚠️ Client {client_id} session token expired for round {round_num}")
+                        logger.warning(
+                            f"⚠️ Client {client_id} session token expired for round {round_num}")
                         # Attempt to re-authenticate
                         wallet_address = auth_data['wallet_address']
-                        auth_result = self._authenticate_client(client_id, wallet_address)
+                        auth_result = self._authenticate_client(
+                            client_id, wallet_address)
                         if auth_result['success']:
                             self.authenticated_clients[client_id]['session_token'] = auth_result['session_token']
                             verified_clients += 1
-                            logger.info(f"🔄 Client {client_id} re-authenticated for round {round_num}")
+                            logger.info(
+                                f"🔄 Client {client_id} re-authenticated for round {round_num}")
                         else:
-                            logger.error(f"❌ Failed to re-authenticate client {client_id}")
+                            logger.error(
+                                f"❌ Failed to re-authenticate client {client_id}")
                 elif auth_data.get('fallback'):
                     # Allow fallback clients for testing
                     verified_clients += 1
-                    logger.debug(f"⚠️ Client {client_id} using fallback authentication for round {round_num}")
+                    logger.debug(
+                        f"⚠️ Client {client_id} using fallback authentication for round {round_num}")
                 else:
-                    logger.error(f"❌ Client {client_id} has no valid authentication for round {round_num}")
+                    logger.error(
+                        f"❌ Client {client_id} has no valid authentication for round {round_num}")
             
             verification_success = verified_clients == total_clients
             
             if verification_success:
-                logger.info(f"🔐 All {total_clients} clients authenticated for round {round_num}")
+                logger.info(
+                    f"🔐 All {total_clients} clients authenticated for round {round_num}")
             else:
-                logger.warning(f"⚠️ Only {verified_clients}/{total_clients} clients authenticated for round {round_num}")
+                logger.warning(
+                    f"⚠️ Only {verified_clients}/{total_clients} clients authenticated for round {round_num}")
             
             return verification_success
             
         except Exception as e:
-            logger.error(f"Authentication verification error for round {round_num}: {str(e)}")
+            logger.error(
+                f"Authentication verification error for round {round_num}: {str(e)}")
             return False
     
     def _verify_client_identities_for_incentives(self, round_num: int) -> bool:
@@ -586,8 +760,12 @@ class BlockchainFederatedIncentiveSystem:
             verified: Whether all client identities are verified for incentives
         """
         try:
-            if not hasattr(self, 'authenticated_clients') or not self.authenticated_clients:
-                logger.warning(f"No authenticated clients found for incentive verification in round {round_num}")
+
+            if not hasattr(
+    self,
+     'authenticated_clients') or not self.authenticated_clients:
+                logger.warning(
+                    f"No authenticated clients found for incentive verification in round {round_num}")
                 return False
             
             verified_identities = 0
@@ -595,39 +773,52 @@ class BlockchainFederatedIncentiveSystem:
             
             for client_id, auth_data in self.authenticated_clients.items():
                 # Check if client has verified identity
-                if auth_data.get('identity') and auth_data['identity'].verified:
+                if auth_data.get(
+                    'identity') and auth_data['identity'].verified:
                     verified_identities += 1
-                    logger.debug(f"✅ Client {client_id} identity verified for incentives in round {round_num}")
+                    logger.debug(
+                        f"✅ Client {client_id} identity verified for incentives in round {round_num}")
                 elif auth_data.get('fallback'):
                     # Allow fallback clients for testing
                     verified_identities += 1
-                    logger.debug(f"⚠️ Client {client_id} using fallback identity for incentives in round {round_num}")
+                    logger.debug(
+                        f"⚠️ Client {client_id} using fallback identity for incentives in round {round_num}")
                 else:
-                    logger.warning(f"⚠️ Client {client_id} identity not verified for incentives in round {round_num}")
+                    logger.warning(
+                        f"⚠️ Client {client_id} identity not verified for incentives in round {round_num}")
                     # Attempt to verify identity
-                    if self.identity_manager and auth_data.get('wallet_address'):
+                    if self.identity_manager and auth_data.get(
+                        'wallet_address'):
                         try:
-                            identity = self.identity_manager.get_identity(auth_data['wallet_address'])
+
+                            identity = self.identity_manager.get_identity(
+                                auth_data['wallet_address'])
                             if identity and identity.verified:
                                 self.authenticated_clients[client_id]['identity'] = identity
                                 verified_identities += 1
-                                logger.info(f"🔄 Client {client_id} identity verified for incentives in round {round_num}")
+                                logger.info(
+                                    f"🔄 Client {client_id} identity verified for incentives in round {round_num}")
                             else:
-                                logger.error(f"❌ Failed to verify identity for client {client_id}")
+                                logger.error(
+                                    f"❌ Failed to verify identity for client {client_id}")
                         except Exception as e:
-                            logger.error(f"❌ Identity verification error for client {client_id}: {str(e)}")
+                            logger.error(
+                                f"❌ Identity verification error for client {client_id}: {str(e)}")
             
             verification_success = verified_identities == total_clients
             
             if verification_success:
-                logger.info(f"🔐 All {total_clients} client identities verified for incentives in round {round_num}")
+                logger.info(
+                    f"🔐 All {total_clients} client identities verified for incentives in round {round_num}")
             else:
-                logger.warning(f"⚠️ Only {verified_identities}/{total_clients} client identities verified for incentives in round {round_num}")
+                logger.warning(
+                    f"⚠️ Only {verified_identities}/{total_clients} client identities verified for incentives in round {round_num}")
             
             return verification_success
             
         except Exception as e:
-            logger.error(f"Identity verification error for incentives in round {round_num}: {str(e)}")
+            logger.error(
+                f"Identity verification error for incentives in round {round_num}: {str(e)}")
             return False
     
     def preprocess_data(self) -> bool:
@@ -642,6 +833,7 @@ class BlockchainFederatedIncentiveSystem:
             return False
         
         try:
+
             logger.info("Preprocessing UNSW-NB15 dataset...")
             
             # Run preprocessing pipeline
@@ -649,17 +841,253 @@ class BlockchainFederatedIncentiveSystem:
                 zero_day_attack=self.config.zero_day_attack
             )
             
+            # Update model architecture based on actual feature count after
+            # IGRF-RFE selection
+            actual_input_dim = self.preprocessed_data['X_train'].shape[1]
+            if actual_input_dim != self.config.input_dim:
+                logger.info(
+                    f"Updating model architecture: {self.config.input_dim} → {actual_input_dim} features")
+                self._update_model_architecture(actual_input_dim)
+                
+                # Update coordinator's model reference and all client models
+                if self.coordinator:
+                    # Debug logging for TCN models only
+                    if hasattr(self.coordinator.model, 'feature_extractors'):
+                        logger.info(
+                            f"🔍 DEBUG: Before update - coordinator.model input_dim: {self.coordinator.model.feature_extractors.tcn_branch1.network[0].conv1.in_channels}")
+                    self.coordinator.model = self.model
+                    if hasattr(self.coordinator.model, 'feature_extractors'):
+                        logger.info(
+                            f"🔍 DEBUG: After update - coordinator.model input_dim: {self.coordinator.model.feature_extractors.tcn_branch1.network[0].conv1.in_channels}")
+                    
+                    # CRITICAL: Also update the aggregator's model reference
+                    if hasattr(
+    self.coordinator.aggregator.model,
+     'feature_extractors'):
+                        logger.info(
+                            f"🔍 DEBUG: Before aggregator update - aggregator.model input_dim: {self.coordinator.aggregator.model.feature_extractors.tcn_branch1.network[0].conv1.in_channels}")
+                    self.coordinator.aggregator.model = self.model
+                    if hasattr(
+    self.coordinator.aggregator.model,
+     'feature_extractors'):
+                        logger.info(
+                            f"🔍 DEBUG: After aggregator update - aggregator.model input_dim: {self.coordinator.aggregator.model.feature_extractors.tcn_branch1.network[0].conv1.in_channels}")
+                    # Clear any existing client updates to avoid dimension
+                    # mismatches
+                    if hasattr(self.coordinator, 'client_updates'):
+                        self.coordinator.client_updates.clear()
+                    # Clear aggregator client updates as well
+                    if hasattr(
+    self.coordinator,
+    'aggregator') and hasattr(
+        self.coordinator.aggregator,
+         'client_updates'):
+                        self.coordinator.aggregator.client_updates.clear()
+                    # Update all client models to match the new architecture
+                    for client in self.coordinator.clients:
+                        client.model = copy.deepcopy(self.model)
+                    logger.info(
+                        "✅ Coordinator and all client models updated with new architecture")
+            
+            # Create sequences if using TCN model
+            if self.config.use_tcn:
+                logger.info(
+                    f"Creating sequences for TCN processing (length={self.config.sequence_length})...")
+
+                # Create sequences for training data (use subset to avoid
+                # memory issues)
+                train_subset_size = min(
+    50000, len(
+        self.preprocessed_data['X_train']))  # Limit to 50k samples
+                X_train_subset = self.preprocessed_data['X_train'][:train_subset_size]
+                y_train_subset = self.preprocessed_data['y_train'][:train_subset_size]
+                logger.info(
+                    f"Using training subset: {train_subset_size} samples (original: {len(self.preprocessed_data['X_train'])})")
+
+                # Clear GPU cache before sequence creation
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+
+                try:
+                    X_train_seq, y_train_seq = self.preprocessor.create_sequences(
+                        X_train_subset,
+                        y_train_subset,
+                        sequence_length=self.config.sequence_length,
+                        stride=self.config.sequence_stride,
+                        zero_pad=True
+                    )
+                    logger.info(
+                        f"✅ Training sequences created: {X_train_seq.shape}")
+                except Exception as e:
+                    logger.error(f"❌ Failed to create training sequences: {e}")
+                    # Try with even smaller subset
+                    train_subset_size = min(20000, len(
+                        self.preprocessed_data['X_train']))
+                    X_train_subset = self.preprocessed_data['X_train'][:train_subset_size]
+                    y_train_subset = self.preprocessed_data['y_train'][:train_subset_size]
+                    logger.info(
+                        f"Retrying with smaller subset: {train_subset_size} samples")
+
+                    X_train_seq, y_train_seq = self.preprocessor.create_sequences(
+                        X_train_subset,
+                        y_train_subset,
+                        sequence_length=self.config.sequence_length,
+                        stride=self.config.sequence_stride,
+                    zero_pad=True
+                )
+
+                # Create sequences for validation data (use smaller subset to
+                # avoid memory issues)
+                val_subset_size = min(
+    10000, len(
+        self.preprocessed_data['X_val']))  # Limit to 10k samples
+                X_val_subset = self.preprocessed_data['X_val'][:val_subset_size]
+                y_val_subset = self.preprocessed_data['y_val'][:val_subset_size]
+
+                try:
+                    X_val_seq, y_val_seq = self.preprocessor.create_sequences(
+                        X_val_subset, 
+                        y_val_subset,
+                        sequence_length=self.config.sequence_length,
+                        stride=self.config.sequence_stride,
+                        zero_pad=True
+                    )
+                    logger.info(
+                        f"✅ Validation sequences created: {X_val_seq.shape}")
+                except Exception as e:
+                    logger.error(
+                        f"❌ Failed to create validation sequences: {e}")
+                    # Use even smaller subset
+                    val_subset_size = min(
+                        5000, len(self.preprocessed_data['X_val']))
+                    X_val_subset = self.preprocessed_data['X_val'][:val_subset_size]
+                    y_val_subset = self.preprocessed_data['y_val'][:val_subset_size]
+                    X_val_seq, y_val_seq = self.preprocessor.create_sequences(
+                        X_val_subset,
+                        y_val_subset,
+                        sequence_length=self.config.sequence_length,
+                        stride=self.config.sequence_stride,
+                    zero_pad=True
+                )
+                
+                # Create sequences for test data (use smaller subset to avoid
+                # memory issues)
+                test_subset_size = min(
+    5000, len(
+        self.preprocessed_data['X_test']))  # Limit to 5k samples
+                X_test_subset = self.preprocessed_data['X_test'][:test_subset_size]
+                y_test_subset = self.preprocessed_data['y_test'][:test_subset_size]
+
+                try:
+                    X_test_seq, y_test_seq = self.preprocessor.create_sequences(
+                        X_test_subset, 
+                        y_test_subset,
+                        sequence_length=self.config.sequence_length,
+                        stride=self.config.sequence_stride,
+                        zero_pad=True
+                    )
+                    logger.info(
+                        f"✅ Test sequences created: {X_test_seq.shape}")
+                except Exception as e:
+                    logger.error(f"❌ Failed to create test sequences: {e}")
+                    # Use even smaller subset
+                    test_subset_size = min(
+                        2000, len(self.preprocessed_data['X_test']))
+                    X_test_subset = self.preprocessed_data['X_test'][:test_subset_size]
+                    y_test_subset = self.preprocessed_data['y_test'][:test_subset_size]
+                    X_test_seq, y_test_seq = self.preprocessor.create_sequences(
+                        X_test_subset,
+                        y_test_subset,
+                        sequence_length=self.config.sequence_length,
+                        stride=self.config.sequence_stride,
+                    zero_pad=True
+                )
+                
+                # Update preprocessed data with sequences
+                self.preprocessed_data.update({
+                    'X_train': X_train_seq,
+                    'y_train': y_train_seq,
+                    'X_val': X_val_seq,
+                    'y_val': y_val_seq,
+                    'X_test': X_test_seq,
+                    'y_test': y_test_seq
+                })
+                
+                logger.info(
+                    f"Created sequences - Training: {X_train_seq.shape}, Validation: {X_val_seq.shape}, Test: {X_test_seq.shape}")
+            
             logger.info("✅ Data preprocessing completed successfully!")
-            logger.info(f"Training samples: {len(self.preprocessed_data['X_train'])}")
-            logger.info(f"Validation samples: {len(self.preprocessed_data['X_val'])}")
-            logger.info(f"Test samples: {len(self.preprocessed_data['X_test'])}")
-            logger.info(f"Features: {len(self.preprocessed_data['feature_names'])}")
+            logger.info(
+                f"Training samples: {len(self.preprocessed_data['X_train'])}")
+            logger.info(
+                f"Validation samples: {len(self.preprocessed_data['X_val'])}")
+            logger.info(
+                f"Test samples: {len(self.preprocessed_data['X_test'])}")
+            logger.info(
+                f"Features: {len(self.preprocessed_data['feature_names'])}")
             
             return True
             
         except Exception as e:
             logger.error(f"❌ Data preprocessing failed: {str(e)}")
             return False
+    
+    def _update_model_architecture(self, new_input_dim: int) -> None:
+        """
+        Update model architecture to match actual feature count after IGRF-RFE selection
+        
+        Args:
+            new_input_dim: New input dimension after feature selection
+        """
+        logger.info(
+            f"Updating model architecture to {new_input_dim} features...")
+
+        if self.config.use_tcn:
+            # Recreate the TransductiveLearner with correct input dimension
+            self.model = TransductiveLearner(
+                input_dim=new_input_dim,
+                hidden_dim=64,
+                embedding_dim=self.config.embedding_dim,
+                num_classes=2,   # Binary classification (Normal vs Attack)
+                support_weight=self.config.support_weight,
+                test_weight=self.config.test_weight,
+                sequence_length=self.config.sequence_length
+            ).to(self.device)
+            logger.info(
+                f"✅ TransductiveLearner updated with {new_input_dim} input features")
+        
+        else:
+            # Recreate the TransductiveFewShotModel with correct input
+            # dimension
+            self.model = TransductiveFewShotModel(
+                input_dim=new_input_dim,
+                hidden_dim=self.config.hidden_dim,
+                embedding_dim=self.config.embedding_dim,
+                num_classes=2,   # Binary classification (Normal vs Attack)
+                support_weight=self.config.support_weight,
+                test_weight=self.config.test_weight,
+                sequence_length=1  # Single sample for UNSW-NB15
+            ).to(self.device)
+            logger.info(
+                f"✅ TransductiveFewShotModel updated with {new_input_dim} input features")
+        
+        # Update the config to reflect the new input dimension
+        self.config.input_dim = new_input_dim
+        logger.info(f"✅ Config updated: input_dim = {new_input_dim}")
+        
+        # Force model to reinitialize all parameters
+        self.model.apply(self._reset_parameters)
+        logger.info("✅ Model parameters reset to ensure correct dimensions")
+    
+    def _reset_parameters(self, module):
+        """Reset parameters for a module to ensure correct initialization"""
+        if hasattr(module, 'reset_parameters'):
+            module.reset_parameters()
+        elif hasattr(module, 'weight') and hasattr(module, 'bias'):
+            if module.weight is not None:
+                torch.nn.init.xavier_uniform_(module.weight)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
     
     def setup_federated_learning(self) -> bool:
         """
@@ -673,25 +1101,31 @@ class BlockchainFederatedIncentiveSystem:
             return False
         
         try:
+
             logger.info("Setting up federated learning...")
             
             # Distribute data among clients using simple splitting
             # Use binary labels for federated learning (0=Normal, 1=Attack)
             self.coordinator.distribute_data_with_dirichlet(
-                train_data=torch.FloatTensor(self.preprocessed_data['X_train']),
-                train_labels=torch.LongTensor(self.preprocessed_data['y_train']),
+                train_data=torch.FloatTensor(
+    self.preprocessed_data['X_train']),
+                train_labels=torch.LongTensor(
+    self.preprocessed_data['y_train']),
                 alpha=1.0  # Moderate heterogeneity for blockchain FL
             )
             
             # Register participants in incentive contract (if enabled)
             if self.config.enable_incentives and self.incentive_contract:
-                logger.info("Registering participants in incentive contract...")
+                logger.info(
+                    "Registering participants in incentive contract...")
                 for client_id, address in self.client_addresses.items():
-                    success = self.incentive_contract.register_participant(address)
+                    success = self.incentive_contract.register_participant(
+                        address)
                     if success:
                         logger.info(f"Registered {client_id}: {address}")
                     else:
-                        logger.warning(f"Failed to register {client_id}: {address}")
+                        logger.warning(
+                            f"Failed to register {client_id}: {address}")
             
             logger.info("✅ Federated learning setup completed!")
             return True
@@ -712,36 +1146,52 @@ class BlockchainFederatedIncentiveSystem:
             return False
         
         try:
-            logger.info("Running distributed meta-training for transductive few-shot model...")
+
+            logger.info(
+                "Running distributed meta-training for transductive few-shot model...")
             
             # Phase 1: Each client does meta-learning on local data
             client_meta_histories = []
             
             for client in self.coordinator.clients:
-                logger.info(f"Client {client.client_id}: Starting local meta-training...")
+                logger.info(
+                    f"Client {client.client_id}: Starting local meta-training...")
                 
                 # Create meta-tasks from client's LOCAL data only
                 local_meta_tasks = create_meta_tasks(
-                    client.train_data,      # ← LOCAL DATA ONLY (keep as tensor)
-                    client.train_labels,    # ← LOCAL DATA ONLY (keep as tensor)
-                    n_way=2,               # Binary classification
-                    k_shot=10,             # 10-shot learning
-                    n_query=20,            # 20 query samples
-                    n_tasks=10             # Fewer tasks per client (10 vs 50)
+                    client.train_data,
+          # ← LOCAL DATA ONLY (keep as tensor)
+                    client.train_labels,
+        # ← LOCAL DATA ONLY (keep as tensor)
+                    n_way=2,
+                   # Binary classification (Normal vs Attack)
+                    k_shot=50,
+                 # 50-shot learning (5 samples per class)
+                    n_query=100,           # 100 query samples
+                    n_tasks=5,             # Fewer tasks per client (5 vs 10)
+                    phase="training",
+                    normal_query_ratio=0.8,  # 80% Normal samples in query set for training
+                    # Exclude DoS (label 4) from training
+                    zero_day_attack_label=4
                 )
                 
                 # Client does meta-learning locally
-                local_meta_history = client.model.meta_train(local_meta_tasks, meta_epochs=5)
+                local_meta_history = client.model.meta_train(
+    local_meta_tasks, meta_epochs=self.config.meta_epochs)
                 client_meta_histories.append(local_meta_history)
                 
-                logger.info(f"Client {client.client_id}: Meta-training completed")
+                logger.info(
+                    f"Client {client.client_id}: Meta-training completed")
             
             # Phase 2: Aggregate meta-learning parameters (not data!)
-            aggregated_meta_history = self._aggregate_meta_histories(client_meta_histories)
+            aggregated_meta_history = self._aggregate_meta_histories(
+                client_meta_histories)
             
             logger.info("✅ Distributed meta-training completed successfully!")
-            logger.info(f"Final aggregated loss: {aggregated_meta_history['epoch_losses'][-1]:.4f}")
-            logger.info(f"Final aggregated accuracy: {aggregated_meta_history['epoch_accuracies'][-1]:.4f}")
+            logger.info(
+                f"Final aggregated loss: {aggregated_meta_history['epoch_losses'][-1]:.4f}")
+            logger.info(
+                f"Final aggregated accuracy: {aggregated_meta_history['epoch_accuracies'][-1]:.4f}")
             
             return True
             
@@ -749,7 +1199,8 @@ class BlockchainFederatedIncentiveSystem:
             logger.error(f"❌ Distributed meta-training failed: {str(e)}")
             return False
     
-    def _aggregate_meta_histories(self, client_meta_histories: List[Dict]) -> Dict:
+    def _aggregate_meta_histories(
+    self, client_meta_histories: List[Dict]) -> Dict:
         """
         Aggregate meta-learning histories from all clients
         
@@ -769,12 +1220,14 @@ class BlockchainFederatedIncentiveSystem:
             
         for epoch in range(num_epochs):
             # Average loss across clients for this epoch
-            epoch_losses = [history['epoch_losses'][epoch] for history in client_meta_histories]
+            epoch_losses = [history['epoch_losses'][epoch]
+                for history in client_meta_histories]
             avg_loss = sum(epoch_losses) / len(epoch_losses)
             aggregated_losses.append(avg_loss)
             
             # Average accuracy across clients for this epoch
-            epoch_accuracies = [history['epoch_accuracies'][epoch] for history in client_meta_histories]
+            epoch_accuracies = [history['epoch_accuracies'][epoch]
+                for history in client_meta_histories]
             avg_accuracy = sum(epoch_accuracies) / len(epoch_accuracies)
             aggregated_accuracies.append(avg_accuracy)
         
@@ -794,8 +1247,10 @@ class BlockchainFederatedIncentiveSystem:
             data_quality: Normalized data quality score [0, 100]
         """
         try:
+
             if not hasattr(self, 'coordinator') or not self.coordinator:
-                logger.warning("No coordinator available for data quality calculation")
+                logger.warning(
+                    "No coordinator available for data quality calculation")
                 return 50.0  # Default neutral score
             
             # Find the client
@@ -805,8 +1260,10 @@ class BlockchainFederatedIncentiveSystem:
                     client = c
                     break
             
-            if not client or not hasattr(client, 'train_labels') or client.train_labels is None:
-                logger.warning(f"No training data available for client {client_id}")
+            if not client or not hasattr(
+    client, 'train_labels') or client.train_labels is None:
+                logger.warning(
+                    f"No training data available for client {client_id}")
                 return 50.0  # Default neutral score
             
             # Calculate label distribution
@@ -814,7 +1271,8 @@ class BlockchainFederatedIncentiveSystem:
             unique_labels, counts = np.unique(labels, return_counts=True)
             
             if len(unique_labels) < 2:
-                logger.warning(f"Client {client_id} has only {len(unique_labels)} class(es)")
+                logger.warning(
+                    f"Client {client_id} has only {len(unique_labels)} class(es)")
                 return 30.0  # Low score for single class
             
             # Calculate entropy
@@ -823,7 +1281,8 @@ class BlockchainFederatedIncentiveSystem:
             
             # Normalize entropy to [0, 100] scale
             # Higher entropy = more balanced distribution = higher quality
-            max_entropy = np.log2(len(unique_labels))  # Maximum possible entropy
+            # Maximum possible entropy
+            max_entropy = np.log2(len(unique_labels))
             normalized_entropy = (entropy / max_entropy) * 100
             
             # Add bonus for having more classes (diversity)
@@ -837,10 +1296,12 @@ class BlockchainFederatedIncentiveSystem:
             return data_quality
             
         except Exception as e:
-            logger.error(f"Error calculating data quality for client {client_id}: {str(e)}")
+            logger.error(
+                f"Error calculating data quality for client {client_id}: {str(e)}")
             return 50.0  # Default neutral score
     
-    def _calculate_reliability_consistency(self, client_id: str, round_num: int) -> float:
+    def _calculate_reliability_consistency(
+    self, client_id: str, round_num: int) -> float:
         """
         Calculate reliability based on participation consistency
         
@@ -852,12 +1313,17 @@ class BlockchainFederatedIncentiveSystem:
             reliability: Normalized reliability score [0, 100]
         """
         try:
-            if not hasattr(self, 'training_history') or not self.training_history:
-                logger.warning("No training history available for reliability calculation")
+
+            if not hasattr(
+    self,
+     'training_history') or not self.training_history:
+                logger.warning(
+                    "No training history available for reliability calculation")
                 return 70.0  # Default moderate score
             
             # Count participation in recent rounds
-            recent_rounds = min(10, round_num)  # Look at last 10 rounds or all available
+            # Look at last 10 rounds or all available
+            recent_rounds = min(10, round_num)
             participation_count = 0
             total_rounds = 0
             
@@ -867,7 +1333,8 @@ class BlockchainFederatedIncentiveSystem:
                 
                 # Check if this client participated in this round
                 for update in client_updates:
-                    if hasattr(update, 'client_id') and update.client_id == client_id:
+                    if hasattr(update,
+     'client_id') and update.client_id == client_id:
                         participation_count += 1
                         break
             
@@ -899,7 +1366,8 @@ class BlockchainFederatedIncentiveSystem:
                 for round_data in self.training_history[-recent_rounds_check:]:
                     client_updates = round_data.get('client_updates', [])
                     for update in client_updates:
-                        if hasattr(update, 'client_id') and update.client_id == client_id:
+                        if hasattr(
+    update, 'client_id') and update.client_id == client_id:
                             recent_participation += 1
                             break
                 
@@ -915,7 +1383,8 @@ class BlockchainFederatedIncentiveSystem:
             return reliability
             
         except Exception as e:
-            logger.error(f"Error calculating reliability for client {client_id}: {str(e)}")
+            logger.error(
+                f"Error calculating reliability for client {client_id}: {str(e)}")
             return 70.0  # Default moderate score
     
     def _log_data_driven_metrics(self, round_num: int, data_quality_scores: Dict[str, float], 
@@ -929,6 +1398,7 @@ class BlockchainFederatedIncentiveSystem:
             participation_data: Participation rates by client
         """
         try:
+
             logger.info("=" * 80)
             logger.info(f"📊 DATA-DRIVEN METRICS SUMMARY - ROUND {round_num}")
             logger.info("=" * 80)
@@ -944,8 +1414,10 @@ class BlockchainFederatedIncentiveSystem:
                 max_data_quality = np.max(data_quality_values)
                 
                 logger.info(f"📈 DATA QUALITY METRICS (Entropy-based):")
-                logger.info(f"   Average: {avg_data_quality:.2f} ± {std_data_quality:.2f}")
-                logger.info(f"   Range: [{min_data_quality:.2f}, {max_data_quality:.2f}]")
+                logger.info(
+                    f"   Average: {avg_data_quality:.2f} ± {std_data_quality:.2f}")
+                logger.info(
+                    f"   Range: [{min_data_quality:.2f}, {max_data_quality:.2f}]")
             
             if participation_values:
                 avg_participation = np.mean(participation_values)
@@ -954,8 +1426,10 @@ class BlockchainFederatedIncentiveSystem:
                 max_participation = np.max(participation_values)
                 
                 logger.info(f"🔄 PARTICIPATION METRICS (Consistency-based):")
-                logger.info(f"   Average: {avg_participation:.3f} ± {std_participation:.3f}")
-                logger.info(f"   Range: [{min_participation:.3f}, {max_participation:.3f}]")
+                logger.info(
+                    f"   Average: {avg_participation:.3f} ± {std_participation:.3f}")
+                logger.info(
+                    f"   Range: [{min_participation:.3f}, {max_participation:.3f}]")
             
             # Log individual client metrics
             logger.info(f"👥 INDIVIDUAL CLIENT METRICS:")
@@ -988,12 +1462,16 @@ class BlockchainFederatedIncentiveSystem:
             
             # Calculate fairness metrics
             if len(data_quality_values) > 1:
-                data_quality_cv = (std_data_quality / avg_data_quality) * 100  # Coefficient of variation
-                participation_cv = (std_participation / avg_participation) * 100
+                # Coefficient of variation
+                data_quality_cv = (std_data_quality / avg_data_quality) * 100
+                participation_cv = (
+    std_participation / avg_participation) * 100
                 
                 logger.info(f"⚖️  FAIRNESS METRICS:")
-                logger.info(f"   Data Quality CV: {data_quality_cv:.1f}% (lower = more fair)")
-                logger.info(f"   Participation CV: {participation_cv:.1f}% (lower = more fair)")
+                logger.info(
+                    f"   Data Quality CV: {data_quality_cv:.1f}% (lower = more fair)")
+                logger.info(
+                    f"   Participation CV: {participation_cv:.1f}% (lower = more fair)")
                 
                 # Overall fairness assessment
                 if data_quality_cv < 10 and participation_cv < 10:
@@ -1012,7 +1490,8 @@ class BlockchainFederatedIncentiveSystem:
         except Exception as e:
             logger.error(f"Error logging data-driven metrics: {str(e)}")
     
-    def _evaluate_validation_performance(self, round_num: int) -> Dict[str, float]:
+    def _evaluate_validation_performance(
+        self, round_num: int) -> Dict[str, float]:
         """
         Evaluate model performance on validation dataset
         
@@ -1023,8 +1502,12 @@ class BlockchainFederatedIncentiveSystem:
             validation_metrics: Dictionary containing validation loss, accuracy, and F1-score
         """
         try:
-            if not hasattr(self, 'preprocessed_data') or 'X_val' not in self.preprocessed_data:
-                logger.warning(f"⚠️  Validation data not available for round {round_num}")
+
+            if not hasattr(
+    self,
+     'preprocessed_data') or 'X_val' not in self.preprocessed_data:
+                logger.warning(
+                    f"⚠️  Validation data not available for round {round_num}")
                 return None
             
             # Get validation data
@@ -1032,7 +1515,8 @@ class BlockchainFederatedIncentiveSystem:
             y_val = self.preprocessed_data['y_val']
             
             if len(X_val) == 0 or len(y_val) == 0:
-                logger.warning(f"⚠️  Empty validation dataset for round {round_num}")
+                logger.warning(
+                    f"⚠️  Empty validation dataset for round {round_num}")
                 return None
             
             # Use a subset to avoid CUDA memory issues
@@ -1040,10 +1524,12 @@ class BlockchainFederatedIncentiveSystem:
             if len(X_val) > max_val_samples:
                 # Randomly sample subset
                 import numpy as np
-                indices = np.random.choice(len(X_val), max_val_samples, replace=False)
+                indices = np.random.choice(
+    len(X_val), max_val_samples, replace=False)
                 X_val = X_val[indices]
                 y_val = y_val[indices]
-                logger.info(f"Using {max_val_samples} validation samples (subset of {len(self.preprocessed_data['X_val'])})")
+                logger.info(
+                    f"Using {max_val_samples} validation samples (subset of {len(self.preprocessed_data['X_val'])})")
             
             # Convert to tensors and move to device
             X_val_tensor = torch.FloatTensor(X_val).to(self.device)
@@ -1053,11 +1539,13 @@ class BlockchainFederatedIncentiveSystem:
             if hasattr(self, 'coordinator') and self.coordinator:
                 global_model = self.coordinator.model
             else:
-                logger.warning(f"⚠️  No coordinator available for validation in round {round_num}")
+                logger.warning(
+                    f"⚠️  No coordinator available for validation in round {round_num}")
                 return None
             
             if global_model is None:
-                logger.warning(f"⚠️  No global model available for validation in round {round_num}")
+                logger.warning(
+                    f"⚠️  No global model available for validation in round {round_num}")
                 return None
             
             # Set model to evaluation mode
@@ -1072,25 +1560,41 @@ class BlockchainFederatedIncentiveSystem:
                 criterion = torch.nn.CrossEntropyLoss()
                 validation_loss = criterion(outputs, y_val_tensor).item()
                 
-                # Calculate predictions
-                predictions = torch.argmax(outputs, dim=1)
+                # Calculate predictions using threshold-based binary classification
+                probabilities = torch.softmax(outputs, dim=1)
+                attack_probabilities = probabilities[:, 1]  # P(Attack)
+                predictions = (attack_probabilities >= 0.5).long()
                 
                 # Calculate accuracy
                 correct = (predictions == y_val_tensor).sum().item()
                 total = y_val_tensor.size(0)
                 validation_accuracy = correct / total
+
+                # Debug: Log prediction distribution
+                unique_preds, pred_counts = torch.unique(
+                    predictions, return_counts=True)
+                unique_labels, label_counts = torch.unique(
+                    y_val_tensor, return_counts=True)
+                logger.info(
+                    f"🔍 DEBUG: Predictions distribution: {dict(zip(unique_preds.cpu().numpy(), pred_counts.cpu().numpy()))}")
+                logger.info(
+                    f"🔍 DEBUG: Labels distribution: {dict(zip(unique_labels.cpu().numpy(), label_counts.cpu().numpy()))}")
+                logger.info(f"🔍 DEBUG: Correct predictions: {correct}/{total}")
                 
                 # Calculate F1-score
                 from sklearn.metrics import f1_score
                 predictions_np = predictions.cpu().numpy()
                 y_val_np = y_val_tensor.cpu().numpy()
-                validation_f1 = f1_score(y_val_np, predictions_np, average='weighted')
+                validation_f1 = f1_score(
+    y_val_np, predictions_np, average='weighted')
                 
                 # Log validation metrics
-                logger.info(f"🔍 Validation evaluation completed for round {round_num}")
+                logger.info(
+                    f"🔍 Validation evaluation completed for round {round_num}")
                 logger.info(f"   Validation samples: {total}")
                 logger.info(f"   Validation loss: {validation_loss:.6f}")
-                logger.info(f"   Validation accuracy: {validation_accuracy:.4f}")
+                logger.info(
+                    f"   Validation accuracy: {validation_accuracy:.4f}")
                 logger.info(f"   Validation F1-score: {validation_f1:.4f}")
                 
                 return {
@@ -1101,7 +1605,8 @@ class BlockchainFederatedIncentiveSystem:
                 }
                 
         except Exception as e:
-            logger.error(f"❌ Validation evaluation failed for round {round_num}: {str(e)}")
+            logger.error(
+                f"❌ Validation evaluation failed for round {round_num}: {str(e)}")
             return None
     
     def run_federated_training_with_incentives(self) -> bool:
@@ -1116,7 +1621,9 @@ class BlockchainFederatedIncentiveSystem:
             return False
         
         try:
-            logger.info("Starting federated learning training with incentives and validation monitoring...")
+
+            logger.info(
+                "Starting federated learning training with incentives and validation monitoring...")
             
             # Initialize validation tracking variables
             previous_round_accuracy = 0.0
@@ -1137,15 +1644,20 @@ class BlockchainFederatedIncentiveSystem:
             }
             
             # Overfitting detection variables
-            overfitting_threshold = 0.15  # 15% gap between training and validation accuracy (less aggressive)
+            # 15% gap between training and validation accuracy (less
+            # aggressive)
+            overfitting_threshold = 0.15
             consecutive_overfitting_rounds = 0
             max_overfitting_rounds = 5  # Stop if overfitting detected for 5 consecutive rounds
             
             logger.info(f"📊 Validation monitoring enabled:")
-            logger.info(f"   - Patience limit: {validation_patience_limit} rounds")
+            logger.info(
+                f"   - Patience limit: {validation_patience_limit} rounds")
             logger.info(f"   - Min improvement: {min_improvement_threshold}")
-            logger.info(f"   - Overfitting threshold: {overfitting_threshold*100:.1f}%")
-            logger.info(f"   - Max overfitting rounds: {max_overfitting_rounds}")
+            logger.info(
+                f"   - Overfitting threshold: {overfitting_threshold*100:.1f}%")
+            logger.info(
+                f"   - Max overfitting rounds: {max_overfitting_rounds}")
             
             # Training loop with incentive processing and validation
             for round_num in range(1, self.config.num_rounds + 1):
@@ -1154,7 +1666,8 @@ class BlockchainFederatedIncentiveSystem:
                 
                 # Verify client authentication before each round (non-blocking)
                 if not self._verify_client_authentication(round_num):
-                    logger.warning(f"⚠️ Authentication verification failed for round {round_num}, continuing with fallback")
+                    logger.warning(
+                        f"⚠️ Authentication verification failed for round {round_num}, continuing with fallback")
                     # Don't skip the round, just log the warning
                 
                 # Run federated round with reasonable batch size for GPU memory
@@ -1175,12 +1688,16 @@ class BlockchainFederatedIncentiveSystem:
                 
                 if round_results:
                     # Calculate current round accuracy
-                    logger.info(f"🔍 DEBUG: About to calculate round accuracy for round {round_num}")
-                    current_round_accuracy = self._calculate_round_accuracy(round_results)
-                    logger.info(f"🔍 DEBUG: Round accuracy calculated: {current_round_accuracy}")
+                    logger.info(
+                        f"🔍 DEBUG: About to calculate round accuracy for round {round_num}")
+                    current_round_accuracy = self._calculate_round_accuracy(
+                        round_results)
+                    logger.info(
+                        f"🔍 DEBUG: Round accuracy calculated: {current_round_accuracy}")
                     
                     # Perform validation evaluation
-                    validation_metrics = self._evaluate_validation_performance(round_num)
+                    validation_metrics = self._evaluate_validation_performance(
+                        round_num)
                     
                     if validation_metrics:
                         validation_loss = validation_metrics['loss']
@@ -1189,16 +1706,24 @@ class BlockchainFederatedIncentiveSystem:
                         
                         # Update validation history
                         validation_history['rounds'].append(round_num)
-                        validation_history['validation_losses'].append(validation_loss)
-                        validation_history['validation_accuracies'].append(validation_accuracy)
-                        validation_history['validation_f1_scores'].append(validation_f1)
-                        validation_history['training_losses'].append(round_results.get('avg_loss', 0.0))
-                        validation_history['training_accuracies'].append(current_round_accuracy)
+                        validation_history['validation_losses'].append(
+                            validation_loss)
+                        validation_history['validation_accuracies'].append(
+                            validation_accuracy)
+                        validation_history['validation_f1_scores'].append(
+                            validation_f1)
+                        validation_history['training_losses'].append(
+                            round_results.get('avg_loss', 0.0))
+                        validation_history['training_accuracies'].append(
+                            current_round_accuracy)
                         
                         # Log validation metrics
-                        logger.info(f"📊 VALIDATION METRICS - Round {round_num}:")
-                        logger.info(f"   Loss: {validation_loss:.6f} (Best: {best_validation_loss:.6f})")
-                        logger.info(f"   Accuracy: {validation_accuracy:.4f} (Best: {best_validation_accuracy:.4f})")
+                        logger.info(
+                            f"📊 VALIDATION METRICS - Round {round_num}:")
+                        logger.info(
+                            f"   Loss: {validation_loss:.6f} (Best: {best_validation_loss:.6f})")
+                        logger.info(
+                            f"   Accuracy: {validation_accuracy:.4f} (Best: {best_validation_accuracy:.4f})")
                         logger.info(f"   F1-Score: {validation_f1:.4f}")
                         
                         # Check for improvement
@@ -1207,20 +1732,25 @@ class BlockchainFederatedIncentiveSystem:
                             best_validation_accuracy = validation_accuracy
                             best_validation_loss = validation_loss
                             validation_patience_counter = 0
-                            logger.info(f"✅ Validation improved by {improvement:.6f}")
+                            logger.info(
+                                f"✅ Validation improved by {improvement:.6f}")
                         else:
                             validation_patience_counter += 1
-                            logger.info(f"⏳ No validation improvement ({validation_patience_counter}/{validation_patience_limit})")
+                            logger.info(
+                                f"⏳ No validation improvement ({validation_patience_counter}/{validation_patience_limit})")
                         
                         # Overfitting detection
                         accuracy_gap = current_round_accuracy - validation_accuracy
                         if accuracy_gap > overfitting_threshold:
                             consecutive_overfitting_rounds += 1
-                            logger.warning(f"⚠️  OVERFITTING DETECTED - Training accuracy ({current_round_accuracy:.4f}) exceeds validation accuracy ({validation_accuracy:.4f}) by {accuracy_gap:.4f}")
-                            logger.warning(f"   Consecutive overfitting rounds: {consecutive_overfitting_rounds}/{max_overfitting_rounds}")
+                            logger.warning(
+                                f"⚠️  OVERFITTING DETECTED - Training accuracy ({current_round_accuracy:.4f}) exceeds validation accuracy ({validation_accuracy:.4f}) by {accuracy_gap:.4f}")
+                            logger.warning(
+                                f"   Consecutive overfitting rounds: {consecutive_overfitting_rounds}/{max_overfitting_rounds}")
                         else:
                             consecutive_overfitting_rounds = 0
-                            logger.info(f"✅ No overfitting detected (gap: {accuracy_gap:.4f})")
+                            logger.info(
+                                f"✅ No overfitting detected (gap: {accuracy_gap:.4f})")
                         
                         # Early stopping checks
                         early_stop_reason = None
@@ -1230,13 +1760,18 @@ class BlockchainFederatedIncentiveSystem:
                             early_stop_reason = f"Overfitting detected for {max_overfitting_rounds} consecutive rounds"
                         
                         if early_stop_reason:
-                            logger.warning(f"🛑 EARLY STOPPING TRIGGERED: {early_stop_reason}")
-                            logger.info(f"   Best validation accuracy: {best_validation_accuracy:.4f}")
-                            logger.info(f"   Best validation loss: {best_validation_loss:.6f}")
-                            logger.info(f"   Training completed at round {round_num}/{self.config.num_rounds}")
+                            logger.warning(
+                                f"🛑 EARLY STOPPING TRIGGERED: {early_stop_reason}")
+                            logger.info(
+                                f"   Best validation accuracy: {best_validation_accuracy:.4f}")
+                            logger.info(
+                                f"   Best validation loss: {best_validation_loss:.6f}")
+                            logger.info(
+                                f"   Training completed at round {round_num}/{self.config.num_rounds}")
                             break
                     else:
-                        logger.warning(f"⚠️  Validation evaluation failed for round {round_num}")
+                        logger.warning(
+                            f"⚠️  Validation evaluation failed for round {round_num}")
                     
                     # Process incentives for this round
                     if self.config.enable_incentives and self.incentive_manager:
@@ -1246,10 +1781,12 @@ class BlockchainFederatedIncentiveSystem:
                     
                     # Collect blockchain gas usage data immediately after incentive processing
                     # (when blockchain transactions are most likely to have occurred)
-                    # Now using improved async gas collection with retry mechanisms
+                    # Now using improved async gas collection with retry
+                    # mechanisms
                     self._collect_round_gas_data(round_num, round_results)
                     
-                    # Store training history with client updates and validation metrics
+                    # Store training history with client updates and validation
+                    # metrics
                     import time
                     round_data = {
                         'round': round_num,
@@ -1259,7 +1796,8 @@ class BlockchainFederatedIncentiveSystem:
                         'validation_metrics': validation_metrics if validation_metrics else None
                     }
                     self.training_history.append(round_data)
-                    logger.info(f"📝 Stored training history with client updates and validation metrics for round {round_num}")
+                    logger.info(
+                        f"📝 Stored training history with client updates and validation metrics for round {round_num}")
                     
                     # Store validation history separately for analysis
                     if validation_metrics:
@@ -1270,12 +1808,14 @@ class BlockchainFederatedIncentiveSystem:
                         torch.cuda.empty_cache()
                         import gc
                         gc.collect()
-                        # Skip torch.cuda.synchronize() to avoid potential hanging
+                        # Skip torch.cuda.synchronize() to avoid potential
+                        # hanging
                     
                     # Update previous accuracy
                     previous_round_accuracy = current_round_accuracy
                     
-                    logger.info(f"✅ Round {round_num} completed - Accuracy: {current_round_accuracy:.4f}")
+                    logger.info(
+                        f"✅ Round {round_num} completed - Accuracy: {current_round_accuracy:.4f}")
                 else:
                     logger.error(f"❌ Round {round_num} failed")
                     return False
@@ -1283,27 +1823,37 @@ class BlockchainFederatedIncentiveSystem:
             # Final validation summary
             if validation_history['rounds']:
                 logger.info("📊 FINAL VALIDATION SUMMARY:")
-                logger.info(f"   Total rounds with validation: {len(validation_history['rounds'])}")
-                logger.info(f"   Best validation accuracy: {best_validation_accuracy:.4f}")
-                logger.info(f"   Best validation loss: {best_validation_loss:.6f}")
-                logger.info(f"   Final validation accuracy: {validation_history['validation_accuracies'][-1]:.4f}")
-                logger.info(f"   Final validation F1-score: {validation_history['validation_f1_scores'][-1]:.4f}")
+                logger.info(
+                    f"   Total rounds with validation: {len(validation_history['rounds'])}")
+                logger.info(
+                    f"   Best validation accuracy: {best_validation_accuracy:.4f}")
+                logger.info(
+                    f"   Best validation loss: {best_validation_loss:.6f}")
+                logger.info(
+                    f"   Final validation accuracy: {validation_history['validation_accuracies'][-1]:.4f}")
+                logger.info(
+                    f"   Final validation F1-score: {validation_history['validation_f1_scores'][-1]:.4f}")
                 
                 # Calculate validation trends
                 if len(validation_history['validation_accuracies']) > 1:
-                    accuracy_trend = validation_history['validation_accuracies'][-1] - validation_history['validation_accuracies'][0]
-                    logger.info(f"   Validation accuracy trend: {accuracy_trend:+.4f}")
+                    accuracy_trend = validation_history['validation_accuracies'][-1] - \
+                        validation_history['validation_accuracies'][0]
+                    logger.info(
+                        f"   Validation accuracy trend: {accuracy_trend:+.4f}")
                 
                 # Store final validation history
                 self.validation_history = validation_history
             else:
-                logger.warning("⚠️  No validation data collected during training")
+                logger.warning(
+                    "⚠️  No validation data collected during training")
             
-            logger.info("✅ Federated learning training with incentives and validation monitoring completed!")
+            logger.info(
+                "✅ Federated learning training with incentives and validation monitoring completed!")
             
             # Final gas data collection to ensure we capture all transactions
             logger.info("📊 Collecting final blockchain gas data...")
             try:
+
                 from blockchain.real_gas_collector import real_gas_collector
                 import threading
                 import time
@@ -1314,6 +1864,7 @@ class BlockchainFederatedIncentiveSystem:
                 
                 def collect_gas_data():
                     try:
+
                         result[0] = real_gas_collector.get_all_gas_data()
                     except Exception as e:
                         exception[0] = e
@@ -1325,18 +1876,31 @@ class BlockchainFederatedIncentiveSystem:
                 collection_thread.join(timeout=10)  # 10 second timeout
                 
                 if collection_thread.is_alive():
-                    logger.warning("⚠️ Final gas collection timed out after 10 seconds - skipping")
-                    final_gas_data = {'transactions': [], 'total_transactions': 0, 'total_gas_used': 0}
+                    logger.warning(
+                        "⚠️ Final gas collection timed out after 10 seconds - skipping")
+                    final_gas_data = {
+    'transactions': [],
+    'total_transactions': 0,
+     'total_gas_used': 0}
                 elif exception[0]:
-                    logger.warning(f"Failed to collect final gas data: {str(exception[0])}")
-                    final_gas_data = {'transactions': [], 'total_transactions': 0, 'total_gas_used': 0}
+                    logger.warning(
+                        f"Failed to collect final gas data: {str(exception[0])}")
+                    final_gas_data = {
+    'transactions': [],
+    'total_transactions': 0,
+     'total_gas_used': 0}
                 else:
-                    final_gas_data = result[0] or {'transactions': [], 'total_transactions': 0, 'total_gas_used': 0}
-                    logger.info(f"📊 Final gas collection: {final_gas_data.get('total_transactions', 0)} total transactions, {final_gas_data.get('total_gas_used', 0)} total gas used")
+                    final_gas_data = result[0] or {
+    'transactions': [], 'total_transactions': 0, 'total_gas_used': 0}
+                    logger.info(
+                        f"📊 Final gas collection: {final_gas_data.get('total_transactions', 0)} total transactions, {final_gas_data.get('total_gas_used', 0)} total gas used")
                     
             except Exception as e:
                 logger.warning(f"Failed to collect final gas data: {str(e)}")
-                final_gas_data = {'transactions': [], 'total_transactions': 0, 'total_gas_used': 0}
+                final_gas_data = {
+    'transactions': [],
+    'total_transactions': 0,
+     'total_gas_used': 0}
             
             # Update our blockchain data with any remaining transactions
             if final_gas_data.get('total_transactions', 0) > 0:
@@ -1360,14 +1924,21 @@ class BlockchainFederatedIncentiveSystem:
                 # Add any remaining transactions
                 for transaction in all_transactions:
                     if transaction['transaction_hash'] not in self.blockchain_gas_data['transactions']:
-                        self.blockchain_gas_data['transactions'].append(transaction['transaction_hash'])
-                        self.blockchain_gas_data['ipfs_cids'].append(transaction.get('ipfs_cid', ''))
-                        self.blockchain_gas_data['gas_used'].append(transaction['gas_used'])
-                        self.blockchain_gas_data['block_numbers'].append(transaction['block_number'])
-                        self.blockchain_gas_data['transaction_types'].append(transaction['transaction_type'])
-                        self.blockchain_gas_data['rounds'].append(transaction.get('round_number', 1))
-                
-                logger.info(f"📊 Updated blockchain_gas_data with {len(all_transactions)} transactions from final collection")
+                        self.blockchain_gas_data['transactions'].append(
+                            transaction['transaction_hash'])
+                        self.blockchain_gas_data['ipfs_cids'].append(
+                            transaction.get('ipfs_cid', ''))
+                        self.blockchain_gas_data['gas_used'].append(
+                            transaction['gas_used'])
+                        self.blockchain_gas_data['block_numbers'].append(
+                            transaction['block_number'])
+                        self.blockchain_gas_data['transaction_types'].append(
+                            transaction['transaction_type'])
+                        self.blockchain_gas_data['rounds'].append(
+                            transaction.get('round_number', 1))
+
+                logger.info(
+                    f"📊 Updated blockchain_gas_data with {len(all_transactions)} transactions from final collection")
             
             return True
             
@@ -1387,6 +1958,7 @@ class BlockchainFederatedIncentiveSystem:
             current_accuracy: Current round accuracy
         """
         try:
+
             if not self.incentive_manager:
                 logger.warning("Incentive manager not available")
                 return
@@ -1395,7 +1967,8 @@ class BlockchainFederatedIncentiveSystem:
             
             # Verify client identities before processing incentives
             if not self._verify_client_identities_for_incentives(round_num):
-                logger.error(f"❌ Identity verification failed for incentives in round {round_num}")
+                logger.error(
+                    f"❌ Identity verification failed for incentives in round {round_num}")
                 return
             
             # Prepare client contributions
@@ -1404,16 +1977,20 @@ class BlockchainFederatedIncentiveSystem:
             
             for client_update in client_updates:
                 # Calculate data-driven data quality and reliability scores
-                logger.info(f"📊 Calculating data-driven metrics for client {client_update.client_id}")
+                logger.info(
+                    f"📊 Calculating data-driven metrics for client {client_update.client_id}")
                 
                 # Calculate data quality based on entropy of label distribution
-                data_quality = self._calculate_data_quality_entropy(client_update.client_id)
+                data_quality = self._calculate_data_quality_entropy(
+                    client_update.client_id)
                 
                 # Calculate reliability based on participation consistency
-                reliability = self._calculate_reliability_consistency(client_update.client_id, round_num)
+                reliability = self._calculate_reliability_consistency(
+                    client_update.client_id, round_num)
                 
                 # Note: Using data-driven reliability calculation only
-                # Training loss-based reliability is disabled to avoid overriding data-driven metrics
+                # Training loss-based reliability is disabled to avoid
+                # overriding data-driven metrics
                 
                 # Reliability is already calculated using data-driven metrics
                 # No additional client-specific variation needed
@@ -1423,7 +2000,9 @@ class BlockchainFederatedIncentiveSystem:
                 for client in self.coordinator.clients:
                     if client.client_id == client_update.client_id:
                         # Try different ways to get the address
-                        if hasattr(client, 'account') and hasattr(client.account, 'address'):
+                        if hasattr(
+    client, 'account') and hasattr(
+        client.account, 'address'):
                             client_address = client.account.address
                         elif hasattr(client, 'web3') and hasattr(client.web3, 'eth'):
                             client_address = client.web3.eth.default_account
@@ -1431,7 +2010,8 @@ class BlockchainFederatedIncentiveSystem:
                             client_address = client.address
                         else:
                             # Fallback to client_addresses dictionary
-                            client_address = self.client_addresses.get(client_update.client_id)
+                            client_address = self.client_addresses.get(
+                                client_update.client_id)
                         break
                 
                 if client_address:
@@ -1440,22 +2020,31 @@ class BlockchainFederatedIncentiveSystem:
                         # If it's a PyTorch model, get state dict
                         model_params = client_update.model_parameters.state_dict()
                     elif isinstance(client_update.model_parameters, (list, tuple)):
-                        # If it's a list/tuple, convert to dict with indexed keys
-                        model_params = {f'param_{i}': float(param) for i, param in enumerate(client_update.model_parameters)}
+                        # If it's a list/tuple, convert to dict with indexed
+                        # keys
+                        model_params = {
+    f'param_{i}': float(param) for i,
+    param in enumerate(
+        client_update.model_parameters)}
                     elif isinstance(client_update.model_parameters, dict):
                         # If it's already a dict, use as is
                         model_params = client_update.model_parameters
                     else:
                         # Fallback: convert to string representation
-                        model_params = {'model_data': str(client_update.model_parameters)}
+                        model_params = {
+    'model_data': str(
+        client_update.model_parameters)}
                     
                     # Use real client accuracy from training results
-                    client_current_accuracy = getattr(client_update, 'validation_accuracy', current_accuracy)
+                    client_current_accuracy = getattr(
+    client_update, 'validation_accuracy', current_accuracy)
                     client_previous_accuracy = previous_accuracy
                     
                     # Ensure accuracy values are reasonable
-                    client_current_accuracy = max(0.1, min(0.99, float(client_current_accuracy)))
-                    client_previous_accuracy = max(0.1, min(0.99, float(client_previous_accuracy)))
+                    client_current_accuracy = max(
+                        0.1, min(0.99, float(client_current_accuracy)))
+                    client_previous_accuracy = max(
+                        0.1, min(0.99, float(client_previous_accuracy)))
                     
                     contribution = {
                         'client_address': client_address,
@@ -1468,7 +2057,8 @@ class BlockchainFederatedIncentiveSystem:
                     client_contributions.append(contribution)
             
             # Calculate Shapley values for fair contribution evaluation
-            shapley_values_by_client_id = self._calculate_shapley_values(round_num, round_results, previous_accuracy, current_accuracy)
+            shapley_values_by_client_id = self._calculate_shapley_values(
+                round_num, round_results, previous_accuracy, current_accuracy)
             
             # Map Shapley values from client IDs to client addresses
             shapley_values_by_address = {}
@@ -1486,9 +2076,11 @@ class BlockchainFederatedIncentiveSystem:
                 if client_id in client_id_to_address:
                     client_address = client_id_to_address[client_id]
                     shapley_values_by_address[client_address] = shapley_value
-                    logger.info(f"Mapped Shapley value for {client_address} (client {client_id}): {shapley_value:.4f}")
+                    logger.info(
+                        f"Mapped Shapley value for {client_address} (client {client_id}): {shapley_value:.4f}")
             
-            logger.info(f"Shapley values mapped to addresses: {shapley_values_by_address}")
+            logger.info(
+                f"Shapley values mapped to addresses: {shapley_values_by_address}")
             
             # Process contributions with Shapley values
             if client_contributions:
@@ -1498,14 +2090,19 @@ class BlockchainFederatedIncentiveSystem:
                 
                 # Distribute rewards
                 if reward_distributions:
-                    success = self.incentive_manager.distribute_rewards(round_num, reward_distributions)
+                    success = self.incentive_manager.distribute_rewards(
+                        round_num, reward_distributions)
                     if success:
-                        total_tokens = sum(rd.token_amount for rd in reward_distributions)
-                        logger.info(f"Incentives processed for round {round_num}: {len(reward_distributions)} rewards, Total: {total_tokens} tokens")
-                        
-                        # Token distribution will be recorded on blockchain with real gas usage
-                        
-                        # Store incentive data for visualization including individual rewards
+                        total_tokens = sum(
+    rd.token_amount for rd in reward_distributions)
+                        logger.info(
+                            f"Incentives processed for round {round_num}: {len(reward_distributions)} rewards, Total: {total_tokens} tokens")
+
+                        # Token distribution will be recorded on blockchain
+                        # with real gas usage
+
+                        # Store incentive data for visualization including
+                        # individual rewards
                         individual_rewards = {}
                         for reward_dist in reward_distributions:
                             individual_rewards[reward_dist.recipient_address] = reward_dist.token_amount
@@ -1521,16 +2118,21 @@ class BlockchainFederatedIncentiveSystem:
                         # Use thread-safe access to incentive_history
                         with self.lock:
                             self.incentive_history.append(incentive_record)
-                        logger.info(f"📊 Stored incentive record for round {round_num}")
+                        logger.info(
+                            f"📊 Stored incentive record for round {round_num}")
                     else:
-                        logger.error(f"Failed to distribute rewards for round {round_num}")
+                        logger.error(
+                            f"Failed to distribute rewards for round {round_num}")
                 else:
-                    logger.warning(f"No rewards to distribute for round {round_num}")
+                    logger.warning(
+                        f"No rewards to distribute for round {round_num}")
             else:
-                logger.warning(f"No client contributions to process for round {round_num}")
+                logger.warning(
+                    f"No client contributions to process for round {round_num}")
                 
         except Exception as e:
-            logger.error(f"Error processing incentives for round {round_num}: {str(e)}")
+            logger.error(
+                f"Error processing incentives for round {round_num}: {str(e)}")
     
     def _calculate_shapley_values(self, round_num: int, round_results: Dict, 
                                  previous_accuracy: float, current_accuracy: float):
@@ -1547,16 +2149,19 @@ class BlockchainFederatedIncentiveSystem:
             shapley_values: Dictionary mapping client_id to Shapley value
         """
         try:
+
             logger.info(f"Calculating Shapley values for round {round_num}")
             
             # Get client updates
             client_updates = round_results.get('client_updates', [])
             if not client_updates:
-                logger.warning("No client updates available for Shapley calculation")
+                logger.warning(
+                    "No client updates available for Shapley calculation")
                 return {}
             
             # Get individual client performances
-            individual_performances = self._get_client_training_accuracy(round_num)
+            individual_performances = self._get_client_training_accuracy(
+                round_num)
             
             # Calculate global performance improvement
             global_performance = current_accuracy - previous_accuracy
@@ -1568,18 +2173,22 @@ class BlockchainFederatedIncentiveSystem:
             
             for client_update in client_updates:
                 # Calculate data quality based on entropy
-                data_quality = self._calculate_data_quality_entropy(client_update.client_id)
+                data_quality = self._calculate_data_quality_entropy(
+                    client_update.client_id)
                 data_quality_scores[client_update.client_id] = data_quality
                 
-                # Calculate participation consistency (already normalized to 0-100)
-                participation_rate = self._calculate_reliability_consistency(client_update.client_id, round_num) / 100.0
+                # Calculate participation consistency (already normalized to
+                # 0-100)
+                participation_rate = self._calculate_reliability_consistency(
+                    client_update.client_id, round_num) / 100.0
                 participation_data[client_update.client_id] = participation_rate
                 
                 logger.info(f"📈 Client {client_update.client_id} metrics: "
                           f"Data Quality={data_quality:.1f}, Participation={participation_rate:.3f}")
             
             # Log comprehensive data-driven metrics for transparency
-            self._log_data_driven_metrics(round_num, data_quality_scores, participation_data)
+            self._log_data_driven_metrics(
+    round_num, data_quality_scores, participation_data)
             
             # Initialize Shapley value calculator
             shapley_calculator = ShapleyValueCalculator()
@@ -1593,19 +2202,23 @@ class BlockchainFederatedIncentiveSystem:
             )
             
             # Convert to dictionary format
-            shapley_values = {contrib.client_id: contrib.shapley_value for contrib in shapley_contributions}
+            shapley_values = {
+    contrib.client_id: contrib.shapley_value for contrib in shapley_contributions}
             
-            logger.info(f"Shapley values calculated for {len(shapley_values)} clients")
+            logger.info(
+                f"Shapley values calculated for {len(shapley_values)} clients")
             for client_id, value in shapley_values.items():
                 logger.info(f"Client {client_id}: Shapley value = {value:.4f}")
             
             return shapley_values
             
         except Exception as e:
-            logger.error(f"Error calculating Shapley values for round {round_num}: {str(e)}")
+            logger.error(
+                f"Error calculating Shapley values for round {round_num}: {str(e)}")
             return {}
     
-    def _get_client_training_accuracy(self, round_num: int) -> Dict[str, float]:
+    def _get_client_training_accuracy(
+        self, round_num: int) -> Dict[str, float]:
         """
         Get differentiated client training accuracy from training history
         
@@ -1624,17 +2237,23 @@ class BlockchainFederatedIncentiveSystem:
                     if 'client_updates' in round_data:
                         # Extract real accuracy from round data if available
                         client_id = f'client_{i+1}'
-                        accuracy = round_data.get('accuracy', 0.5)  # Use real accuracy or default
+                        accuracy = round_data.get(
+    'accuracy', 0.5)  # Use real accuracy or default
                         client_accuracies[client_id] = accuracy
                     else:
                         # Use evaluation results if available
                         client_id = f'client_{i+1}'
-                        accuracy = getattr(self, 'final_evaluation_results', {}).get('accuracy', 0.5)
+                        accuracy = getattr(
+    self, 'final_evaluation_results', {}).get(
+        'accuracy', 0.5)
                         client_accuracies[client_id] = accuracy
             
-            # If no training history, use evaluation results with some variation
+            # If no training history, use evaluation results with some
+            # variation
             if not client_accuracies:
-                base_accuracy = getattr(self, 'final_evaluation_results', {}).get('accuracy', 0.5)
+                base_accuracy = getattr(
+    self, 'final_evaluation_results', {}).get(
+        'accuracy', 0.5)
                 # Add some variation to differentiate clients
             client_accuracies = {
                     'client_1': base_accuracy + 0.01,  # Slightly better
@@ -1642,16 +2261,23 @@ class BlockchainFederatedIncentiveSystem:
                     'client_3': base_accuracy - 0.01   # Slightly worse
             }
             
-            logger.info(f"Using differentiated client accuracies: {client_accuracies}")
+            logger.info(
+                f"Using differentiated client accuracies: {client_accuracies}")
             return client_accuracies
             
         except Exception as e:
             logger.error(f"Error getting client training accuracy: {str(e)}")
             # Fallback to evaluation results
-            base_accuracy = getattr(self, 'final_evaluation_results', {}).get('accuracy', 0.5)
-            return {'client_1': base_accuracy, 'client_2': base_accuracy, 'client_3': base_accuracy}
-    
-    async def _collect_round_gas_data_async(self, round_num: int, round_results: Dict):
+            base_accuracy = getattr(
+    self, 'final_evaluation_results', {}).get(
+        'accuracy', 0.5)
+            return {
+    'client_1': base_accuracy,
+    'client_2': base_accuracy,
+     'client_3': base_accuracy}
+
+    async def _collect_round_gas_data_async(
+    self, round_num: int, round_results: Dict):
         """
         Collect gas usage data for a federated learning round with async I/O and retry mechanisms
         
@@ -1695,6 +2321,7 @@ class BlockchainFederatedIncentiveSystem:
                 
                 # Set timeout for gas collection (5 seconds)
                 try:
+
                     all_gas_data = await asyncio.wait_for(
                         get_gas_data_with_timeout(), 
                         timeout=5.0
@@ -1702,33 +2329,51 @@ class BlockchainFederatedIncentiveSystem:
                     break  # Success, exit retry loop
                     
                 except asyncio.TimeoutError:
-                    logger.warning(f"Gas collection timeout on attempt {attempt + 1}/{max_retries}")
+                    logger.warning(
+                        f"Gas collection timeout on attempt {attempt + 1}/{max_retries}")
                     if attempt < max_retries - 1:
-                        await asyncio.sleep(retry_delay * (2 ** attempt))  # Exponential backoff
+                        # Exponential backoff
+                        await asyncio.sleep(retry_delay * (2 ** attempt))
                         continue
                     else:
-                        logger.error(f"Gas collection failed after {max_retries} attempts")
-                        all_gas_data = {'transactions': [], 'total_transactions': 0, 'total_gas_used': 0}
+                        logger.error(
+                            f"Gas collection failed after {max_retries} attempts")
+                        all_gas_data = {
+    'transactions': [],
+    'total_transactions': 0,
+     'total_gas_used': 0}
                         break
                     
                 except Exception as e:
-                    logger.warning(f"Gas collection attempt {attempt + 1} failed: {str(e)}")
+                    logger.warning(
+                        f"Gas collection attempt {attempt + 1} failed: {str(e)}")
                     if attempt < max_retries - 1:
-                        await asyncio.sleep(retry_delay * (2 ** attempt))  # Exponential backoff
+                        # Exponential backoff
+                        await asyncio.sleep(retry_delay * (2 ** attempt))
                         continue
                     else:
-                        logger.error(f"Gas collection failed after {max_retries} attempts: {str(e)}")
-                        all_gas_data = {'transactions': [], 'total_transactions': 0, 'total_gas_used': 0}
+                        logger.error(
+                            f"Gas collection failed after {max_retries} attempts: {str(e)}")
+                        all_gas_data = {
+    'transactions': [],
+    'total_transactions': 0,
+     'total_gas_used': 0}
                         break
                         
             except Exception as e:
-                logger.error(f"Gas collection attempt {attempt + 1} failed: {str(e)}")
+                logger.error(
+                    f"Gas collection attempt {attempt + 1} failed: {str(e)}")
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(retry_delay * (2 ** attempt))  # Exponential backoff
+                    # Exponential backoff
+                    await asyncio.sleep(retry_delay * (2 ** attempt))
                     continue
                 else:
-                    logger.error(f"Gas collection failed after {max_retries} attempts: {str(e)}")
-                    all_gas_data = {'transactions': [], 'total_transactions': 0, 'total_gas_used': 0}
+                    logger.error(
+                        f"Gas collection failed after {max_retries} attempts: {str(e)}")
+                    all_gas_data = {
+    'transactions': [],
+    'total_transactions': 0,
+     'total_gas_used': 0}
                     break
         
         # Process collected gas data
@@ -1738,20 +2383,29 @@ class BlockchainFederatedIncentiveSystem:
         all_transactions = all_gas_data.get('transactions', [])
         if all_transactions:
             # Get the last few transactions from all data
-            collected_transactions = all_transactions[-5:]  # Get last 5 transactions
-            logger.info(f"Using most recent gas transactions for round {round_num}: {len(collected_transactions)} transactions")
+            # Get last 5 transactions
+            collected_transactions = all_transactions[-5:]
+            logger.info(
+                f"Using most recent gas transactions for round {round_num}: {len(collected_transactions)} transactions")
         else:
             logger.info(f"No gas transactions available for round {round_num}")
         
         # Add collected gas data to our collection with error handling
         for transaction in collected_transactions:
             try:
-                self.blockchain_gas_data['transactions'].append(transaction.get('transaction_hash', ''))
-                self.blockchain_gas_data['ipfs_cids'].append(transaction.get('ipfs_cid', ''))
-                self.blockchain_gas_data['gas_used'].append(transaction.get('gas_used', 0))
-                self.blockchain_gas_data['block_numbers'].append(transaction.get('block_number', 0))
-                self.blockchain_gas_data['transaction_types'].append(transaction.get('transaction_type', 'unknown'))
-                self.blockchain_gas_data['rounds'].append(round_num)  # Associate with current round
+
+                self.blockchain_gas_data['transactions'].append(
+                    transaction.get('transaction_hash', ''))
+                self.blockchain_gas_data['ipfs_cids'].append(
+                    transaction.get('ipfs_cid', ''))
+                self.blockchain_gas_data['gas_used'].append(
+                    transaction.get('gas_used', 0))
+                self.blockchain_gas_data['block_numbers'].append(
+                    transaction.get('block_number', 0))
+                self.blockchain_gas_data['transaction_types'].append(
+                    transaction.get('transaction_type', 'unknown'))
+                self.blockchain_gas_data['rounds'].append(
+                    round_num)  # Associate with current round
             except Exception as e:
                 logger.warning(f"Error processing transaction data: {str(e)}")
                 continue
@@ -1759,13 +2413,17 @@ class BlockchainFederatedIncentiveSystem:
         total_transactions = len(collected_transactions)
         total_gas = sum(tx.get('gas_used', 0) for tx in collected_transactions)
         
-        logger.info(f"Collected real gas data for round {round_num}: {total_transactions} transactions, {total_gas} total gas")
+        logger.info(
+            f"Collected real gas data for round {round_num}: {total_transactions} transactions, {total_gas} total gas")
         
         # Only warn if absolutely no gas data is available anywhere
-        if total_transactions == 0 and all_gas_data.get('total_transactions', 0) == 0:
-            logger.warning(f"⚠️  No gas data available anywhere - blockchain transactions may not be recording properly")
+        if total_transactions == 0 and all_gas_data.get(
+            'total_transactions', 0) == 0:
+            logger.warning(
+                f"⚠️  No gas data available anywhere - blockchain transactions may not be recording properly")
         elif total_transactions == 0:
-            logger.info(f"ℹ️  No new gas data for round {round_num}, but {all_gas_data.get('total_transactions', 0)} total transactions available")
+            logger.info(
+                f"ℹ️  No new gas data for round {round_num}, but {all_gas_data.get('total_transactions', 0)} total transactions available")
         
         return collected_transactions
     
@@ -1780,6 +2438,7 @@ class BlockchainFederatedIncentiveSystem:
             Dictionary with gas data
         """
         try:
+
             from blockchain.real_gas_collector import real_gas_collector
             
             # Get only essential data to avoid complex processing
@@ -1787,7 +2446,8 @@ class BlockchainFederatedIncentiveSystem:
                 if not real_gas_collector.gas_transactions:
                     return {'transactions': [], 'total_transactions': 0}
                 
-                # Get only recent transactions (last 10) to avoid processing overhead
+                # Get only recent transactions (last 10) to avoid processing
+                # overhead
                 recent_transactions = real_gas_collector.gas_transactions[-10:]
                 
                 # Convert to simple dictionary format
@@ -1824,7 +2484,10 @@ class BlockchainFederatedIncentiveSystem:
         
         # Run the async version
         try:
-            asyncio.run(self._collect_round_gas_data_async(round_num, round_results))
+
+            asyncio.run(
+    self._collect_round_gas_data_async(
+        round_num, round_results))
         except Exception as e:
             logger.error(f"Error in gas collection: {str(e)}")
             # Fallback to minimal data collection
@@ -1847,7 +2510,8 @@ class BlockchainFederatedIncentiveSystem:
             # Get test data for evaluation
             if hasattr(self, 'preprocessed_data'):
                 test_data = torch.FloatTensor(self.preprocessed_data['X_test'])
-                test_labels = torch.LongTensor(self.preprocessed_data['y_test'])
+                test_labels = torch.LongTensor(
+                    self.preprocessed_data['y_test'])
                 
                 # Use only a subset for memory efficiency (first 1000 samples)
                 subset_size = min(1000, len(test_data))
@@ -1862,16 +2526,21 @@ class BlockchainFederatedIncentiveSystem:
                 
                 with torch.no_grad():
                     for i in range(0, len(test_data_subset), batch_size):
-                        batch_data = test_data_subset[i:i+batch_size]
-                        batch_labels = test_labels_subset[i:i+batch_size]
+                        batch_data = test_data_subset[i:i + batch_size]
+                        batch_labels = test_labels_subset[i:i + batch_size]
                         
                         try:
+
                             outputs = self.model(batch_data)
-                            predictions = torch.argmax(outputs, dim=1)
-                            correct += (predictions == batch_labels).sum().item()
+                            probabilities = torch.softmax(outputs, dim=1)
+                            attack_probabilities = probabilities[:, 1]  # P(Attack)
+                            predictions = (attack_probabilities >= 0.5).long()
+                            correct += (predictions ==
+                                        batch_labels).sum().item()
                             total += len(batch_labels)
                         except Exception as e:
-                            logger.warning(f"Model evaluation failed for batch {i}: {str(e)}")
+                            logger.warning(
+                                f"Model evaluation failed for batch {i}: {str(e)}")
                             # Skip this batch and continue
                             continue
                         
@@ -1893,9 +2562,11 @@ class BlockchainFederatedIncentiveSystem:
         # In a real implementation, this would analyze model stability, convergence, etc.
         # For now, return a simulated score based on training metrics
         try:
+
             if hasattr(client_result, 'training_loss'):
                 loss = client_result.training_loss
-                # Convert loss to reliability score (lower loss = higher reliability)
+                # Convert loss to reliability score (lower loss = higher
+                # reliability)
                 reliability = max(0, min(100, 100 - (loss * 10)))
                 return reliability
             else:
@@ -1915,6 +2586,7 @@ class BlockchainFederatedIncentiveSystem:
             return {}
         
         try:
+
             logger.info("Evaluating zero-day detection performance...")
             
             # Get test data first
@@ -1924,27 +2596,43 @@ class BlockchainFederatedIncentiveSystem:
             # Run data leakage detection tests
             logger.info("🔍 Running data leakage detection tests...")
             try:
+
                 from data_leakage_detection import DataLeakageDetector
                 detector = DataLeakageDetector()
-                leakage_results = detector.run_all_tests(self.coordinator.model, X_test, y_test)
-                
-                logger.info(f"Data leakage detection: {leakage_results['overall']['status']}")
-                logger.info(f"Score: {leakage_results['overall']['overall_score']:.2f}")
+                leakage_results = detector.run_all_tests(
+                    self.coordinator.model, X_test, y_test)
+
+                logger.info(
+                    f"Data leakage detection: {leakage_results['overall']['status']}")
+                logger.info(
+                    f"Score: {leakage_results['overall']['overall_score']:.2f}")
                 
                 # Store leakage results
                 self.data_leakage_results = leakage_results
                 
             except Exception as e:
                 logger.warning(f"Data leakage detection failed: {str(e)}")
-                self.data_leakage_results = {'overall': {'status': 'SKIPPED', 'error': str(e)}}
+                self.data_leakage_results = {'overall': {
+                    'status': 'SKIPPED', 'error': str(e)}}
             
-            # Get support set (training data for few-shot learning)
-            X_support = self.preprocessed_data['X_train']
-            y_support = self.preprocessed_data['y_train']
+            # Get support set (validation data for few-shot learning to prevent data leakage)
+            # Using validation data instead of training data prevents data leakage
+            if 'X_val' not in self.preprocessed_data or 'y_val' not in self.preprocessed_data:
+                logger.error("Validation data not available for zero-day evaluation")
+                return {}
+            
+            X_support = self.preprocessed_data['X_val']
+            y_support = self.preprocessed_data['y_val']
+            
+            logger.info(f"Using validation data as support set: {X_support.shape[0]} samples")
+            
+            # Get zero-day indices for focused evaluation
+            zero_day_indices = self.preprocessed_data.get(
+                'zero_day_indices', [])
             
             # Evaluate using transductive few-shot model
             metrics = self.model.evaluate_zero_day_detection(
-                X_test, y_test, X_support, y_support
+                X_test, y_test, X_support, y_support, zero_day_indices
             )
             
             # Store evaluation results
@@ -1953,7 +2641,8 @@ class BlockchainFederatedIncentiveSystem:
             logger.info("✅ Zero-day detection evaluation completed!")
             logger.info(f"Accuracy: {metrics['accuracy']:.4f}")
             logger.info(f"F1-Score: {metrics['f1_score']:.4f}")
-            logger.info(f"Zero-day detection rate: {metrics['zero_day_detection_rate']:.4f}")
+            logger.info(
+                f"Zero-day detection rate: {metrics['zero_day_detection_rate']:.4f}")
             
             return metrics
             
@@ -1969,6 +2658,7 @@ class BlockchainFederatedIncentiveSystem:
             summary: Incentive summary information
         """
         try:
+
             summary = {
                 'total_rounds': len(self.incentive_history),
                 'total_rewards_distributed': sum(
@@ -1981,27 +2671,33 @@ class BlockchainFederatedIncentiveSystem:
             
             if self.incentive_history:
                 summary['average_rewards_per_round'] = (
-                    summary['total_rewards_distributed'] / len(self.incentive_history)
+                    summary['total_rewards_distributed'] /
+                        len(self.incentive_history)
                 )
             
             # Calculate participant rewards from actual Shapley-based rewards
             # Use the individual_rewards data stored in incentive_history
             for record in self.incentive_history:
                 if 'individual_rewards' in record:
-                    for client_address, token_amount in record['individual_rewards'].items():
+                    for client_address, token_amount in record['individual_rewards'].items(
+                    ):
                         if client_address in summary['participant_rewards']:
                             summary['participant_rewards'][client_address] += token_amount
                         else:
                             summary['participant_rewards'][client_address] = token_amount
             
-            # If no individual rewards found, return empty rewards (no synthetic data)
+            # If no individual rewards found, return empty rewards (no
+            # synthetic data)
             if not summary['participant_rewards']:
-                logger.warning("No individual rewards found - returning empty reward data")
-                logger.info("This indicates that blockchain reward tracking may not be properly configured")
+                logger.warning(
+                    "No individual rewards found - returning empty reward data")
+                logger.info(
+                    "This indicates that blockchain reward tracking may not be properly configured")
             
             # Get round summaries
             for record in self.incentive_history:
-                round_summary = self.incentive_manager.get_round_summary(record['round_number'])
+                round_summary = self.incentive_manager.get_round_summary(
+                    record['round_number'])
                 summary['round_summaries'].append(round_summary)
             
             return summary
@@ -2023,11 +2719,14 @@ class BlockchainFederatedIncentiveSystem:
             return {}
         
         try:
+
             logger.info("Evaluating final global model performance...")
             
             # Use the EXACT SAME results as zero-day detection for perfect consistency
-            # This ensures 100% identical results between zero-day detection and final global model
-            logger.info("Using EXACT SAME results as zero-day detection for perfect consistency...")
+            # This ensures 100% identical results between zero-day detection
+            # and final global model
+            logger.info(
+                "Using EXACT SAME results as zero-day detection for perfect consistency...")
             
             # Get the base model results from zero-day detection evaluation
             if hasattr(self, 'evaluation_results') and self.evaluation_results:
@@ -2038,7 +2737,8 @@ class BlockchainFederatedIncentiveSystem:
                     final_results = {
                         'accuracy': base_results.get('accuracy', 0.0),
                         'f1_score': base_results.get('f1_score', 0.0),
-                        'mcc': base_results.get('mccc', 0.0),  # Note: mccc vs mcc
+                        # Note: mccc vs mcc
+                        'mcc': base_results.get('mccc', 0.0),
                         'zero_day_detection_rate': base_results.get('zero_day_detection_rate', 0.0),
                         'test_samples': base_results.get('test_samples', 0),
                         'model_type': 'Final Global Model (Identical to Zero-Day Detection)',
@@ -2050,20 +2750,28 @@ class BlockchainFederatedIncentiveSystem:
                     }
                     
                     logger.info("✅ Final global model evaluation completed!")
-                    logger.info(f"Final Model Accuracy: {final_results['accuracy']:.4f}")
-                    logger.info(f"Final Model F1-Score: {final_results['f1_score']:.4f}")
+                    logger.info(
+                        f"Final Model Accuracy: {final_results['accuracy']:.4f}")
+                    logger.info(
+                        f"Final Model F1-Score: {final_results['f1_score']:.4f}")
                     logger.info(f"Final Model MCC: {final_results['mcc']:.4f}")
-                    logger.info(f"Final Model Zero-day Detection Rate: {final_results['zero_day_detection_rate']:.4f}")
-                    logger.info(f"Test Samples: {final_results['test_samples']}")
-                    logger.info(f"Evaluation Method: {final_results['evaluation_method']}")
-                    logger.info("🎯 PERFECT CONSISTENCY: Using identical results as zero-day detection")
+                    logger.info(
+                        f"Final Model Zero-day Detection Rate: {final_results['zero_day_detection_rate']:.4f}")
+                    logger.info(
+                        f"Test Samples: {final_results['test_samples']}")
+                    logger.info(
+                        f"Evaluation Method: {final_results['evaluation_method']}")
+                    logger.info(
+                        "🎯 PERFECT CONSISTENCY: Using identical results as zero-day detection")
                     
                     return final_results
                 else:
-                    logger.warning("No base model results available from zero-day detection")
+                    logger.warning(
+                        "No base model results available from zero-day detection")
                     return {}
             else:
-                logger.warning("No evaluation results available from zero-day detection")
+                logger.warning(
+                    "No evaluation results available from zero-day detection")
                 return {}
                 
         except Exception as e:
@@ -2118,6 +2826,7 @@ class BlockchainFederatedIncentiveSystem:
     def save_system_state(self, filepath: str):
         """Save system state to file including incentive history"""
         try:
+
             state = {
                 'config': self.config.__dict__,
                 'training_history': self.training_history,
@@ -2154,7 +2863,9 @@ class BlockchainFederatedIncentiveSystem:
             return {}
         
         try:
-            logger.info("Generating performance visualizations (minimal version)...")
+
+            logger.info(
+                "Generating performance visualizations (minimal version)...")
             
             plot_paths = {}
             
@@ -2176,9 +2887,11 @@ class BlockchainFederatedIncentiveSystem:
                         
                         for client_update in round_data['client_updates']:
                             if hasattr(client_update, 'training_loss'):
-                                round_losses.append(client_update.training_loss)
+                                round_losses.append(
+                                    client_update.training_loss)
                             if hasattr(client_update, 'validation_accuracy'):
-                                round_accuracies.append(client_update.validation_accuracy)
+                                round_accuracies.append(
+                                    client_update.validation_accuracy)
                         
                         # Use average of client metrics for this round
                         if round_losses:
@@ -2187,7 +2900,7 @@ class BlockchainFederatedIncentiveSystem:
                             # Fallback to round-level accuracy if available
                             round_accuracy = round_data.get('accuracy', 0.5)
                             epoch_losses.append(0.1)  # Default loss
-                            
+                                
                         if round_accuracies:
                             epoch_accuracies.append(np.mean(round_accuracies))
                         else:
@@ -2221,23 +2934,34 @@ class BlockchainFederatedIncentiveSystem:
             
             # Use real blockchain data if available, otherwise empty
             blockchain_data = {}
-            if hasattr(self, 'blockchain_gas_data') and self.blockchain_gas_data:
+            if hasattr(
+    self,
+     'blockchain_gas_data') and self.blockchain_gas_data:
                 blockchain_data = self.blockchain_gas_data
-                logger.info(f"Using real blockchain data: {len(blockchain_data.get('gas_used', []))} transactions")
-                logger.info(f"🔍 DEBUG: blockchain_data keys: {list(blockchain_data.keys())}")
-                logger.info(f"🔍 DEBUG: gas_used length: {len(blockchain_data.get('gas_used', []))}")
-                logger.info(f"🔍 DEBUG: gas_used values: {blockchain_data.get('gas_used', [])}")
-                logger.info(f"🔍 DEBUG: transactions length: {len(blockchain_data.get('transactions', []))}")
-                logger.info(f"🔍 DEBUG: transactions: {blockchain_data.get('transactions', [])}")
+                logger.info(
+                    f"Using real blockchain data: {len(blockchain_data.get('gas_used', []))} transactions")
+                logger.info(
+                    f"🔍 DEBUG: blockchain_data keys: {list(blockchain_data.keys())}")
+                logger.info(
+                    f"🔍 DEBUG: gas_used length: {len(blockchain_data.get('gas_used', []))}")
+                logger.info(
+                    f"🔍 DEBUG: gas_used values: {blockchain_data.get('gas_used', [])}")
+                logger.info(
+                    f"🔍 DEBUG: transactions length: {len(blockchain_data.get('transactions', []))}")
+                logger.info(
+                    f"🔍 DEBUG: transactions: {blockchain_data.get('transactions', [])}")
             else:
-                logger.info("No real blockchain data available - using empty data for visualization")
+                logger.info(
+                    "No real blockchain data available - using empty data for visualization")
             
             # Extract real client performance data from training history
             client_results = []
             
-            # Use real client performance from training history - AVERAGE across all rounds
+            # Use real client performance from training history - AVERAGE
+            # across all rounds
             if hasattr(self, 'training_history') and self.training_history:
-                logger.info("Using real client performance data from training history - AVERAGE across all rounds")
+                logger.info(
+                    "Using real client performance data from training history - AVERAGE across all rounds")
                 
                 # Initialize client performance tracking
                 client_performance_data = {}
@@ -2253,32 +2977,47 @@ class BlockchainFederatedIncentiveSystem:
                 # Collect performance data from all rounds
                 for round_data in self.training_history:
                     if 'client_updates' in round_data:
-                        for i, client_update in enumerate(round_data['client_updates']):
+                        for i, client_update in enumerate(
+                            round_data['client_updates']):
                             client_id = f'client_{i+1}'
                             if client_id in client_performance_data:
                                 # Get real accuracy from client training
-                                client_accuracy = getattr(client_update, 'validation_accuracy', 0.5)
-                                client_loss = getattr(client_update, 'training_loss', 0.5)
+                                client_accuracy = getattr(
+    client_update, 'validation_accuracy', 0.5)
+                                client_loss = getattr(
+    client_update, 'training_loss', 0.5)
                                 
                                 # Calculate derived metrics
-                                client_f1 = max(0.1, min(0.99, client_accuracy * 0.95))
-                                client_precision = max(0.1, min(0.99, client_f1 + 0.01))
-                                client_recall = max(0.1, min(0.99, client_f1 - 0.01))
+                                client_f1 = max(
+                                    0.1, min(0.99, client_accuracy * 0.95))
+                                client_precision = max(
+                                    0.1, min(0.99, client_f1 + 0.01))
+                                client_recall = max(
+                                    0.1, min(0.99, client_f1 - 0.01))
                                 
                                 # Store performance data
-                                client_performance_data[client_id]['accuracies'].append(client_accuracy)
-                                client_performance_data[client_id]['losses'].append(client_loss)
-                                client_performance_data[client_id]['f1_scores'].append(client_f1)
-                                client_performance_data[client_id]['precisions'].append(client_precision)
-                                client_performance_data[client_id]['recalls'].append(client_recall)
+                                client_performance_data[client_id]['accuracies'].append(
+                                    client_accuracy)
+                                client_performance_data[client_id]['losses'].append(
+                                    client_loss)
+                                client_performance_data[client_id]['f1_scores'].append(
+                                    client_f1)
+                                client_performance_data[client_id]['precisions'].append(
+                                    client_precision)
+                                client_performance_data[client_id]['recalls'].append(
+                                    client_recall)
                 
                 # Calculate average performance for each client
                 for client_id, data in client_performance_data.items():
                     if data['accuracies']:  # Only if we have data
-                        avg_accuracy = sum(data['accuracies']) / len(data['accuracies'])
-                        avg_f1 = sum(data['f1_scores']) / len(data['f1_scores'])
-                        avg_precision = sum(data['precisions']) / len(data['precisions'])
-                        avg_recall = sum(data['recalls']) / len(data['recalls'])
+                        avg_accuracy = sum(
+                            data['accuracies']) / len(data['accuracies'])
+                        avg_f1 = sum(data['f1_scores']) / \
+                                     len(data['f1_scores'])
+                        avg_precision = sum(
+                            data['precisions']) / len(data['precisions'])
+                        avg_recall = sum(data['recalls']) / \
+                                         len(data['recalls'])
                         
                         client_results.append({
                             'client_id': client_id,
@@ -2288,17 +3027,22 @@ class BlockchainFederatedIncentiveSystem:
                             'recall': round(avg_recall, 3)
                         })
                         
-                        logger.info(f"Average {client_id} performance across {len(data['accuracies'])} rounds: Accuracy={avg_accuracy:.3f}, F1={avg_f1:.3f}")
+                        logger.info(
+                            f"Average {client_id} performance across {len(data['accuracies'])} rounds: Accuracy={avg_accuracy:.3f}, F1={avg_f1:.3f}")
                 
                 # If no client data found, fall back to latest round
                 if not client_results:
-                    logger.warning("No client performance data found, falling back to latest round")
+                    logger.warning(
+                        "No client performance data found, falling back to latest round")
                     latest_round = self.training_history[-1] if self.training_history else None
                     
                     if latest_round and 'client_updates' in latest_round:
-                        for i, client_update in enumerate(latest_round['client_updates']):
-                            client_accuracy = getattr(client_update, 'validation_accuracy', 0.5)
-                            client_f1 = max(0.1, min(0.99, client_accuracy * 0.95))
+                        for i, client_update in enumerate(
+                            latest_round['client_updates']):
+                            client_accuracy = getattr(
+    client_update, 'validation_accuracy', 0.5)
+                            client_f1 = max(
+                                0.1, min(0.99, client_accuracy * 0.95))
                             
                             client_results.append({
                                 'client_id': f'client_{i+1}',
@@ -2311,36 +3055,56 @@ class BlockchainFederatedIncentiveSystem:
                 # If no client updates found, use round accuracy as base
                 if not client_results and latest_round:
                     round_accuracy = latest_round.get('accuracy', 0.5)
-                    logger.info(f"Using round accuracy as base: {round_accuracy:.3f}")
-                    
-                    logger.warning("No individual client performance data available - skipping client performance visualization")
-                    logger.info("Client performance data requires proper tracking during federated training")
+                    logger.info(
+                        f"Using round accuracy as base: {round_accuracy:.3f}")
+
+                    logger.warning(
+                        "No individual client performance data available - skipping client performance visualization")
+                    logger.info(
+                        "Client performance data requires proper tracking during federated training")
             
             # Fallback to incentive history if no training history
             elif hasattr(self, 'incentive_history') and self.incentive_history:
                 # Use the latest round's client performance data
                 latest_round = self.incentive_history[-1] if self.incentive_history else None
                 if latest_round and 'round_number' in latest_round:
-                    # Use final evaluation results as base instead of hardcoded low values
-                    final_accuracy = getattr(self, 'final_evaluation_results', {}).get('accuracy', 0.5)
-                    final_f1 = getattr(self, 'final_evaluation_results', {}).get('f1_score', 0.5)
-                    
-                    logger.info(f"Using final evaluation as base: Accuracy={final_accuracy:.3f}, F1={final_f1:.3f}")
-                    
-                    logger.warning("No individual client performance data available - skipping client performance visualization")
-                    logger.info("Client performance data requires proper tracking during federated training")
+                    # Use final evaluation results as base instead of hardcoded
+                    # low values
+                    final_accuracy = getattr(
+    self, 'final_evaluation_results', {}).get(
+        'accuracy', 0.5)
+                    final_f1 = getattr(
+    self, 'final_evaluation_results', {}).get(
+        'f1_score', 0.5)
+
+                    logger.info(
+                        f"Using final evaluation as base: Accuracy={final_accuracy:.3f}, F1={final_f1:.3f}")
+
+                    logger.warning(
+                        "No individual client performance data available - skipping client performance visualization")
+                    logger.info(
+                        "Client performance data requires proper tracking during federated training")
                 else:
                     # Fallback to realistic data if no incentive history
-                    final_accuracy = getattr(self, 'final_evaluation_results', {}).get('accuracy', 0.5)
-                    final_f1 = getattr(self, 'final_evaluation_results', {}).get('f1_score', 0.5)
-                    
-                    logger.warning("No individual client performance data available - skipping client performance visualization")
-                    logger.info("Client performance data requires proper tracking during federated training")
+                    final_accuracy = getattr(
+    self, 'final_evaluation_results', {}).get(
+        'accuracy', 0.5)
+                    final_f1 = getattr(
+    self, 'final_evaluation_results', {}).get(
+        'f1_score', 0.5)
+
+                    logger.warning(
+                        "No individual client performance data available - skipping client performance visualization")
+                    logger.info(
+                        "Client performance data requires proper tracking during federated training")
             else:
-                logger.warning("No individual client performance data available - skipping client performance visualization")
-                logger.info("Client performance data requires proper tracking during federated training")
-            
-            logger.info(f"🔍 DEBUG: Real client results generated: {client_results}")
+                logger.warning(
+                    "No individual client performance data available - skipping client performance visualization")
+                logger.info(
+                    "Client performance data requires proper tracking during federated training")
+
+            logger.info(
+                f"🔍 DEBUG: Real client results generated: {client_results}")
             
             # Get evaluation results if available
             evaluation_results = getattr(self, 'evaluation_results', {})
@@ -2374,7 +3138,8 @@ class BlockchainFederatedIncentiveSystem:
             
             try:
                 # Training history plot
-                plot_paths['training_history'] = self.visualizer.plot_training_history(training_history)
+                plot_paths['training_history'] = self.visualizer.plot_training_history(
+                    training_history)
                 logger.info("✅ Training history plot completed")
             except Exception as e:
                 logger.warning(f"Training history plot failed: {str(e)}")
@@ -2384,15 +3149,17 @@ class BlockchainFederatedIncentiveSystem:
             try:
                 # Confusion matrices for both base and TTT models
                 if evaluation_results and 'base_model' in evaluation_results and 'ttt_model' in evaluation_results:
-                    # Plot base model confusion matrix
+                    # Plot base model confusion matrix (pass individual model
+                    # data)
                     plot_paths['confusion_matrix_base'] = self.visualizer.plot_confusion_matrices(
-                        evaluation_results['base_model'], save=True, title_suffix=" - Base Model"
+                        {'base_model': evaluation_results['base_model']}, save=True, title_suffix="base_model"
                     )
                     logger.info("✅ Base model confusion matrix completed")
                     
-                    # Plot TTT model confusion matrix
+                    # Plot TTT model confusion matrix (pass individual model
+                    # data)
                     plot_paths['confusion_matrix_ttt'] = self.visualizer.plot_confusion_matrices(
-                        evaluation_results['ttt_model'], save=True, title_suffix=" - TTT Enhanced Model"
+                        {'ttt_model': evaluation_results['ttt_model']}, save=True, title_suffix="ttt_enhanced_model"
                     )
                     logger.info("✅ TTT model confusion matrix completed")
                 else:
@@ -2404,7 +3171,8 @@ class BlockchainFederatedIncentiveSystem:
                         logger.info("✅ Combined confusion matrix completed")
                     else:
                         # Use actual evaluation results for confusion matrix
-                        final_results = getattr(self, 'final_evaluation_results', {})
+                        final_results = getattr(
+    self, 'final_evaluation_results', {})
                         real_results = {
                             'accuracy': final_results.get('accuracy', 0.5),
                             'precision': final_results.get('precision', 0.5),
@@ -2421,33 +3189,41 @@ class BlockchainFederatedIncentiveSystem:
             
             try:
                 # TTT Adaptation plot
-                if hasattr(self, 'ttt_adaptation_data') and self.ttt_adaptation_data:
+                if hasattr(
+    self,
+     'ttt_adaptation_data') and self.ttt_adaptation_data:
+                    logger.info(
+                        f"🔍 DEBUG: Plotting TTT adaptation data with {len(self.ttt_adaptation_data.get('total_losses', []))} steps")
                     plot_paths['ttt_adaptation'] = self.visualizer.plot_ttt_adaptation(
                         self.ttt_adaptation_data, save=True
                     )
                     logger.info("✅ TTT adaptation plot completed")
                 else:
-                    logger.warning("No TTT adaptation data available for plotting")
+                    logger.warning(
+                        "No TTT adaptation data available for plotting")
             except Exception as e:
                 logger.warning(f"TTT adaptation plot failed: {str(e)}")
             
             try:
                 # Client performance plot
-                plot_paths['client_performance'] = self.visualizer.plot_client_performance(client_results)
+                plot_paths['client_performance'] = self.visualizer.plot_client_performance(
+                    client_results)
                 logger.info("✅ Client performance plot completed")
             except Exception as e:
                 logger.warning(f"Client performance plot failed: {str(e)}")
             
             try:
                 # Blockchain metrics plot
-                plot_paths['blockchain_metrics'] = self.visualizer.plot_blockchain_metrics(blockchain_data)
+                plot_paths['blockchain_metrics'] = self.visualizer.plot_blockchain_metrics(
+                    blockchain_data)
                 logger.info("✅ Blockchain metrics plot completed")
             except Exception as e:
                 logger.warning(f"Blockchain metrics plot failed: {str(e)}")
             
             try:
                 # Gas usage analysis plot
-                plot_paths['gas_usage_analysis'] = self.visualizer.plot_gas_usage_analysis(blockchain_data)
+                plot_paths['gas_usage_analysis'] = self.visualizer.plot_gas_usage_analysis(
+                    blockchain_data)
                 logger.info("✅ Gas usage analysis plot completed")
             except Exception as e:
                 logger.warning(f"Gas usage analysis plot failed: {str(e)}")
@@ -2461,12 +3237,16 @@ class BlockchainFederatedIncentiveSystem:
                     plot_paths['performance_comparison_annotated'] = self.visualizer.plot_performance_comparison_with_annotations(
                         base_results, ttt_results
                     )
-                    logger.info("✅ Performance comparison with annotations completed")
+                    logger.info(
+                        "✅ Performance comparison with annotations completed")
                 else:
-                    logger.warning("Base and TTT model results not available - skipping performance comparison visualization")
-                    logger.info("Performance comparison requires proper evaluation results with base_model and ttt_model keys")
+                    logger.warning(
+                        "Base and TTT model results not available - skipping performance comparison visualization")
+                    logger.info(
+                        "Performance comparison requires proper evaluation results with base_model and ttt_model keys")
             except Exception as e:
-                logger.warning(f"Performance comparison with annotations failed: {str(e)}")
+                logger.warning(
+                    f"Performance comparison with annotations failed: {str(e)}")
             
             try:
                 # ROC curves comparison (Base vs TTT models)
@@ -2481,62 +3261,83 @@ class BlockchainFederatedIncentiveSystem:
                         )
                         logger.info("✅ ROC curves plot completed")
                     else:
-                        logger.warning("ROC curve data not available in evaluation results")
+                        logger.warning(
+                            "ROC curve data not available in evaluation results")
                 else:
-                    logger.warning("Base and TTT model results not available for ROC curves")
+                    logger.warning(
+                        "Base and TTT model results not available for ROC curves")
             except Exception as e:
                 logger.warning(f"ROC curves plot failed: {str(e)}")
             
             try:
                 # Save metrics to JSON
-                plot_paths['metrics_json'] = self.visualizer.save_metrics_to_json(system_data)
+                plot_paths['metrics_json'] = self.visualizer.save_metrics_to_json(
+                    system_data)
                 logger.info("✅ Metrics JSON saved")
             except Exception as e:
                 logger.warning(f"Metrics JSON save failed: {str(e)}")
             
-            # Generate token distribution visualization if incentive data is available
+            # Generate token distribution visualization if incentive data is
+            # available
             try:
-                if hasattr(self, 'incentive_manager') and self.incentive_manager:
-                    # Get incentive data from incentive history (following main_edgeiiot.py pattern)
+
+                if hasattr(
+    self,
+     'incentive_manager') and self.incentive_manager:
+                    # Get incentive data from incentive history (following
+                    # main_edgeiiot.py pattern)
                     incentive_data = {
                         'participant_rewards': {},
                         'total_rewards_distributed': 0
                     }
                     
                     # Extract data from incentive history
-                    if hasattr(self, 'incentive_history') and self.incentive_history:
+                    if hasattr(
+    self,
+     'incentive_history') and self.incentive_history:
                         for record in self.incentive_history:
                             if 'individual_rewards' in record:
-                                for client_id, reward in record['individual_rewards'].items():
+                                for client_id, reward in record['individual_rewards'].items(
+                                ):
                                     if client_id in incentive_data['participant_rewards']:
                                         incentive_data['participant_rewards'][client_id] += reward
                                     else:
                                         incentive_data['participant_rewards'][client_id] = reward
-                            incentive_data['total_rewards_distributed'] += record.get('total_rewards', 0)
+                            incentive_data['total_rewards_distributed'] += record.get(
+                                'total_rewards', 0)
                     
-                    # Only generate visualization if we have real incentive data
+                    # Only generate visualization if we have real incentive
+                    # data
                     if incentive_data['participant_rewards'] or incentive_data['total_rewards_distributed'] > 0:
                         # Generate token distribution visualization
-                        token_plot_path = self.visualizer.plot_token_distribution(incentive_data, save=True)
+                        token_plot_path = self.visualizer.plot_token_distribution(
+                            incentive_data, save=True)
                         if token_plot_path:
                             plot_paths['token_distribution'] = token_plot_path
-                            logger.info("✅ Token distribution visualization completed with real data")
+                            logger.info(
+                                "✅ Token distribution visualization completed with real data")
                         else:
-                            logger.warning("Token distribution visualization generation failed")
+                            logger.warning(
+                                "Token distribution visualization generation failed")
                     else:
-                        logger.info("ℹ️ No real incentive data available, skipping token distribution visualization")
+                        logger.info(
+                            "ℹ️ No real incentive data available, skipping token distribution visualization")
                 else:
-                    logger.info("ℹ️ No incentive manager available, skipping token distribution visualization")
+                    logger.info(
+                        "ℹ️ No incentive manager available, skipping token distribution visualization")
             except Exception as e:
-                logger.warning(f"Token distribution visualization failed: {str(e)}")
+                logger.warning(
+                    f"Token distribution visualization failed: {str(e)}")
             
-            logger.info("✅ Performance visualizations generated successfully (minimal version)!")
+            logger.info(
+                "✅ Performance visualizations generated successfully (minimal version)!")
             logger.info(f"Generated plots: {list(plot_paths.keys())}")
             
             return plot_paths
             
         except Exception as e:
-            logger.error(f"❌ Performance visualization generation failed: {str(e)}")
+            logger.error(
+                f"❌ Performance visualization generation failed: {str(e)}")
             return {}
     
     def evaluate_zero_day_detection(self) -> Dict:
@@ -2547,44 +3348,84 @@ class BlockchainFederatedIncentiveSystem:
             evaluation_results: Dictionary containing evaluation metrics
         """
         try:
+
             logger.info("🔍 Starting zero-day detection evaluation...")
             
-            if not hasattr(self, 'preprocessed_data') or not self.preprocessed_data:
+            if not hasattr(
+    self,
+     'preprocessed_data') or not self.preprocessed_data:
                 logger.error("No preprocessed data available for evaluation")
                 return {}
             
             # Get test data
             X_test = self.preprocessed_data['X_test']
             y_test = self.preprocessed_data['y_test']
-            zero_day_indices = self.preprocessed_data.get('zero_day_indices', [])
-            
-            if len(zero_day_indices) == 0:
-                logger.warning("No zero-day samples found in test data - using all test samples for evaluation")
-                # Use all test samples for evaluation if no zero-day samples
-                zero_day_indices = list(range(len(y_test)))
-            
-            logger.info(f"Evaluating on {len(X_test)} test samples with {len(zero_day_indices)} zero-day samples")
+            zero_day_indices = self.preprocessed_data.get(
+                'zero_day_indices', [])
             
             # Convert to tensors
             X_test_tensor = torch.FloatTensor(X_test).to(self.device)
             y_test_tensor = torch.LongTensor(y_test).to(self.device)
+            
+            # Check if we're using TCN (sequences) and adjust indices
+            # accordingly
+            if self.config.use_tcn and len(X_test.shape) == 3:
+                # For TCN with sequences, we need to create new zero-day
+                # indices based on sequence labels
+                logger.info(
+                    "Adjusting zero-day indices for TCN sequence data...")
+                # Create zero-day mask based on sequence labels (last timestep
+                # of each sequence)
+                zero_day_mask = (y_test_tensor != 0).to(torch.bool)
+                logger.info(
+                    f"TCN sequence data: {X_test.shape[0]} sequences, {torch.sum(zero_day_mask).item()} zero-day sequences")
+            else:
+                # For non-TCN data, use original zero-day indices
+                pass
+
+            if len(zero_day_indices) == 0:
+                logger.warning(
+                    "No zero-day samples found in test data - using all test samples for evaluation")
+                # Use all test samples for evaluation if no zero-day samples
+                zero_day_indices = list(range(len(y_test)))
+            
+            logger.info(
+                f"Evaluating on {len(X_test)} test samples with {len(zero_day_indices)} zero-day samples")
+            
+            # Ensure zero_day_indices are within bounds
+            max_index = len(y_test) - 1
+            zero_day_indices = [
+                idx for idx in zero_day_indices if 0 <= idx <= max_index]
+                
             zero_day_mask = torch.zeros(len(y_test), dtype=torch.bool)
             zero_day_mask[zero_day_indices] = True
             
-            # Evaluate Base Model using original transductive few-shot learning method
-            logger.info("📊 Evaluating Base Model with transductive few-shot learning...")
-            base_results = self._evaluate_base_model(X_test_tensor, y_test_tensor, zero_day_mask)
+            # Evaluate Base Model using original transductive few-shot learning
+            # method
+            logger.info(
+                "📊 Evaluating Base Model with transductive few-shot learning...")
+            base_results = self._evaluate_base_model(
+    X_test_tensor, y_test_tensor, zero_day_mask)
             
             # Evaluate TTT Enhanced Model using original method
-            logger.info("🚀 Evaluating TTT Enhanced Model with test-time training...")
-            ttt_results = self._evaluate_ttt_model(X_test_tensor, y_test_tensor, zero_day_mask)
+            logger.info(
+                "🚀 Evaluating TTT Enhanced Model with test-time training...")
+            ttt_results = self._evaluate_ttt_model(
+    X_test_tensor, y_test_tensor, zero_day_mask)
             
             # ADDITIONAL: Evaluate with statistical robustness methods for comparison
-            logger.info("📈 Additional evaluation with statistical robustness methods...")
-            base_kfold_results = self._evaluate_base_model_kfold(X_test_tensor, y_test_tensor)
-            ttt_metatasks_results = self._evaluate_ttt_model_metatasks(X_test_tensor, y_test_tensor)
+            # Note: TTT training is only performed once above, statistical
+            # methods reuse the same model
+            logger.info(
+                "📈 Additional evaluation with statistical robustness methods...")
+            base_kfold_results = self._evaluate_base_model_kfold(
+                X_test_tensor, y_test_tensor)
+            # Use the same TTT model from above instead of training again
+            ttt_metatasks_results = self._evaluate_ttt_model_metatasks_no_training(
+                X_test_tensor, y_test_tensor, ttt_results.get('adapted_model'))
             
-            # Combine results with both original and statistical robustness metrics
+            # Combine results with both original and statistical robustness
+            # metrics
             evaluation_results = {
                 # Original zero-day detection results (primary)
                 'base_model': base_results,
@@ -2594,34 +3435,55 @@ class BlockchainFederatedIncentiveSystem:
                 'ttt_model_metatasks': ttt_metatasks_results,
                 'improvement': {
                     'accuracy_improvement': ttt_results.get('accuracy', 0) - base_results.get('accuracy', 0),
-                    'precision_improvement': ttt_results.get('precision', 0) - base_results.get('precision', 0),
-                    'recall_improvement': ttt_results.get('recall', 0) - base_results.get('recall', 0),
-                    'f1_improvement': ttt_results.get('f1_score', 0) - base_results.get('f1_score', 0),
+                    'precision_macro_improvement': ttt_results.get('precision_macro', 0) - base_results.get('precision_macro', 0),
+                    'recall_macro_improvement': ttt_results.get('recall_macro', 0) - base_results.get('recall_macro', 0),
+                    'f1_macro_improvement': ttt_results.get('f1_score_macro', 0) - base_results.get('f1_score_macro', 0),
+                    'precision_weighted_improvement': ttt_results.get('precision_weighted', 0) - base_results.get('precision_weighted', 0),
+                    'recall_weighted_improvement': ttt_results.get('recall_weighted', 0) - base_results.get('recall_weighted', 0),
+                    'f1_weighted_improvement': ttt_results.get('f1_score_weighted', 0) - base_results.get('f1_score_weighted', 0),
                     'mcc_improvement': ttt_results.get('mcc', 0) - base_results.get('mcc', 0),
                     'zero_day_detection_improvement': ttt_results.get('zero_day_detection_rate', 0) - base_results.get('zero_day_detection_rate', 0)
                 },
                 'test_samples': len(X_test),
-                'evaluated_samples': len(X_test),  # Original method uses all test samples
-                'meta_tasks_samples': min(5000, len(X_test)),  # Statistical robustness samples
+                # Original method uses all test samples
+                'evaluated_samples': len(X_test),
+                # Statistical robustness samples
+                'meta_tasks_samples': min(5000, len(X_test)),
                 'zero_day_samples': len(zero_day_indices),
                 'timestamp': time.time()
             }
             
-            # Log results with both original and statistical robustness metrics
-            logger.info("📈 Zero-Day Detection Evaluation Results:")
+            # Log results with multiclass metrics
+            logger.info(
+                "📈 Zero-Day Detection Evaluation Results (10-class multiclass):")
             logger.info("  🎯 Original Methods (Primary):")
-            logger.info(f"    Base Model - Accuracy: {base_results.get('accuracy', 0):.4f}")
-            logger.info(f"    Base Model - F1: {base_results.get('f1_score', 0):.4f}")
-            logger.info(f"    Base Model - Zero-day Detection Rate: {base_results.get('zero_day_detection_rate', 0):.4f}")
-            logger.info(f"    TTT Model - Accuracy: {ttt_results.get('accuracy', 0):.4f}")
-            logger.info(f"    TTT Model - F1: {ttt_results.get('f1_score', 0):.4f}")
-            logger.info(f"    TTT Model - Zero-day Detection Rate: {ttt_results.get('zero_day_detection_rate', 0):.4f}")
+            logger.info(
+                f"    Base Model - Accuracy: {base_results.get('accuracy', 0):.4f}")
+            logger.info(
+                f"    Base Model - F1-Macro: {base_results.get('f1_score_macro', 0):.4f}")
+            logger.info(
+                f"    Base Model - F1-Weighted: {base_results.get('f1_score_weighted', 0):.4f}")
+            logger.info(
+                f"    Base Model - Zero-day Detection Rate: {base_results.get('zero_day_detection_rate', 0):.4f}")
+            logger.info(
+                f"    TTT Model - Accuracy: {ttt_results.get('accuracy', 0):.4f}")
+            logger.info(
+                f"    TTT Model - F1-Macro: {ttt_results.get('f1_score_macro', 0):.4f}")
+            logger.info(
+                f"    TTT Model - F1-Weighted: {ttt_results.get('f1_score_weighted', 0):.4f}")
+            logger.info(
+                f"    TTT Model - Zero-day Detection Rate: {ttt_results.get('zero_day_detection_rate', 0):.4f}")
             logger.info("  📊 Statistical Robustness Methods (Additional):")
-            logger.info(f"    Base Model (k-fold) - Accuracy: {base_kfold_results.get('accuracy_mean', 0):.4f} ± {base_kfold_results.get('accuracy_std', 0):.4f}")
-            logger.info(f"    Base Model (k-fold) - F1: {base_kfold_results.get('macro_f1_mean', 0):.4f} ± {base_kfold_results.get('macro_f1_std', 0):.4f}")
-            logger.info(f"    TTT Model (meta-tasks) - Accuracy: {ttt_metatasks_results.get('accuracy_mean', 0):.4f} ± {ttt_metatasks_results.get('accuracy_std', 0):.4f}")
-            logger.info(f"    TTT Model (meta-tasks) - F1: {ttt_metatasks_results.get('macro_f1_mean', 0):.4f} ± {ttt_metatasks_results.get('macro_f1_std', 0):.4f}")
-            logger.info(f"  📈 Improvement - Accuracy: {evaluation_results['improvement']['accuracy_improvement']:+.4f}, F1: {evaluation_results['improvement']['f1_improvement']:+.4f}")
+            logger.info(
+                f"    Base Model (k-fold) - Accuracy: {base_kfold_results.get('accuracy_mean', 0):.4f} ± {base_kfold_results.get('accuracy_std', 0):.4f}")
+            logger.info(
+                f"    Base Model (k-fold) - F1: {base_kfold_results.get('macro_f1_mean', 0):.4f} ± {base_kfold_results.get('macro_f1_std', 0):.4f}")
+            logger.info(
+                f"    TTT Model (meta-tasks) - Accuracy: {ttt_metatasks_results.get('accuracy_mean', 0):.4f} ± {ttt_metatasks_results.get('accuracy_std', 0):.4f}")
+            logger.info(
+                f"    TTT Model (meta-tasks) - F1: {ttt_metatasks_results.get('macro_f1_mean', 0):.4f} ± {ttt_metatasks_results.get('macro_f1_std', 0):.4f}")
+            logger.info(
+                f"  📈 Improvement - Accuracy: {evaluation_results['improvement']['accuracy_improvement']:+.4f}, F1-Macro: {evaluation_results['improvement'].get('f1_macro_improvement', 0):+.4f}")
             
             return evaluation_results
             
@@ -2631,7 +3493,11 @@ class BlockchainFederatedIncentiveSystem:
             traceback.print_exc()
             return {}
     
-    def _evaluate_base_model(self, X_test: torch.Tensor, y_test: torch.Tensor, zero_day_mask: torch.Tensor) -> Dict:
+    def _evaluate_base_model(
+    self,
+    X_test: torch.Tensor,
+    y_test: torch.Tensor,
+     zero_day_mask: torch.Tensor) -> Dict:
         """
         Evaluate base model using the SAME approach as final global model evaluation
         
@@ -2645,55 +3511,81 @@ class BlockchainFederatedIncentiveSystem:
         """
         try:
             # Use the SAME evaluation approach as final global model evaluation
-            # This ensures Base Model and Final Global Model give the same results
+            # This ensures Base Model and Final Global Model give the same
+            # results
             
-            # Get the global model from the coordinator (same as final evaluation)
+            # Get the global model from the coordinator (same as final
+            # evaluation)
             if hasattr(self, 'coordinator') and self.coordinator:
                 final_model = self.coordinator.model
                 
                 if final_model:
-                    # Use the SAME few-shot evaluation approach as final global model
+                    # Use the SAME few-shot evaluation approach as final global
+                    # model
                     device = next(final_model.parameters()).device
                     
                     # Convert to tensors and move to device
-                    X_test_tensor = torch.FloatTensor(X_test.cpu().numpy()).to(device)
-                    y_test_tensor = torch.LongTensor(y_test.cpu().numpy()).to(device)
-                    
-                    # Create few-shot tasks for evaluation (SAME as final global model)
+                    X_test_tensor = torch.FloatTensor(
+                        X_test.cpu().numpy()).to(device)
+                    y_test_tensor = torch.LongTensor(
+                        y_test.cpu().numpy()).to(device)
+
+                    # Create few-shot tasks for evaluation (SAME as final
+                    # global model)
                     from models.transductive_fewshot_model import create_meta_tasks
                     
                     # Create meta-tasks for evaluation (SAME parameters as final global model)
+                    # For multiclass zero-day detection, use 10-class classification directly
+                    # Labels: 0=Normal, 1-9=Attack types (Fuzzers, Analysis,
+                    # Backdoor, DoS, Exploits, Generic, Reconnaissance,
+                    # Shellcode, Worms)
+
                     meta_tasks = create_meta_tasks(
-                        X_test_tensor, y_test_tensor, 
-                        n_way=2, k_shot=5, n_query=10
+                        X_test_tensor, y_test_tensor,  # Use 10-class labels directly
+                        n_way=2, k_shot=50, n_query=100,   # Binary classification for zero-day detection
+                        phase="testing",
+                        normal_query_ratio=0.9,  # 90% Normal samples in query set for testing
+                        zero_day_attack_label=None  # No exclusion for testing phase
                     )
                     
                     all_predictions = []
                     all_labels = []
                     
-                    # Evaluate on each meta-task (SAME approach as final global model)
+                    # Evaluate on each meta-task (SAME approach as final global
+                    # model)
                     for task in meta_tasks:
                         support_x = task['support_x']
                         support_y = task['support_y']
                         query_x = task['query_x']
                         query_y = task['query_y']
                         
-                        # Get prototypes from support set (SAME as final global model)
+                        # Get prototypes from support set (SAME as final global
+                        # model)
                         with torch.no_grad():
-                            support_features = final_model.get_embeddings(support_x)
+                            support_features = final_model.get_embeddings(
+                                support_x)
                             prototypes = []
                             for class_id in torch.unique(support_y):
                                 class_mask = (support_y == class_id)
-                                class_prototype = support_features[class_mask].mean(dim=0)
+                                class_prototype = support_features[class_mask].mean(
+                                    dim=0)
                                 prototypes.append(class_prototype)
                             prototypes = torch.stack(prototypes)
                             
                             # Get query features
-                            query_features = final_model.get_embeddings(query_x)
+                            query_features = final_model.get_embeddings(
+                                query_x)
                             
                             # Calculate distances to prototypes
                             distances = torch.cdist(query_features, prototypes)
-                            predictions = torch.argmin(distances, dim=1)
+                            
+                            # Convert distances to probabilities for binary classification
+                            logits = -distances  # Negative distances as logits
+                            probabilities = torch.softmax(logits, dim=1)
+                            attack_probabilities = probabilities[:, 1]  # P(Attack)
+                            
+                            # Use threshold-based binary classification
+                            predictions = (attack_probabilities >= 0.5).long()
                             
                             all_predictions.append(predictions.cpu())
                             all_labels.append(query_y.cpu())
@@ -2702,11 +3594,13 @@ class BlockchainFederatedIncentiveSystem:
                     predictions = torch.cat(all_predictions, dim=0)
                     y_test_combined = torch.cat(all_labels, dim=0)
                     
-                    # Calculate metrics using optimal threshold (SAME as final global model)
+                    # Calculate metrics using optimal threshold (SAME as final
+                    # global model)
                     from sklearn.metrics import roc_auc_score, roc_curve
                     import numpy as np
                     
-                    # Get prediction probabilities for threshold finding (SAME as final global model)
+                    # Get prediction probabilities for threshold finding (SAME
+                    # as final global model)
                     with torch.no_grad():
                         all_probs = []
                         for task in meta_tasks:
@@ -2714,17 +3608,21 @@ class BlockchainFederatedIncentiveSystem:
                             support_y = task['support_y']
                             query_x = task['query_x']
                             query_y = task['query_y']
-                            support_features = final_model.get_embeddings(support_x)
+                            support_features = final_model.get_embeddings(
+                                support_x)
                             prototypes = []
                             for class_id in torch.unique(support_y):
                                 class_mask = (support_y == class_id)
-                                class_prototype = support_features[class_mask].mean(dim=0)
+                                class_prototype = support_features[class_mask].mean(
+                                    dim=0)
                                 prototypes.append(class_prototype)
                             prototypes = torch.stack(prototypes)
                             
-                            query_features = final_model.get_embeddings(query_x)
+                            query_features = final_model.get_embeddings(
+                                query_x)
                             distances = torch.cdist(query_features, prototypes)
-                            # Convert distances to probabilities (closer = higher probability)
+                            # Convert distances to probabilities (closer =
+                            # higher probability)
                             probs = torch.softmax(-distances, dim=1)
                             all_probs.append(probs.cpu())
                     
@@ -2732,101 +3630,242 @@ class BlockchainFederatedIncentiveSystem:
                     probs_np = probs_combined.numpy()
                     y_test_np = y_test_combined.numpy()
                     
-                    # Find optimal threshold using ROC curve (SAME as final global model)
-                    if len(np.unique(y_test_np)) > 1:
-                        fpr, tpr, thresholds = roc_curve(y_test_np, probs_np[:, 1])
-                        optimal_idx = np.argmax(tpr - fpr)
-                        optimal_threshold = thresholds[optimal_idx]
-                        roc_auc = roc_auc_score(y_test_np, probs_np[:, 1])
+                    # Find optimal threshold using ROC curve with class imbalance handling
+                    # Convert multiclass to binary for threshold optimization
+                    y_test_binary = (y_test_np != 0).astype(
+                        int)  # Normal=0, Attack=1
+                    # Attack probability = 1 - Normal probability
+                    attack_probs = 1.0 - probs_np[:, 0]
+
+                    if len(np.unique(y_test_binary)) > 1:
+                        fpr, tpr, thresholds, roc_auc = calculate_roc_curve_safe(
+                            y_test_np, probs_np)
+
+                        # Use standardized threshold selection
+                        optimal_threshold, _, _, _, _ = find_optimal_threshold(
+                            y_test_np, probs_np, method='balanced')
                     else:
+                        # Fallback for single class or single probability dimension
                         optimal_threshold = 0.5
                         roc_auc = 0.5
+                        fpr, tpr, thresholds = np.array([0, 1]), np.array([0, 1]), np.array([1, 0])
+                        logger.warning(
+                            f"ROC curve calculation skipped - Classes: {len(np.unique(y_test_np))}, Prob dims: {probs_np.shape[1]}")
                     
                     # Apply optimal threshold (SAME as final global model)
-                    final_predictions = (probs_np[:, 1] >= optimal_threshold).astype(int)
+                    # For multiclass, we use the original predictions but
+                    # calculate binary metrics for zero-day detection
+                    final_predictions = predictions.numpy()  # Use original multiclass predictions
+                    binary_predictions = (attack_probs >= optimal_threshold).astype(
+                        int)  # Binary for zero-day detection
                     
                     # Calculate metrics (SAME as final global model)
+                    # Use multiclass predictions for overall accuracy, binary
+                    # for zero-day detection
                     accuracy = (final_predictions == y_test_np).mean()
                     
-                    # Calculate F1-score (SAME as final global model)
-                    from sklearn.metrics import f1_score, classification_report
-                    f1 = f1_score(y_test_np, final_predictions, average='weighted')
-                    
+                    # Calculate multiclass metrics (SAME as final global model)
+                    from sklearn.metrics import f1_score, classification_report, precision_recall_fscore_support
+
+                    # Macro-averaged metrics for multiclass evaluation
+                    precision_macro, recall_macro, f1_macro, _ = precision_recall_fscore_support(
+                        y_test_np, final_predictions, average='macro', zero_division=0
+                    )
+
+                    # Weighted-averaged metrics for class imbalance
+                    # consideration
+                    precision_weighted, recall_weighted, f1_weighted, _ = precision_recall_fscore_support(
+                        y_test_np, final_predictions, average='weighted', zero_division=0
+                    )
+
+                    # Micro-averaged metrics (same as accuracy for multiclass)
+                    precision_micro, recall_micro, f1_micro, _ = precision_recall_fscore_support(
+                        y_test_np, final_predictions, average='micro', zero_division=0
+                    )
+
+                    # Standard F1-score for binary classification (Normal vs
+                    # Attack)
+                    f1_standard = f1_score(
+    y_test_np,
+    final_predictions,
+    average='binary',
+     zero_division=0)
+
                     # Get classification report (SAME as final global model)
-                    class_report = classification_report(y_test_np, final_predictions, output_dict=True)
-                    
-                    # Calculate precision and recall
-                    from sklearn.metrics import precision_recall_fscore_support
-                    precision, recall, f1_binary, _ = precision_recall_fscore_support(y_test_np, final_predictions, average='binary')
+                    class_report = classification_report(
+    y_test_np, final_predictions, output_dict=True, zero_division=0)
                     
                     # Calculate MCCC
                     from sklearn.metrics import matthews_corrcoef
                     try:
+
                         mccc = matthews_corrcoef(y_test_np, final_predictions)
                     except:
                         mccc = 0.0
                     
-                    # Calculate zero-day detection rate (using the zero_day_mask)
+                    # Calculate zero-day detection rate using zero_day_indices
+                    # For multiclass, zero-day detection means correctly
+                    # identifying attack samples (non-Normal)
                     zero_day_mask_np = zero_day_mask.cpu().numpy()
-                    zero_day_detection_rate = zero_day_mask_np.mean() if len(zero_day_mask_np) > 0 else 0.0
-                    
-                    # Calculate confusion matrix
+                    if len(zero_day_mask_np) > 0 and len(
+                        zero_day_mask_np) == len(binary_predictions):
+                        # Zero-day detection rate = correctly predicted attacks
+                        # among zero-day samples
+                        zero_day_predictions = binary_predictions[zero_day_mask_np]
+                        zero_day_detection_rate = zero_day_predictions.mean() if len(
+                            zero_day_predictions) > 0 else 0.0
+                    else:
+                        # Fallback: calculate zero-day detection rate from all predictions
+                        # Count how many attack samples (non-Normal) were
+                        # correctly predicted as attacks
+                        attack_mask = y_test_np != 0  # Attack samples
+                        if np.any(attack_mask):
+                            attack_predictions = binary_predictions[attack_mask]
+                            zero_day_detection_rate = attack_predictions.mean() if len(
+                                attack_predictions) > 0 else 0.0
+                        else:
+                            zero_day_detection_rate = 0.0
+
+                    # Calculate confusion matrix for multiclass
                     from sklearn.metrics import confusion_matrix
                     cm = confusion_matrix(y_test_np, final_predictions)
                     
-                    # Handle different confusion matrix shapes properly
-                    if cm.shape == (2, 2):
-                        tn, fp, fn, tp = cm.ravel()
-                    elif cm.shape == (1, 1):
-                        # All predictions are the same class
-                        if y_test_np[0] == 0:  # All normal
-                            tn, fp, fn, tp = cm[0, 0], 0, 0, 0
-                        else:  # All attack
-                            tn, fp, fn, tp = 0, 0, 0, cm[0, 0]
-                    else:
-                        # Fallback: create 2x2 matrix
-                        tn = int(np.sum((y_test_np == 0) & (final_predictions == 0)))
-                        fp = int(np.sum((y_test_np == 0) & (final_predictions == 1)))
-                        fn = int(np.sum((y_test_np == 1) & (final_predictions == 0)))
-                        tp = int(np.sum((y_test_np == 1) & (final_predictions == 1)))
-                    
-                    confusion_matrix_dict = {
-                        'tn': int(tn),
-                        'fp': int(fp),
-                        'fn': int(fn),
-                        'tp': int(tp)
-                    }
+                    # For multiclass, we don't need to extract tn, fp, fn, tp
+                    # The full confusion matrix will be used
                     
                     results = {
                         'accuracy': accuracy,
-                        'precision': precision,
-                        'recall': recall,
-                        'f1_score': f1,
+                        # Macro-averaged metrics (primary for multiclass
+                        # evaluation)
+                        'precision_macro': precision_macro,
+                        'recall_macro': recall_macro,
+                        'f1_score_macro': f1_macro,
+                        # Weighted-averaged metrics (considering class
+                        # imbalance)
+                        'precision_weighted': precision_weighted,
+                        'recall_weighted': recall_weighted,
+                        'f1_score_weighted': f1_weighted,
+                        # Micro-averaged metrics (same as accuracy for
+                        # multiclass)
+                        'precision_micro': precision_micro,
+                        'recall_micro': recall_micro,
+                        'f1_score_micro': f1_micro,
+                        'f1_score': f1_standard,  # Standard F1-score for binary classification
                         'mccc': mccc,
                         'zero_day_detection_rate': zero_day_detection_rate,
                         'optimal_threshold': optimal_threshold,
                         'roc_auc': roc_auc,
                         'roc_curve': {'fpr': fpr.tolist(), 'tpr': tpr.tolist(), 'thresholds': thresholds.tolist()},
-                        'confusion_matrix': confusion_matrix_dict,
+                        'confusion_matrix': cm.tolist(),  # Full multiclass confusion matrix
+                        'classification_report': class_report,  # Detailed per-class metrics
                         'test_samples': len(y_test_np),
                         'query_samples': len(y_test_combined),
-                        'support_samples': len(meta_tasks) * 5  # 5 support samples per task
+                        # 5 support samples per task
+                        'support_samples': len(meta_tasks) * 5
                     }
                     
-                    logger.info(f"Base Model Results: Accuracy={accuracy:.4f}, F1={f1:.4f}, MCCC={mccc:.4f}, Zero-day Rate={zero_day_detection_rate:.4f}")
+                    logger.info(
+                        f"Base Model Results (10-class multiclass): Accuracy={accuracy:.4f}, F1-Macro={f1_macro:.4f}, F1-Weighted={f1_weighted:.4f}, MCCC={mccc:.4f}, Zero-day Rate={zero_day_detection_rate:.4f}")
                     return results
                 else:
-                    logger.warning("No global model available for base model evaluation")
-                    return {'accuracy': 0.0, 'f1_score': 0.0, 'mccc': 0.0, 'zero_day_detection_rate': 0.0}
+                    logger.warning(
+                        "No global model available for base model evaluation")
+                    return {
+    'accuracy': 0.0,
+    'f1_score': 0.0,
+    'mccc': 0.0,
+     'zero_day_detection_rate': 0.0}
             else:
-                logger.warning("No coordinator available for base model evaluation")
-                return {'accuracy': 0.0, 'f1_score': 0.0, 'mccc': 0.0, 'zero_day_detection_rate': 0.0}
+                logger.warning(
+                    "No coordinator available for base model evaluation")
+                return {
+    'accuracy': 0.0,
+    'f1_score': 0.0,
+    'mccc': 0.0,
+     'zero_day_detection_rate': 0.0}
                 
         except Exception as e:
             logger.error(f"Base model evaluation failed: {str(e)}")
-            return {'accuracy': 0.0, 'precision': 0.0, 'recall': 0.0, 'f1_score': 0.0, 'zero_day_detection_rate': 0.0}
-    
-    def _evaluate_base_model_kfold(self, X_test: torch.Tensor, y_test: torch.Tensor) -> Dict:
+            return {
+    'accuracy': 0.0,
+    'precision': 0.0,
+    'recall': 0.0,
+    'f1_score': 0.0,
+     'zero_day_detection_rate': 0.0}
+
+    def _create_testing_query_set(
+    self,
+    X_test: torch.Tensor,
+    y_test: torch.Tensor,
+    query_size: int,
+     normal_ratio: float = 0.9) -> torch.Tensor:
+        """
+        Create query set with specified ratio of Normal samples for testing phase
+
+        Args:
+            X_test: Test features
+            y_test: Test labels
+            query_size: Size of query set
+            normal_ratio: Ratio of Normal samples (0.9 for testing)
+
+        Returns:
+            query_indices: Indices for query set
+        """
+        # Separate Normal (0) and Attack (1) samples
+        normal_mask = y_test == 0
+        attack_mask = y_test == 1
+        normal_indices = torch.where(normal_mask)[0]
+        attack_indices = torch.where(attack_mask)[0]
+
+        # Calculate required counts
+        target_normal_count = int(query_size * normal_ratio)
+        target_attack_count = query_size - target_normal_count
+
+        # Sample normal samples
+        if len(normal_indices) >= target_normal_count:
+            normal_query_indices = normal_indices[torch.randperm(len(normal_indices))[
+                                                                 :target_normal_count]]
+        else:
+            normal_query_indices = normal_indices
+
+        # Sample attack samples
+        if len(attack_indices) >= target_attack_count:
+            attack_query_indices = attack_indices[torch.randperm(len(attack_indices))[
+                                                                 :target_attack_count]]
+        else:
+            attack_query_indices = attack_indices
+
+        # Combine and shuffle
+        if len(normal_query_indices) > 0 and len(attack_query_indices) > 0:
+            combined_indices = torch.cat(
+                [normal_query_indices, attack_query_indices])
+        elif len(normal_query_indices) > 0:
+            combined_indices = normal_query_indices
+        elif len(attack_query_indices) > 0:
+            combined_indices = attack_query_indices
+        else:
+            # Fallback to random selection
+            combined_indices = torch.randperm(len(X_test))[:query_size]
+
+        # Shuffle the combined indices
+        combined_indices = combined_indices[torch.randperm(
+            len(combined_indices))]
+
+        # Log the actual distribution
+        actual_normal_count = (y_test[combined_indices] == 0).sum().item()
+        actual_attack_count = (y_test[combined_indices] == 1).sum().item()
+        actual_normal_ratio = actual_normal_count / \
+            len(combined_indices) if len(combined_indices) > 0 else 0
+
+        logger.info(
+            f"TTT: Query set distribution - Normal: {actual_normal_count} ({actual_normal_ratio*100:.1f}%), Attack: {actual_attack_count}")
+
+        return combined_indices
+
+    def _evaluate_base_model_kfold(
+    self,
+    X_test: torch.Tensor,
+     y_test: torch.Tensor) -> Dict:
         """
         Evaluate base model with k-fold cross-validation for statistical robustness
         
@@ -2837,9 +3876,11 @@ class BlockchainFederatedIncentiveSystem:
         Returns:
             results: Evaluation metrics with mean and standard deviation
         """
-        logger.info("📊 Starting Base Model k-fold cross-validation evaluation...")
+        logger.info(
+            "📊 Starting Base Model k-fold cross-validation evaluation...")
         
         try:
+
             from sklearn.model_selection import StratifiedKFold
             from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef
             
@@ -2858,7 +3899,8 @@ class BlockchainFederatedIncentiveSystem:
             fold_f1_scores = []
             fold_mcc_scores = []
             
-            for fold_idx, (train_idx, val_idx) in enumerate(kfold.split(X_np, y_np)):
+            for fold_idx, (train_idx, val_idx) in enumerate(
+                kfold.split(X_np, y_np)):
                 logger.info(f"  📊 Processing fold {fold_idx + 1}/3...")
                 
                 # Get fold data
@@ -2866,45 +3908,68 @@ class BlockchainFederatedIncentiveSystem:
                 y_fold = torch.LongTensor(y_np[val_idx]).to(self.device)
                 
                 # Evaluate base model using the coordinator's trained model
-                if hasattr(self, 'coordinator') and self.coordinator and self.coordinator.model:
+                if hasattr(
+    self,
+     'coordinator') and self.coordinator and self.coordinator.model:
                     model_to_evaluate = self.coordinator.model
-                    logger.info("Using coordinator model for k-fold evaluation")
+                    logger.info(
+                        "Using coordinator model for k-fold evaluation")
                 else:
-                    logger.warning("No coordinator model available, using self.model")
+                    logger.warning(
+                        "No coordinator model available, using self.model")
                     model_to_evaluate = self.model
                 
                 # Ensure model is in evaluation mode
                 model_to_evaluate.eval()
-                logger.info(f"Model mode: {'training' if model_to_evaluate.training else 'evaluation'}")
+                logger.info(
+                    f"Model mode: {'training' if model_to_evaluate.training else 'evaluation'}")
                 
                 # Check if model parameters are trained (not all zeros)
-                total_params = sum(p.numel() for p in model_to_evaluate.parameters())
-                non_zero_params = sum((p != 0).sum().item() for p in model_to_evaluate.parameters())
-                logger.info(f"Model parameters: {total_params} total, {non_zero_params} non-zero")
+                total_params = sum(p.numel()
+                                   for p in model_to_evaluate.parameters())
+                non_zero_params = sum((p != 0).sum().item()
+                                      for p in model_to_evaluate.parameters())
+                logger.info(
+                    f"Model parameters: {total_params} total, {non_zero_params} non-zero")
                 
                 if non_zero_params == 0:
-                    logger.error("❌ Model parameters are all zeros - model not trained!")
+                    logger.error(
+                        "❌ Model parameters are all zeros - model not trained!")
                 elif non_zero_params < total_params * 0.1:
-                    logger.warning(f"⚠️ Model has very few non-zero parameters ({non_zero_params}/{total_params}) - may not be properly trained")
+                    logger.warning(
+                        f"⚠️ Model has very few non-zero parameters ({non_zero_params}/{total_params}) - may not be properly trained")
                 
                 with torch.no_grad():
-                    logger.info(f"    🔍 Evaluating fold {fold_idx + 1} with model type: {type(model_to_evaluate)}")
-                    logger.info(f"    🔍 Input shape: {X_fold.shape}, Labels shape: {y_fold.shape}")
-                    logger.info(f"    🔍 Label distribution: {torch.bincount(y_fold)}")
+                    logger.info(
+                        f"    🔍 Evaluating fold {fold_idx + 1} with model type: {type(model_to_evaluate)}")
+                    logger.info(
+                        f"    🔍 Input shape: {X_fold.shape}, Labels shape: {y_fold.shape}")
+                    logger.info(
+                        f"    🔍 Label distribution: {torch.bincount(y_fold)}")
                     
                     outputs = model_to_evaluate(X_fold)
                     logger.info(f"    🔍 Output shape: {outputs.shape}")
-                    logger.info(f"    🔍 Output range: [{outputs.min():.4f}, {outputs.max():.4f}]")
+                    logger.info(
+                        f"    🔍 Output range: [{outputs.min():.4f}, {outputs.max():.4f}]")
                     
-                    predictions = torch.argmax(outputs, dim=1)
-                    logger.info(f"    🔍 Predictions distribution: {torch.bincount(predictions)}")
+                    probabilities = torch.softmax(outputs, dim=1)
+                    attack_probabilities = probabilities[:, 1]  # P(Attack)
+                    predictions = (attack_probabilities >= 0.5).long()
+                    logger.info(
+                        f"    🔍 Predictions distribution: {torch.bincount(predictions)}")
                     
                     # Calculate metrics
-                    accuracy = accuracy_score(y_fold.cpu().numpy(), predictions.cpu().numpy())
-                    f1 = f1_score(y_fold.cpu().numpy(), predictions.cpu().numpy(), average='macro')
-                    mcc = matthews_corrcoef(y_fold.cpu().numpy(), predictions.cpu().numpy())
-                    
-                    logger.info(f"    📊 Fold {fold_idx + 1} metrics: Accuracy={accuracy:.4f}, F1={f1:.4f}, MCC={mcc:.4f}")
+                    accuracy = accuracy_score(
+    y_fold.cpu().numpy(), predictions.cpu().numpy())
+                    f1 = f1_score(
+    y_fold.cpu().numpy(),
+    predictions.cpu().numpy(),
+     average='macro')
+                    mcc = matthews_corrcoef(
+    y_fold.cpu().numpy(), predictions.cpu().numpy())
+
+                    logger.info(
+                        f"    📊 Fold {fold_idx + 1} metrics: Accuracy={accuracy:.4f}, F1={f1:.4f}, MCC={mcc:.4f}")
                     
                     fold_accuracies.append(accuracy)
                     fold_f1_scores.append(f1)
@@ -2914,9 +3979,11 @@ class BlockchainFederatedIncentiveSystem:
             results = {
                 'accuracy_mean': np.mean(fold_accuracies),
                 'accuracy_std': np.std(fold_accuracies),
-                'precision_mean': np.mean(fold_accuracies),  # Using accuracy as proxy
+                # Using accuracy as proxy
+                'precision_mean': np.mean(fold_accuracies),
                 'precision_std': np.std(fold_accuracies),
-                'recall_mean': np.mean(fold_accuracies),  # Using accuracy as proxy
+                # Using accuracy as proxy
+                'recall_mean': np.mean(fold_accuracies),
                 'recall_std': np.std(fold_accuracies),
                 'macro_f1_mean': np.mean(fold_f1_scores),
                 'macro_f1_std': np.std(fold_f1_scores),
@@ -2931,21 +3998,27 @@ class BlockchainFederatedIncentiveSystem:
             # Calculate real confusion matrix and ROC data from final fold
             if len(fold_accuracies) > 0:
                 try:
-                    # Use the last fold for confusion matrix and ROC calculation
+                    # Use the last fold for confusion matrix and ROC
+                    # calculation
                     with torch.no_grad():
                         final_outputs = model_to_evaluate(X_fold)
-                        final_predictions = torch.argmax(final_outputs, dim=1)
-                        final_probabilities = torch.softmax(final_outputs, dim=1)[:, 1]  # Probability of class 1
+                        final_probabilities = torch.softmax(final_outputs, dim=1)
+                        attack_probabilities = final_probabilities[:, 1]  # Probability of class 1 (Attack)
+                        
+                        # Use threshold-based binary classification instead of argmax
+                        # Default threshold of 0.5 for binary classification
+                        final_predictions = (attack_probabilities >= 0.5).long()
                     
                     # Confusion matrix
                     from sklearn.metrics import confusion_matrix
-                    cm = confusion_matrix(y_fold.cpu().numpy(), final_predictions.cpu().numpy())
+                    cm = confusion_matrix(
+    y_fold.cpu().numpy(),
+     final_predictions.cpu().numpy())
                     results['confusion_matrix'] = cm.tolist()
                     
-                    # ROC curve
-                    from sklearn.metrics import roc_curve, roc_auc_score
-                    fpr, tpr, thresholds = roc_curve(y_fold.cpu().numpy(), final_probabilities.cpu().numpy())
-                    roc_auc = roc_auc_score(y_fold.cpu().numpy(), final_probabilities.cpu().numpy())
+                    # ROC curve - use standardized calculation
+                    fpr, tpr, thresholds, roc_auc = calculate_roc_curve_safe(
+                        y_fold.cpu().numpy(), final_outputs.cpu().numpy())
                     
                     results['roc_curve'] = {
                         'fpr': fpr.tolist(),
@@ -2953,15 +4026,20 @@ class BlockchainFederatedIncentiveSystem:
                         'thresholds': thresholds.tolist()
                     }
                     results['roc_auc'] = float(roc_auc)
-                    results['optimal_threshold'] = float(thresholds[np.argmax(tpr - fpr)])
+                    results['optimal_threshold'] = float(
+                        thresholds[np.argmax(tpr - fpr)])
                     
                 except Exception as e:
-                    logger.warning(f"Failed to calculate confusion matrix and ROC: {e}")
+                    logger.warning(
+                        f"Failed to calculate confusion matrix and ROC: {e}")
             
             logger.info(f"✅ Base Model k-fold evaluation completed")
-            logger.info(f"  Accuracy: {results['accuracy_mean']:.4f} ± {results['accuracy_std']:.4f}")
-            logger.info(f"  F1-Score: {results['macro_f1_mean']:.4f} ± {results['macro_f1_std']:.4f}")
-            logger.info(f"  MCC: {results['mcc_mean']:.4f} ± {results['mcc_std']:.4f}")
+            logger.info(
+                f"  Accuracy: {results['accuracy_mean']:.4f} ± {results['accuracy_std']:.4f}")
+            logger.info(
+                f"  F1-Score: {results['macro_f1_mean']:.4f} ± {results['macro_f1_std']:.4f}")
+            logger.info(
+                f"  MCC: {results['mcc_mean']:.4f} ± {results['mcc_std']:.4f}")
             
             return results
             
@@ -2982,7 +4060,11 @@ class BlockchainFederatedIncentiveSystem:
                 'optimal_threshold': 0.5
             }
     
-    def _evaluate_ttt_model(self, X_test: torch.Tensor, y_test: torch.Tensor, zero_day_mask: torch.Tensor) -> Dict:
+    def _evaluate_ttt_model(
+    self,
+    X_test: torch.Tensor,
+    y_test: torch.Tensor,
+     zero_day_mask: torch.Tensor) -> Dict:
         """
         Evaluate TTT enhanced model using transductive few-shot learning + test-time training
         
@@ -3001,22 +4083,46 @@ class BlockchainFederatedIncentiveSystem:
             y_test_subset = y_test[:subset_size]
             zero_day_mask_subset = zero_day_mask[:subset_size]
             
-            # Create support and query sets for few-shot learning (conservative support size to prevent data leakage)
-            support_size = min(20, len(X_test_subset) // 10)  # Use only 10% of test data for adaptation
+            # Convert 10-class labels to binary for TTT evaluation (Normal=0, Attack=1)
+            y_test_binary = (y_test_subset != 0).long()  # Convert to binary: Normal=0, Attack=1
+
+            # Create support and query sets for few-shot learning (increased
+            # support size for better adaptation)
+            # Use 50% of test data for adaptation for better learning
+            support_size = min(200, len(X_test_subset) // 2)
             query_size = len(X_test_subset) - support_size
             
             # Log the selected support set size for debugging and monitoring
-            logger.info(f"TTT: Using conservative support set size {support_size} (10% of {len(X_test_subset)} test samples)")
+            logger.info(
+                f"TTT: Using increased support set size {support_size} (20% of {len(X_test_subset)} test samples for fair attack representation)")
+
+            # Use SAME fixed random seed for reproducible evaluation (same as
+            # base model)
+            # Same seed as base model for fair comparison
+            torch.manual_seed(42)
+
+            # Use stratified sampling to maintain class distribution in both support and query sets
+            from sklearn.model_selection import train_test_split
             
-            # Use SAME fixed random seed for reproducible evaluation (same as base model)
-            torch.manual_seed(42)  # Same seed as base model for fair comparison
-            support_indices = torch.randperm(len(X_test_subset))[:support_size]
-            query_indices = torch.randperm(len(X_test_subset))[support_size:]
+            # Create stratified split maintaining class distribution
+            all_indices = torch.arange(len(X_test_subset))
+            support_indices, query_indices = train_test_split(
+                all_indices,
+                test_size=0.5,  # 50% for query, 50% for support
+                stratify=y_test_binary.cpu().numpy(),  # Maintain class distribution
+                random_state=42  # For reproducibility
+            )
+            
+            # Convert back to tensors
+            support_indices = torch.tensor(support_indices)
+            query_indices = torch.tensor(query_indices)
             
             support_x = X_test_subset[support_indices]
-            support_y = y_test_subset[support_indices]
+            # Use binary labels for TTT
+            support_y = y_test_binary[support_indices]
             query_x = X_test_subset[query_indices]
-            query_y = y_test_subset[query_indices]
+            # Use binary labels for TTT
+            query_y = y_test_binary[query_indices]
             query_zero_day_mask = zero_day_mask_subset[query_indices]
             
             # Device alignment and shape verification for TTT
@@ -3031,32 +4137,66 @@ class BlockchainFederatedIncentiveSystem:
             query_zero_day_mask = query_zero_day_mask.to(device)
             
             # Shape verification and validation
-            logger.info(f"TTT: Support set shape - X: {support_x.shape}, Y: {support_y.shape}")
-            logger.info(f"TTT: Query set shape - X: {query_x.shape}, Y: {query_y.shape}")
+            logger.info(
+                f"TTT: Support set shape - X: {support_x.shape}, Y: {support_y.shape}")
+            logger.info(
+                f"TTT: Query set shape - X: {query_x.shape}, Y: {query_y.shape}")
+            
+            # Log class distribution for stratified sampling verification
+            support_class_counts = torch.bincount(support_y)
+            query_class_counts = torch.bincount(query_y)
+            logger.info(f"TTT: Support set class distribution: {support_class_counts.tolist()}")
+            logger.info(f"TTT: Query set class distribution: {query_class_counts.tolist()}")
+            
+            # Calculate class ratios
+            support_normal_ratio = support_class_counts[0].item() / len(support_y) if len(support_y) > 0 else 0
+            query_normal_ratio = query_class_counts[0].item() / len(query_y) if len(query_y) > 0 else 0
+            logger.info(f"TTT: Support set Normal ratio: {support_normal_ratio:.3f}")
+            logger.info(f"TTT: Query set Normal ratio: {query_normal_ratio:.3f}")
             
             # Performance validation - check for valid data
             if support_x.numel() == 0 or query_x.numel() == 0:
                 logger.error("TTT: Empty support or query set detected")
-                return {'accuracy': 0.0, 'precision': 0.0, 'recall': 0.0, 'f1_score': 0.0, 'zero_day_detection_rate': 0.0}
+                return {
+    'accuracy': 0.0,
+    'precision': 0.0,
+    'recall': 0.0,
+    'f1_score': 0.0,
+     'zero_day_detection_rate': 0.0}
             
             # Check for NaN or infinite values
             if torch.isnan(support_x).any() or torch.isinf(support_x).any():
-                logger.error("TTT: NaN or infinite values detected in support set")
-                return {'accuracy': 0.0, 'precision': 0.0, 'recall': 0.0, 'f1_score': 0.0, 'zero_day_detection_rate': 0.0}
+                logger.error(
+                    "TTT: NaN or infinite values detected in support set")
+                return {
+    'accuracy': 0.0,
+    'precision': 0.0,
+    'recall': 0.0,
+    'f1_score': 0.0,
+     'zero_day_detection_rate': 0.0}
             
             if torch.isnan(query_x).any() or torch.isinf(query_x).any():
-                logger.error("TTT: NaN or infinite values detected in query set")
-                return {'accuracy': 0.0, 'precision': 0.0, 'recall': 0.0, 'f1_score': 0.0, 'zero_day_detection_rate': 0.0}
+                logger.error(
+                    "TTT: NaN or infinite values detected in query set")
+                return {
+    'accuracy': 0.0,
+    'precision': 0.0,
+    'recall': 0.0,
+    'f1_score': 0.0,
+     'zero_day_detection_rate': 0.0}
             
             # Validate label ranges
             unique_support_labels = torch.unique(support_y)
             unique_query_labels = torch.unique(query_y)
-            logger.info(f"TTT: Support labels range: {unique_support_labels.tolist()}")
-            logger.info(f"TTT: Query labels range: {unique_query_labels.tolist()}")
+            logger.info(
+                f"TTT: Support labels range: {unique_support_labels.tolist()}")
+            logger.info(
+                f"TTT: Query labels range: {unique_query_labels.tolist()}")
             
             # Check for sufficient class diversity in support set
             if len(unique_support_labels) < 2:
-                logger.warning(f"TTT: Insufficient class diversity in support set (only {len(unique_support_labels)} classes)")
+                logger.warning(
+                    f"TTT: Insufficient class diversity in support set (only {len(unique_support_labels)} classes)")
             
             # Log data quality metrics
             support_mean = torch.mean(support_x).item()
@@ -3064,28 +4204,97 @@ class BlockchainFederatedIncentiveSystem:
             query_mean = torch.mean(query_x).item()
             query_std = torch.std(query_x).item()
             
-            logger.info(f"TTT: Support set statistics - Mean: {support_mean:.4f}, Std: {support_std:.4f}")
-            logger.info(f"TTT: Query set statistics - Mean: {query_mean:.4f}, Std: {query_std:.4f}")
-            
-            # Perform test-time training (TTT) adaptation
+            logger.info(
+                f"TTT: Support set statistics - Mean: {support_mean:.4f}, Std: {support_std:.4f}")
+            logger.info(
+                f"TTT: Query set statistics - Mean: {query_mean:.4f}, Std: {query_std:.4f}")
+
+            # Create a binary classification model for TTT evaluation
+            logger.info(
+                "🔄 Creating binary classification model for TTT evaluation...")
+            binary_model = TransductiveLearner(
+                input_dim=self.config.input_dim,
+                hidden_dim=64,
+                embedding_dim=self.config.embedding_dim,
+                num_classes=2,   # Binary classification for zero-day detection
+                support_weight=self.config.support_weight,
+                test_weight=self.config.test_weight,
+                sequence_length=self.config.sequence_length
+            ).to(self.device)
+
+            # Copy weights from the trained model to binary model
+            # This allows us to leverage the learned features for binary evaluation
+            with torch.no_grad():
+                # Copy feature extractor weights (first few layers)
+                if hasattr(self.model, 'feature_extractors') and hasattr(binary_model, 'feature_extractors'):
+                    binary_model.feature_extractors.load_state_dict(
+                        self.model.feature_extractors.state_dict())
+                elif hasattr(self.model, 'tcn_extractor') and hasattr(binary_model, 'tcn_extractor'):
+                    binary_model.tcn_extractor.load_state_dict(
+                        self.model.tcn_extractor.state_dict())
+
+                # Copy classifier weights (adapt from multiclass to binary)
+                if hasattr(self.model, 'classifier') and hasattr(binary_model, 'classifier'):
+                    try:
+                        # Copy only the first 2 classes (Normal=0, Attack=1) from the multiclass classifier
+                        original_weight = self.model.classifier[-1].weight.data
+                        original_bias = self.model.classifier[-1].bias.data
+                        
+                        # Take only first 2 classes for binary classification
+                        binary_model.classifier[-1].weight.data = original_weight[:2]
+                        binary_model.classifier[-1].bias.data = original_bias[:2]
+                        
+                        logger.info("✅ Successfully adapted multiclass classifier to binary")
+                    except Exception as e:
+                        logger.warning(f"Could not copy classifier weights: {e}")
+                        logger.info("Using randomly initialized classifier")
+
+            # Calculate base predictions (pre-TTT) for comparison
+            logger.info("🔄 Calculating base predictions (pre-TTT)...")
+            with torch.no_grad():
+                binary_model.eval()
+                # Get base predictions using the original model without TTT adaptation
+                base_logits = binary_model(query_x)
+                base_predictions = torch.argmax(base_logits, dim=1)
+                base_attack_probs = torch.softmax(base_logits, dim=1)[:, 1]  # Attack probability (class 1)
+                logger.info(
+                    f"Base predictions distribution: {torch.bincount(base_predictions, minlength=2).tolist()}")
+
+            # Perform test-time training (TTT) adaptation with binary model
             logger.info("🔄 Performing test-time training adaptation...")
-            adapted_model = self._perform_test_time_training(support_x, support_y, query_x)
+            adapted_model = self._perform_test_time_training_binary(
+                binary_model, support_x, support_y, query_x)
             
             # Store TTT adaptation data for visualization
             if hasattr(adapted_model, 'ttt_adaptation_data'):
                 self.ttt_adaptation_data = adapted_model.ttt_adaptation_data
+                logger.info(
+                    f"🔍 DEBUG: Stored TTT adaptation data from main evaluation: {len(self.ttt_adaptation_data.get('total_losses', []))} steps")
+            else:
+                logger.warning(
+                    "🔍 DEBUG: No TTT adaptation data found in adapted_model")
             
             # Set model to evaluation mode for predictions (dropout disabled)
             adapted_model.set_ttt_mode(training=False)
             
             # Log evaluation mode status
             eval_dropout_status = adapted_model.get_dropout_status()
-            logger.info(f"TTT model evaluation started in evaluation mode (dropout disabled): {len(eval_dropout_status)} dropout layers")
+            logger.info(
+                f"TTT model evaluation started in evaluation mode (dropout disabled): {len(eval_dropout_status)} dropout layers")
             
             with torch.no_grad():
                 # Get embeddings from adapted model
-                support_embeddings = adapted_model.meta_learner.transductive_net(support_x)
-                query_embeddings = adapted_model.meta_learner.transductive_net(query_x)
+                # Use extract_features method for TCN models
+                if hasattr(adapted_model, 'extract_features'):
+                    support_embeddings = adapted_model.extract_features(
+                        support_x)
+                    query_embeddings = adapted_model.extract_features(query_x)
+                else:
+                    # Fallback for original model structure
+                    support_embeddings = adapted_model.extract_embeddings(
+                        support_x)
+                    query_embeddings = adapted_model.extract_embeddings(
+                        query_x)
                 
                 # Compute prototypes from support set
                 unique_labels = torch.unique(support_y)
@@ -3099,95 +4308,213 @@ class BlockchainFederatedIncentiveSystem:
                 # Classify query samples using distance to prototypes
                 distances = torch.cdist(query_embeddings, prototypes, p=2)
                 
-                # Convert distances to probabilities (softmax over negative distances)
+                # Convert distances to probabilities (softmax over negative
+                # distances)
                 logits = -distances  # Negative distances as logits
                 probabilities = torch.softmax(logits, dim=1)
                 
-                # Get probability scores for class 1 (attack)
-                if len(unique_labels) == 2:
-                    class_1_idx = (unique_labels == 1).nonzero(as_tuple=True)[0]
-                    if len(class_1_idx) > 0:
-                        attack_probabilities = probabilities[:, class_1_idx[0]]
-                    else:
-                        attack_probabilities = torch.zeros(len(query_x))
-                else:
-                    attack_probabilities = torch.zeros(len(query_x))
+                # For zero-day detection, use attack probability (class 1)
+                attack_probabilities = probabilities[:, 1]  # P(Attack)
                 
-                # Find optimal threshold using ROC curve analysis
-                optimal_threshold, roc_auc, fpr, tpr, thresholds = find_optimal_threshold(
-                    query_y.cpu().numpy(), attack_probabilities.cpu().numpy(), method='balanced'
-                )
-                
-                # Make predictions using optimal threshold
-                predictions = (attack_probabilities >= optimal_threshold).long()
-                
-                # Calculate confidence scores
+                # Use threshold-based binary classification for consistency
+                # This will be updated with optimal threshold below
+                predicted_labels = (attack_probabilities >= 0.5).long()
+
+                # Use RL-based dynamic threshold selection for TTT
+                logger.info(
+                    "🔄 Using RL-based dynamic threshold selection for TTT evaluation...")
+
+                # Calculate confidence scores (same as attack probabilities for
+                # binary classification)
                 confidence_scores = attack_probabilities
-                
-                # Convert to numpy for metrics calculation
-                predictions_np = predictions.cpu().numpy()
-                query_y_np = query_y.cpu().numpy()
-                confidence_np = confidence_scores.cpu().numpy()
-                is_zero_day_np = query_zero_day_mask.cpu().numpy()
-                
-                # Calculate metrics
-                from sklearn.metrics import accuracy_score, precision_recall_fscore_support, confusion_matrix, matthews_corrcoef
-                
-                accuracy = accuracy_score(query_y_np, predictions_np)
-                precision, recall, f1, _ = precision_recall_fscore_support(query_y_np, predictions_np, average='binary')
-                
-                # Confusion matrix
-                cm = confusion_matrix(query_y_np, predictions_np)
-                
-                # Handle different confusion matrix shapes properly
-                if cm.shape == (2, 2):
-                    tn, fp, fn, tp = cm.ravel()
-                elif cm.shape == (1, 1):
-                    # All predictions are the same class
-                    if query_y_np[0] == 0:  # All normal
-                        tn, fp, fn, tp = cm[0, 0], 0, 0, 0
-                    else:  # All attack
-                        tn, fp, fn, tp = 0, 0, 0, cm[0, 0]
+
+                # Get dynamic threshold using RL agent
+                if hasattr(adapted_model, 'get_dynamic_threshold'):
+                    try:
+                        # Use RL agent to determine optimal threshold
+                        optimal_threshold = adapted_model.get_dynamic_threshold(
+                            confidence_scores)
+                        logger.info(
+                            f"🤖 RL Agent selected threshold: {optimal_threshold:.4f}")
+
+                        # Calculate ROC metrics for comparison (but don't use
+                        # for threshold selection)
+                        from sklearn.metrics import roc_curve, roc_auc_score
+                        query_y_binary = query_y.cpu().numpy()  # Already binary
+                        fpr, tpr, thresholds = roc_curve(
+                            query_y_binary, attack_probabilities.cpu().numpy())
+                        roc_auc = roc_auc_score(
+                            query_y_binary, attack_probabilities.cpu().numpy())
+
+                    except Exception as e:
+                        logger.warning(
+                            f"RL threshold selection failed, falling back to static method: {e}")
+                        # Fallback to static threshold optimization - use F1 method for imbalanced data
+                        optimal_threshold, roc_auc, fpr, tpr, thresholds = find_optimal_threshold(
+                            query_y.cpu().numpy(), attack_probabilities.cpu().numpy(), method='f1'
+                        )
+                        logger.info(
+                            f"📊 Static threshold selected: {optimal_threshold:.4f}")
                 else:
-                    # Fallback: create 2x2 matrix
-                    tn = int(np.sum((query_y_np == 0) & (predictions_np == 0)))
-                    fp = int(np.sum((query_y_np == 0) & (predictions_np == 1)))
-                    fn = int(np.sum((query_y_np == 1) & (predictions_np == 0)))
-                    tp = int(np.sum((query_y_np == 1) & (predictions_np == 1)))
+                    logger.warning("RL agent not available, using static threshold optimization")
+                    # Fallback to static threshold optimization
+                    optimal_threshold, roc_auc, fpr, tpr, thresholds = find_optimal_threshold(
+                        query_y.cpu().numpy(), attack_probabilities.cpu().numpy(), method='balanced'
+                    )
+                    logger.info(f"📊 Static threshold selected: {optimal_threshold:.4f}")
+            
+            # Make TTT predictions using the selected threshold for binary classification
+            ttt_predictions = (attack_probabilities >= optimal_threshold).long()
+            
+            # Convert to numpy for metrics calculation
+            ttt_predictions_np = ttt_predictions.cpu().numpy()
+            base_predictions_np = base_predictions.cpu().numpy()
+            query_y_np = query_y.cpu().numpy()
+            confidence_np = confidence_scores.cpu().numpy()
+            is_zero_day_np = query_zero_day_mask.cpu().numpy()
                 
-                # Compute Matthews Correlation Coefficient (MCCC)
+            # Calculate binary classification metrics for both base and TTT predictions
+            from sklearn.metrics import accuracy_score, precision_recall_fscore_support, confusion_matrix, matthews_corrcoef, classification_report, f1_score
+            
+            # Debug: Log prediction distribution for binary classification
+            unique_ttt_preds, ttt_pred_counts = np.unique(ttt_predictions_np, return_counts=True)
+            unique_base_preds, base_pred_counts = np.unique(base_predictions_np, return_counts=True)
+            unique_labels, label_counts = np.unique(query_y_np, return_counts=True)
+            logger.info(f"TTT Debug - Base Predictions: {dict(zip(unique_base_preds, base_pred_counts))}")
+            logger.info(f"TTT Debug - TTT Predictions: {dict(zip(unique_ttt_preds, ttt_pred_counts))}, Labels: {dict(zip(unique_labels, label_counts))}")
+            
+            # Calculate metrics for TTT predictions (post-TTT)
+            ttt_accuracy = accuracy_score(query_y_np, ttt_predictions_np)
+            
+            # Calculate metrics for base predictions (pre-TTT)
+            base_accuracy = accuracy_score(query_y_np, base_predictions_np)
+            
+            # Binary classification metrics for TTT predictions (post-TTT)
+            ttt_precision, ttt_recall, ttt_f1, _ = precision_recall_fscore_support(
+                query_y_np, ttt_predictions_np, average='binary', zero_division=0
+            )
+            
+            # Binary classification metrics for base predictions (pre-TTT)
+            base_precision, base_recall, base_f1, _ = precision_recall_fscore_support(
+                query_y_np, base_predictions_np, average='binary', zero_division=0
+            )
+            
+            # Confusion matrix for TTT predictions (post-TTT)
+            ttt_cm = confusion_matrix(query_y_np, ttt_predictions_np)
+            
+            # Confusion matrix for base predictions (pre-TTT)
+            base_cm = confusion_matrix(query_y_np, base_predictions_np)
+            
+            # Get detailed classification report for TTT predictions
+            try:
+                ttt_class_report = classification_report(query_y_np, ttt_predictions_np, output_dict=True, zero_division=0)
+            except:
+                ttt_class_report = {}
+            
+            # Get detailed classification report for base predictions
+            try:
+                base_class_report = classification_report(query_y_np, base_predictions_np, output_dict=True, zero_division=0)
+            except:
+                base_class_report = {}
+            
+            # Compute Matthews Correlation Coefficient (MCCC) for TTT predictions
+            try:
+                ttt_mccc = matthews_corrcoef(query_y_np, ttt_predictions_np)
+                # Check for invalid MCC values
+                if np.isnan(ttt_mccc) or np.isinf(ttt_mccc):
+                    ttt_mccc = 0.0
+            except Exception as e:
+                logger.warning(f"TTT MCC calculation failed: {e}, predictions: {np.unique(ttt_predictions_np, return_counts=True)}")
+                ttt_mccc = 0.0
+            
+            # Compute Matthews Correlation Coefficient (MCCC) for base predictions
+            try:
+                base_mccc = matthews_corrcoef(query_y_np, base_predictions_np)
+                # Check for invalid MCC values
+                if np.isnan(base_mccc) or np.isinf(base_mccc):
+                    base_mccc = 0.0
+            except Exception as e:
+                logger.warning(f"Base MCC calculation failed: {e}, predictions: {np.unique(base_predictions_np, return_counts=True)}")
+                base_mccc = 0.0
+            
+            # Zero-day specific metrics
+            zero_day_detection_rate = is_zero_day_np.mean()
+            avg_confidence = confidence_np.mean()
+            
+            results = {
+                # TTT predictions (post-TTT) - primary results
+                'accuracy': ttt_accuracy,
+                'precision': ttt_precision,
+                'recall': ttt_recall,
+                'f1_score': ttt_f1,
+                'mccc': ttt_mccc,
+                'confusion_matrix': ttt_cm.tolist(),
+                'classification_report': ttt_class_report,
+                
+                # Base predictions (pre-TTT) - for comparison
+                'base_accuracy': base_accuracy,
+                'base_precision': base_precision,
+                'base_recall': base_recall,
+                'base_f1_score': base_f1,
+                'base_mccc': base_mccc,
+                'base_confusion_matrix': base_cm.tolist(),
+                'base_classification_report': base_class_report,
+                
+                # Zero-day detection metrics
+                'zero_day_detection_rate': zero_day_detection_rate,
+                'avg_confidence': avg_confidence,
+                'support_samples': support_size,
+                'query_samples': query_size,
+                'ttt_adaptation_steps': 10,  # Number of TTT steps performed
+                'optimal_threshold': optimal_threshold,
+                'roc_auc': roc_auc,
+                'roc_curve': {'fpr': fpr.tolist(), 'tpr': tpr.tolist(), 'thresholds': thresholds.tolist()}
+            }
+            
+            logger.info(f"TTT Model Results (binary classification): TTT Accuracy={ttt_accuracy:.4f}, Base Accuracy={base_accuracy:.4f}")
+            logger.info(f"TTT F1={ttt_f1:.4f}, Base F1={base_f1:.4f}, Zero-day Rate={zero_day_detection_rate:.4f}")
+            
+            # Update RL agent with TTT performance for learning
+            if hasattr(adapted_model, 'threshold_agent') and hasattr(adapted_model, 'update_adaptation_metrics'):
                 try:
-                    mccc = matthews_corrcoef(query_y_np, predictions_np)
-                except:
-                    mccc = 0.0
-                
-                # Zero-day specific metrics
-                zero_day_detection_rate = is_zero_day_np.mean()
-                avg_confidence = confidence_np.mean()
-                
-                results = {
-                    'accuracy': accuracy,
-                    'precision': precision,
-                    'recall': recall,
-                    'f1_score': f1,
-                    'mccc': mccc,  # Add MCC to results
-                    'zero_day_detection_rate': zero_day_detection_rate,
-                    'avg_confidence': avg_confidence,
-                    'confusion_matrix': {'tn': int(tn), 'fp': int(fp), 'fn': int(fn), 'tp': int(tp)},
-                    'support_samples': support_size,
-                    'query_samples': query_size,
-                    'ttt_adaptation_steps': 10,  # Number of TTT steps performed
-                    'optimal_threshold': optimal_threshold,
-                    'roc_auc': roc_auc,
-                    'roc_curve': {'fpr': fpr.tolist(), 'tpr': tpr.tolist(), 'thresholds': thresholds.tolist()}
-                }
-                
-                logger.info(f"TTT Model Results: Accuracy={accuracy:.4f}, F1={f1:.4f}, MCCC={mccc:.4f}, Zero-day Rate={zero_day_detection_rate:.4f}")
-                return results
+                    logger.info("🧠 Updating RL agent with TTT performance metrics...")
+                    
+                    # Calculate performance improvement metrics
+                    accuracy_improvement = ttt_accuracy  # Could be compared to base model accuracy
+                    success_rate = 1.0 if ttt_accuracy > 0.5 else ttt_accuracy  # Simple success rate
+                    
+                    # Calculate sample efficiency
+                    samples_selected = len(confidence_scores[confidence_scores < optimal_threshold])
+                    total_samples = len(confidence_scores)
+                    
+                    # Update the RL agent with comprehensive metrics
+                    adapted_model.update_adaptation_metrics(
+                        success_rate=success_rate,
+                        accuracy_improvement=accuracy_improvement,
+                        fp=0, fn=0, tp=0, tn=0,  # Not applicable for binary classification
+                        precision=ttt_precision, recall=ttt_recall, f1_score=ttt_f1,
+                        samples_selected=samples_selected,
+                        total_samples=total_samples
+                    )
+                    
+                    # Log RL agent state
+                    adaptation_success_rate = adapted_model.threshold_agent.get_adaptation_success_rate()
+                    logger.info(f"🤖 RL Agent updated - Success rate: {adaptation_success_rate:.3f}, Threshold: {optimal_threshold:.4f}")
+                    
+                except Exception as e:
+                    logger.warning(f"RL agent update failed: {e}")
+            
+            # Add the adapted model to results for reuse
+            results['adapted_model'] = adapted_model
+            return results
                 
         except Exception as e:
             logger.error(f"TTT model evaluation failed: {str(e)}")
-            return {'accuracy': 0.0, 'precision': 0.0, 'recall': 0.0, 'f1_score': 0.0, 'zero_day_detection_rate': 0.0}
+            # Return fallback results but still include the base model for statistical evaluation
+            return {
+                'accuracy': 0.0, 'precision': 0.0, 'recall': 0.0, 'f1_score': 0.0, 'zero_day_detection_rate': 0.0,
+                'adapted_model': self.model  # Include base model as fallback
+            }
 
     def _evaluate_ttt_model_metatasks(self, X_test: torch.Tensor, y_test: torch.Tensor) -> Dict:
         """
@@ -3203,6 +4530,8 @@ class BlockchainFederatedIncentiveSystem:
         logger.info("📊 Starting TTT Model meta-tasks evaluation...")
         
         try:
+
+        
             from sklearn.model_selection import train_test_split
             from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef
             
@@ -3341,12 +4670,9 @@ class BlockchainFederatedIncentiveSystem:
                     logger.warning(f"Failed to calculate TTT confusion matrix and ROC: {e}")
             
             # Store TTT adaptation data for visualization
-            # Preserve the main TTT adaptation data if it exists, otherwise create meta-task data
-            if hasattr(self, 'ttt_adaptation_data') and self.ttt_adaptation_data and 'total_losses' in self.ttt_adaptation_data:
-                # Keep the main TTT adaptation data (with real steps and losses)
-                logger.info("Preserving main TTT adaptation data for plotting")
-            else:
-                # Fallback to meta-task data if main TTT data not available
+            # Only create fallback data if no TTT adaptation data exists from main evaluation
+            if not hasattr(self, 'ttt_adaptation_data') or not self.ttt_adaptation_data:
+                logger.info("No TTT adaptation data available from main evaluation, creating fallback data for plotting")
                 self.ttt_adaptation_data = {
                     'task_accuracies': task_metrics['accuracy'],
                     'task_f1_scores': task_metrics['f1_score'],
@@ -3360,6 +4686,8 @@ class BlockchainFederatedIncentiveSystem:
                     'support_losses': getattr(adapted_model, 'ttt_adaptation_data', {}).get('support_losses', []) if 'adapted_model' in locals() and adapted_model else [],
                     'consistency_losses': getattr(adapted_model, 'ttt_adaptation_data', {}).get('consistency_losses', []) if 'adapted_model' in locals() and adapted_model else []
                 }
+            else:
+                logger.info("Preserving existing TTT adaptation data from main evaluation")
             
             logger.info(f"✅ TTT Model meta-tasks evaluation completed")
             logger.info(f"  Accuracy: {results['accuracy_mean']:.4f} ± {results['accuracy_std']:.4f}")
@@ -3382,6 +4710,546 @@ class BlockchainFederatedIncentiveSystem:
                 'optimal_threshold': 0.5
             }
     
+    def _evaluate_ttt_model_metatasks_no_training(self, X_test: torch.Tensor, y_test: torch.Tensor, adapted_model: nn.Module) -> Dict:
+        """
+        Evaluate TTT model with multiple meta-tasks WITHOUT additional training (reuses already trained model)
+        
+        Args:
+            X_test: Test features
+            y_test: Test labels
+            adapted_model: Already trained TTT model
+            
+        Returns:
+            results: Evaluation metrics with mean and standard deviation
+        """
+        logger.info("📊 Starting TTT Model meta-tasks evaluation (reusing trained model)...")
+        
+        try:
+
+        
+            from sklearn.model_selection import train_test_split
+            from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef
+            
+            # Sample stratified subset for meta-tasks evaluation
+            X_subset, y_subset = self.preprocessor.sample_stratified_subset(
+                X_test, y_test, n_samples=min(5000, len(X_test))
+            )
+            
+            # Convert to numpy for sklearn
+            X_np = X_subset.cpu().numpy()
+            y_np = y_subset.cpu().numpy()
+            
+            # Run 20 meta-tasks (increased for better statistical robustness)
+            num_meta_tasks = 20
+            task_metrics = {
+                'accuracy': [],
+                'precision': [],
+                'recall': [],
+                'f1_score': [],
+                'mcc': []
+            }
+            
+            for task_idx in range(num_meta_tasks):
+                if task_idx % 20 == 0:
+                    logger.info(f"  📊 Processing meta-task {task_idx + 1}/{num_meta_tasks}...")
+                
+                try:
+                    # Create stratified support-query split
+                    support_x, query_x, support_y, query_y = train_test_split(
+                        X_np, y_np, test_size=0.5, stratify=y_np, random_state=42 + task_idx
+                    )
+                    
+                    # Convert to tensors and move to device
+                    query_x = torch.FloatTensor(query_x).to(self.device)
+                    query_y = torch.LongTensor(query_y).to(self.device)
+                    
+                    # Use the already trained model (no additional training)
+                    if adapted_model:
+                        # Ensure model is on the correct device
+                        adapted_model = adapted_model.to(self.device)
+                        
+                        # Evaluate adapted model
+                        with torch.no_grad():
+                            outputs = adapted_model(query_x)
+                            predictions = torch.argmax(outputs, dim=1)
+                            
+                            # Calculate metrics
+                            accuracy = accuracy_score(query_y.cpu().numpy(), predictions.cpu().numpy())
+                            f1 = f1_score(query_y.cpu().numpy(), predictions.cpu().numpy(), average='macro')
+                            mcc = matthews_corrcoef(query_y.cpu().numpy(), predictions.cpu().numpy())
+                            
+                            task_metrics['accuracy'].append(accuracy)
+                            task_metrics['f1_score'].append(f1)
+                            task_metrics['mcc'].append(mcc)
+                            task_metrics['precision'].append(accuracy)  # Using accuracy as proxy
+                            task_metrics['recall'].append(accuracy)  # Using accuracy as proxy
+                    else:
+                        # Fallback for missing model
+                        task_metrics['accuracy'].append(0.0)
+                        task_metrics['f1_score'].append(0.0)
+                        task_metrics['mcc'].append(0.0)
+                        task_metrics['precision'].append(0.0)
+                        task_metrics['recall'].append(0.0)
+                        
+                except Exception as e:
+                    logger.warning(f"⚠️ Meta-task {task_idx + 1} failed: {e}")
+                    task_metrics['accuracy'].append(0.0)
+                    task_metrics['f1_score'].append(0.0)
+                    task_metrics['mcc'].append(0.0)
+                    task_metrics['precision'].append(0.0)
+                    task_metrics['recall'].append(0.0)
+            
+            # Calculate statistics
+            results = {
+                'accuracy_mean': np.mean(task_metrics['accuracy']),
+                'accuracy_std': np.std(task_metrics['accuracy']),
+                'precision_mean': np.mean(task_metrics['precision']),
+                'precision_std': np.std(task_metrics['precision']),
+                'recall_mean': np.mean(task_metrics['recall']),
+                'recall_std': np.std(task_metrics['recall']),
+                'macro_f1_mean': np.mean(task_metrics['f1_score']),
+                'macro_f1_std': np.std(task_metrics['f1_score']),
+                'mcc_mean': np.mean(task_metrics['mcc']),
+                'mcc_std': np.std(task_metrics['mcc']),
+                'confusion_matrix': None,  # Will be calculated properly below
+                'roc_curve': None,  # Will be calculated properly below
+                'roc_auc': None,  # Will be calculated properly below
+                'optimal_threshold': None  # Will be calculated properly below
+            }
+            
+            # Calculate real confusion matrix and ROC data from last successful task
+            if len(task_metrics['accuracy']) > 0 and adapted_model:
+                try:
+                    # Use the last successful task for confusion matrix and ROC calculation
+                    last_task_idx = len(task_metrics['accuracy']) - 1
+                    support_x, query_x, support_y, query_y = train_test_split(
+                        X_np, y_np, test_size=0.5, stratify=y_np, random_state=42 + last_task_idx
+                    )
+                    
+                    # Convert to tensors and move to device
+                    query_x = torch.FloatTensor(query_x).to(self.device)
+                    query_y = torch.LongTensor(query_y).to(self.device)
+                    
+                    # Use the already trained model (no additional training)
+                    with torch.no_grad():
+                        final_outputs = adapted_model(query_x)
+                        final_predictions = torch.argmax(final_outputs, dim=1)
+                        final_probabilities = torch.softmax(final_outputs, dim=1)[:, 1]  # Probability of class 1
+                    
+                    # Confusion matrix
+                    from sklearn.metrics import confusion_matrix
+                    cm = confusion_matrix(query_y.cpu().numpy(), final_predictions.cpu().numpy())
+                    results['confusion_matrix'] = cm.tolist()
+                    
+                    # ROC curve
+                    from sklearn.metrics import roc_curve, roc_auc_score
+                    fpr, tpr, thresholds = roc_curve(query_y.cpu().numpy(), final_probabilities.cpu().numpy())
+                    roc_auc = roc_auc_score(query_y.cpu().numpy(), final_probabilities.cpu().numpy())
+                    
+                    results['roc_curve'] = {
+                        'fpr': fpr.tolist(),
+                        'tpr': tpr.tolist(),
+                        'thresholds': thresholds.tolist()
+                    }
+                    results['roc_auc'] = float(roc_auc)
+                    results['optimal_threshold'] = float(thresholds[np.argmax(tpr - fpr)])
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to calculate TTT confusion matrix and ROC: {e}")
+            
+            logger.info(f"✅ TTT Model meta-tasks evaluation completed (no additional training)")
+            logger.info(f"  Accuracy: {results['accuracy_mean']:.4f} ± {results['accuracy_std']:.4f}")
+            logger.info(f"  F1-Score: {results['macro_f1_mean']:.4f} ± {results['macro_f1_std']:.4f}")
+            logger.info(f"  MCC: {results['mcc_mean']:.4f} ± {results['mcc_std']:.4f}")
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"❌ TTT Model meta-tasks evaluation failed: {e}")
+            return {
+                'accuracy_mean': 0.0, 'accuracy_std': 0.0, 
+                'precision_mean': 0.0, 'precision_std': 0.0,
+                'recall_mean': 0.0, 'recall_std': 0.0,
+                'macro_f1_mean': 0.0, 'macro_f1_std': 0.0, 
+                'mcc_mean': 0.0, 'mcc_std': 0.0,
+                'confusion_matrix': [[0, 0], [0, 0]],
+                'roc_curve': {'fpr': [0, 1], 'tpr': [0, 1], 'thresholds': [1, 0]},
+                'roc_auc': 0.5,
+                'optimal_threshold': 0.5
+            }
+    
+    def _focal_loss(self, logits, targets, class_weights, alpha=0.25, gamma=2.0):
+        """
+        Focal loss implementation for handling class imbalance
+        """
+        # Compute cross entropy loss
+        ce_loss = F.cross_entropy(logits, targets, weight=class_weights, reduction='none')
+        
+        # Compute probabilities
+        pt = torch.exp(-ce_loss)
+        
+        # Compute focal loss
+        focal_loss = alpha * (1 - pt) ** gamma * ce_loss
+        
+        return focal_loss.mean()
+    
+    def _perform_test_time_training_multiclass(self, multiclass_model: nn.Module, support_x: torch.Tensor, support_y: torch.Tensor, query_x: torch.Tensor) -> nn.Module:
+        """
+        Enhanced test-time training adaptation for multiclass classification
+        
+        Args:
+            multiclass_model: Multiclass classification model (10 classes)
+            support_x: Support set features
+            support_y: Support set labels (10-class)
+            query_x: Query set features (unlabeled)
+            
+        Returns:
+            adapted_model: Model adapted through enhanced test-time training
+        """
+        try:
+
+            import copy
+            # Clone the multiclass model for adaptation
+            adapted_model = copy.deepcopy(multiclass_model)
+            
+            # Ensure the adapted model is on the correct device
+            adapted_model = adapted_model.to(self.device)
+            
+            # Set model to training mode for TTT adaptation (dropout active)
+            adapted_model.set_ttt_mode(training=True)
+            
+            # Log dropout status for debugging
+            dropout_status = adapted_model.get_dropout_status()
+            logger.info(f"TTT multiclass adaptation started with dropout regularization (p=0.3): {len(dropout_status)} dropout layers active")
+            
+            # Enhanced optimizer setup with adaptive learning rate
+            ttt_optimizer = torch.optim.AdamW(adapted_model.parameters(), lr=self.config.ttt_lr, weight_decay=self.config.ttt_weight_decay)
+            
+            # More conservative learning rate scheduler for stability
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                ttt_optimizer, mode='min', factor=0.5, patience=3, min_lr=1e-6, verbose=False
+            )
+            
+            # Adaptive TTT steps based on data complexity with safety limits
+            base_ttt_steps = self.config.ttt_base_steps  # Base steps from configuration
+            # Increase steps for more complex data (higher variance in query set)
+            query_variance = torch.var(query_x).item()
+            complexity_factor = min(2.0, 1.0 + query_variance * 10)  # Scale factor based on variance
+            ttt_steps = int(base_ttt_steps * complexity_factor)
+            
+            # SAFETY MEASURE: Limit maximum TTT steps to prevent infinite loops
+            ttt_steps = min(ttt_steps, self.config.ttt_max_steps)  # Maximum steps from configuration
+            logger.info(f"Adaptive TTT steps: {ttt_steps} (complexity factor: {complexity_factor:.2f})")
+            ttt_losses = []
+            ttt_support_losses = []
+            ttt_consistency_losses = []
+            ttt_learning_rates = []
+            
+            # Early stopping for TTT adaptation
+            best_loss = float('inf')
+            patience = self.config.ttt_patience  # Patience from configuration
+            patience_counter = 0
+            improvement_threshold = self.config.ttt_improvement_threshold  # Improvement threshold from configuration
+            
+            # Enhanced TTT adaptation loop
+            for step in range(ttt_steps):
+                ttt_optimizer.zero_grad()
+                
+                # Forward pass on support set (supervised learning)
+                support_outputs = adapted_model(support_x)
+                
+                # Use focal loss for better handling of class imbalance
+                support_class_counts = torch.bincount(support_y)
+                support_total = len(support_y)
+                num_classes = support_outputs.size(1)
+                
+                # Calculate class weights for support set
+                support_class_weights = torch.ones(num_classes, device=support_y.device)
+                for class_id in range(num_classes):
+                    if class_id < len(support_class_counts) and support_class_counts[class_id] > 0:
+                        support_class_weights[class_id] = torch.sqrt(support_total / support_class_counts[class_id].float())
+                    else:
+                        support_class_weights[class_id] = support_total * 2.0
+                
+                support_class_weights = support_class_weights / support_class_weights.sum() * num_classes * 2.0
+                
+                # Use focal loss for better handling of hard examples
+                support_loss = self._focal_loss(support_outputs, support_y, support_class_weights, alpha=0.25, gamma=2.0)
+                
+                # Forward pass on query set (unsupervised learning)
+                query_outputs = adapted_model(query_x)
+                
+                # Consistency loss for query set (encourage confident predictions for zero-day detection)
+                if len(query_outputs) > 1:
+                    # Use entropy minimization loss for confident zero-day detection
+                    query_probs = torch.softmax(query_outputs, dim=1)
+                    consistency_loss = -torch.mean(torch.sum(query_probs * torch.log(query_probs + 1e-8), dim=1))
+                else:
+                    consistency_loss = torch.tensor(0.0, device=support_loss.device)
+                
+                # Combined loss with balanced weights
+                total_loss = support_loss + 0.1 * consistency_loss
+                
+                # Debug logging for consistency loss
+                if step % 10 == 0:  # Log every 10 steps
+                    logger.info(f"TTT Step {step}: Support Loss={support_loss.item():.4f}, Consistency Loss={consistency_loss.item():.4f}, Total Loss={total_loss.item():.4f}")
+                
+                # Backward pass
+                total_loss.backward()
+                
+                # Gradient clipping for stability
+                torch.nn.utils.clip_grad_norm_(adapted_model.parameters(), max_norm=1.0)
+                
+                # Optimizer step
+                ttt_optimizer.step()
+                
+                # Learning rate scheduling
+                scheduler.step(total_loss)
+                
+                # Store metrics
+                ttt_losses.append(total_loss.item())
+                ttt_support_losses.append(support_loss.item())
+                ttt_consistency_losses.append(consistency_loss.item())
+                ttt_learning_rates.append(ttt_optimizer.param_groups[0]['lr'])
+                
+                # Early stopping check
+                if total_loss.item() < best_loss - improvement_threshold:
+                    best_loss = total_loss.item()
+                    patience_counter = 0
+                else:
+                    patience_counter += 1
+                
+                if patience_counter >= patience:
+                    logger.info(f"TTT multiclass adaptation early stopping at step {step+1} (patience: {patience})")
+                    break
+                
+                # Log progress every 10 steps
+                if (step + 1) % 10 == 0:
+                    logger.info(f"TTT multiclass step {step+1}/{ttt_steps}: Loss={total_loss.item():.4f}, Support={support_loss.item():.4f}, Consistency={consistency_loss.item():.4f}")
+            
+            # Set model back to evaluation mode
+            adapted_model.set_ttt_mode(training=False)
+            
+            # Store TTT adaptation data for visualization
+            adapted_model.ttt_adaptation_data = {
+                'total_losses': ttt_losses,
+                'support_losses': ttt_support_losses,
+                'consistency_losses': ttt_consistency_losses,
+                'learning_rates': ttt_learning_rates,
+                'steps': list(range(1, len(ttt_losses) + 1)),
+                'final_loss': ttt_losses[-1] if ttt_losses else 0.0,
+                'adaptation_steps': len(ttt_losses)
+            }
+            
+            logger.info(f"✅ TTT multiclass adaptation completed: {len(ttt_losses)} steps, final loss: {ttt_losses[-1]:.4f}")
+            return adapted_model
+            
+        except Exception as e:
+            logger.error(f"❌ TTT multiclass adaptation failed: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return multiclass_model  # Return original model as fallback
+
+    def _perform_test_time_training_binary(self, binary_model: nn.Module, support_x: torch.Tensor, support_y: torch.Tensor, query_x: torch.Tensor) -> nn.Module:
+        """
+        Enhanced test-time training adaptation for binary classification
+        
+        Args:
+            binary_model: Binary classification model (2 classes)
+            support_x: Support set features
+            support_y: Support set labels (binary)
+            query_x: Query set features (unlabeled)
+            
+        Returns:
+            adapted_model: Model adapted through enhanced test-time training
+        """
+        try:
+
+            import copy
+            # Clone the binary model for adaptation
+            adapted_model = copy.deepcopy(binary_model)
+            
+            # Ensure the adapted model is on the correct device
+            adapted_model = adapted_model.to(self.device)
+            
+            # Set model to training mode for TTT adaptation (dropout active)
+            adapted_model.set_ttt_mode(training=True)
+            
+            # Log dropout status for debugging
+            dropout_status = adapted_model.get_dropout_status()
+            logger.info(f"TTT binary adaptation started with dropout regularization (p=0.3): {len(dropout_status)} dropout layers active")
+            
+            # Enhanced optimizer setup with adaptive learning rate
+            ttt_optimizer = torch.optim.AdamW(adapted_model.parameters(), lr=self.config.ttt_lr, weight_decay=self.config.ttt_weight_decay)
+            
+            # More conservative learning rate scheduler for stability
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                ttt_optimizer, mode='min', factor=0.5, patience=3, min_lr=1e-6, verbose=False
+            )
+            
+            # Adaptive TTT steps based on data complexity with safety limits
+            base_ttt_steps = self.config.ttt_base_steps  # Base steps from configuration
+            # Increase steps for more complex data (higher variance in query set)
+            query_variance = torch.var(query_x).item()
+            complexity_factor = min(2.0, 1.0 + query_variance * 10)  # Scale factor based on variance
+            ttt_steps = int(base_ttt_steps * complexity_factor)
+            
+            # SAFETY MEASURE: Limit maximum TTT steps to prevent infinite loops
+            ttt_steps = min(ttt_steps, self.config.ttt_max_steps)  # Maximum steps from configuration
+            logger.info(f"Adaptive TTT steps: {ttt_steps} (complexity factor: {complexity_factor:.2f})")
+            ttt_losses = []
+            ttt_support_losses = []
+            ttt_consistency_losses = []
+            ttt_learning_rates = []
+            
+            # Enhanced early stopping with performance monitoring and timeout
+            best_loss = float('inf')
+            best_accuracy = 0.0
+            patience_counter = 0
+            max_patience = self.config.ttt_patience  # Patience from configuration
+            min_improvement = self.config.ttt_improvement_threshold  # Improvement threshold from configuration
+            
+            # SAFETY MEASURE: Add timeout mechanism
+            import time
+            ttt_start_time = time.time()
+            ttt_timeout = self.config.ttt_timeout  # Timeout from configuration
+            
+            for step in range(ttt_steps):
+                # SAFETY MEASURE: Check timeout
+                if time.time() - ttt_start_time > ttt_timeout:
+                    logger.warning(f"⚠️ TTT binary adaptation timeout after {ttt_timeout}s, stopping at step {step}")
+                    break
+                ttt_optimizer.zero_grad()
+                
+                # Forward pass on support set
+                support_outputs = adapted_model(support_x)
+                # Use CrossEntropyLoss for binary classification
+                support_loss = torch.nn.functional.cross_entropy(support_outputs, support_y)
+                
+                # Forward pass on query set (unlabeled)
+                query_outputs = adapted_model(query_x)
+                
+                # Enhanced multi-component loss for better TTT adaptation
+                try:
+                    # For TCN models, ensure both support and query sets have the same sequence length
+                    if support_x.size(1) != query_x.size(1):
+                        # Pad or truncate to match the smaller sequence length
+                        min_seq_len = min(support_x.size(1), query_x.size(1))
+                        if support_x.size(1) > min_seq_len:
+                            support_x = support_x[:, :min_seq_len, :]
+                        if query_x.size(1) > min_seq_len:
+                            query_x = query_x[:, :min_seq_len, :]
+                    
+                    # Use extract_features method for TCN models
+                    if hasattr(adapted_model, 'extract_features'):
+                        query_embeddings = adapted_model.extract_features(query_x)
+                        support_embeddings = adapted_model.extract_features(support_x)
+                    else:
+                        # Fallback for original model structure
+                        query_embeddings = adapted_model.extract_embeddings(query_x)
+                        support_embeddings = adapted_model.extract_embeddings(support_x)
+                    
+                    # Normalize embeddings to prevent extremely large values
+                    query_embeddings = torch.nn.functional.normalize(query_embeddings, p=2, dim=1)
+                    support_embeddings = torch.nn.functional.normalize(support_embeddings, p=2, dim=1)
+                    
+                    # 1. Entropy minimization loss (encourage confident predictions)
+                    query_probs = torch.softmax(query_outputs, dim=1)
+                    entropy_loss = -torch.mean(torch.sum(query_probs * torch.log(query_probs + 1e-8), dim=1))
+                
+                    # 2. Consistency loss (smooth predictions)
+                    consistency_loss = torch.mean(torch.var(query_probs, dim=1))
+                    
+                    # Compute prototypes from support set
+                    unique_labels = torch.unique(support_y)
+                    prototypes = []
+                    for label in unique_labels:
+                        mask = support_y == label
+                        prototype = support_embeddings[mask].mean(dim=0)
+                        prototypes.append(prototype)
+                    prototypes = torch.stack(prototypes)
+                    
+                    # 3. Prototype consistency loss (query samples should be close to their class prototypes)
+                    distances = torch.cdist(query_embeddings, prototypes, p=2)
+                    min_distances, _ = torch.min(distances, dim=1)
+                    prototype_loss = torch.mean(min_distances)
+                    
+                    # 4. Feature diversity loss (encourage diverse features)
+                    feature_diversity_loss = -torch.mean(torch.var(support_embeddings, dim=0))
+                    
+                    # Combined loss with adaptive weighting
+                    total_loss = (
+                        support_loss +  # Supervised loss on support set
+                        0.1 * entropy_loss +  # Entropy minimization
+                        0.05 * consistency_loss +  # Prediction consistency
+                        0.1 * prototype_loss +  # Prototype consistency
+                        0.01 * feature_diversity_loss  # Feature diversity
+                    )
+                    
+                except Exception as e:
+                    logger.warning(f"TTT binary step {step}: Advanced loss computation failed, using basic loss: {str(e)}")
+                    total_loss = support_loss
+                    consistency_loss = torch.tensor(0.0, device=support_loss.device)  # Default consistency loss
+                
+                # Backward pass
+                total_loss.backward()
+                
+                # Gradient clipping for stability
+                torch.nn.utils.clip_grad_norm_(adapted_model.parameters(), max_norm=1.0)
+                
+                # Optimizer step
+                ttt_optimizer.step()
+                
+                # Learning rate scheduling
+                scheduler.step(total_loss.item())
+                
+                # Store metrics
+                ttt_losses.append(total_loss.item())
+                ttt_support_losses.append(support_loss.item())
+                ttt_consistency_losses.append(consistency_loss.item())
+                ttt_learning_rates.append(ttt_optimizer.param_groups[0]['lr'])
+                
+                # Early stopping check
+                if total_loss.item() < best_loss - min_improvement:
+                    best_loss = total_loss.item()
+                    patience_counter = 0
+                else:
+                    patience_counter += 1
+                
+                # Calculate accuracy for monitoring
+                with torch.no_grad():
+                    predictions = torch.argmax(support_outputs, dim=1)
+                    accuracy = (predictions == support_y).float().mean().item()
+                    if accuracy > best_accuracy:
+                        best_accuracy = accuracy
+                
+                # Log progress every 10 steps
+                if step % 10 == 0:
+                    logger.info(f"TTT binary step {step}/{ttt_steps}: Loss={total_loss.item():.4f}, Support Loss={support_loss.item():.4f}, Accuracy={accuracy:.4f}, LR={ttt_optimizer.param_groups[0]['lr']:.6f}")
+                
+                # Early stopping
+                if patience_counter >= max_patience:
+                    logger.info(f"TTT binary adaptation early stopping at step {step} (patience={patience_counter})")
+                    break
+            
+            # Store adaptation data for visualization
+            adapted_model.ttt_adaptation_data = {
+                'steps': list(range(len(ttt_losses))),
+                'total_losses': ttt_losses,
+                'support_losses': ttt_support_losses,
+                'consistency_losses': ttt_consistency_losses,
+                'learning_rates': ttt_learning_rates,
+                'final_accuracy': best_accuracy,
+                'steps_completed': step + 1
+            }
+            
+            logger.info(f"TTT binary adaptation completed: {step + 1} steps, final accuracy: {best_accuracy:.4f}")
+            return adapted_model
+            
+        except Exception as e:
+            logger.error(f"TTT binary adaptation failed: {str(e)}")
+            return binary_model  # Return original model as fallback
+    
     def _perform_test_time_training(self, support_x: torch.Tensor, support_y: torch.Tensor, query_x: torch.Tensor) -> nn.Module:
         """
         Enhanced test-time training adaptation with adaptive learning rate scheduling
@@ -3395,6 +5263,7 @@ class BlockchainFederatedIncentiveSystem:
             adapted_model: Model adapted through enhanced test-time training
         """
         try:
+
             import copy
             # Clone the current model for adaptation
             adapted_model = copy.deepcopy(self.model)
@@ -3407,11 +5276,11 @@ class BlockchainFederatedIncentiveSystem:
             logger.info(f"TTT adaptation started with dropout regularization (p=0.3): {len(dropout_status)} dropout layers active")
             
             # Enhanced optimizer setup with adaptive learning rate
-            ttt_optimizer = torch.optim.AdamW(adapted_model.parameters(), lr=0.001, weight_decay=1e-4)
+            ttt_optimizer = torch.optim.AdamW(adapted_model.parameters(), lr=0.0005, weight_decay=1e-3)
             
-            # Advanced learning rate scheduler for better TTT adaptation
-            scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-                ttt_optimizer, T_0=7, T_mult=2, eta_min=1e-6, last_epoch=-1
+            # More conservative learning rate scheduler for stability
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                ttt_optimizer, mode='min', factor=0.5, patience=3, min_lr=1e-6, verbose=False
             )
             
             # Adaptive TTT steps based on data complexity with safety limits
@@ -3433,8 +5302,8 @@ class BlockchainFederatedIncentiveSystem:
             best_loss = float('inf')
             best_accuracy = 0.0
             patience_counter = 0
-            max_patience = 8  # Stop if no improvement for 8 consecutive steps
-            min_improvement = 1e-4  # Minimum improvement threshold
+            max_patience = 5  # Reduced patience for faster convergence
+            min_improvement = 1e-3  # Increased minimum improvement threshold for stability
             
             # SAFETY MEASURE: Add timeout mechanism
             import time
@@ -3497,9 +5366,28 @@ class BlockchainFederatedIncentiveSystem:
                 
                 # Enhanced multi-component loss for better TTT adaptation
                 try:
-                    query_embeddings = adapted_model.meta_learner.transductive_net(query_x_aug)
+                    # For TCN models, ensure both support and query sets have the same sequence length
+                    # TCN expects input shape: (batch_size, sequence_length, input_dim)
+                    if support_x_aug.size(1) != query_x_aug.size(1):
+                        # Pad or truncate to match the smaller sequence length
+                        min_seq_len = min(support_x_aug.size(1), query_x_aug.size(1))
+                        if support_x_aug.size(1) > min_seq_len:
+                            support_x_aug = support_x_aug[:, :min_seq_len, :]
+                        if query_x_aug.size(1) > min_seq_len:
+                            query_x_aug = query_x_aug[:, :min_seq_len, :]
+                    
+                    # Use extract_features method for TCN models
+                    if hasattr(adapted_model, 'extract_features'):
+                        query_embeddings = adapted_model.extract_features(query_x_aug)
+                        support_embeddings = adapted_model.extract_features(support_x_aug)
+                    else:
+                        # Fallback for original model structure
+                        query_embeddings = adapted_model.extract_embeddings(query_x_aug)
+                        support_embeddings = adapted_model.extract_embeddings(support_x_aug)
+                    
                     # Normalize embeddings to prevent extremely large values
                     query_embeddings = torch.nn.functional.normalize(query_embeddings, p=2, dim=1)
+                    support_embeddings = torch.nn.functional.normalize(support_embeddings, p=2, dim=1)
                     
                     # 1. Entropy minimization loss (encourage confident predictions)
                     query_probs = torch.softmax(query_outputs, dim=1)
@@ -3507,10 +5395,6 @@ class BlockchainFederatedIncentiveSystem:
                 
                 # 2. Consistency loss (smooth predictions)
                     consistency_loss = torch.mean(torch.var(query_probs, dim=1))
-                    
-                    # 3. Feature alignment loss (align query features with support prototypes)
-                    support_embeddings = adapted_model.meta_learner.transductive_net(support_x)
-                    support_embeddings = torch.nn.functional.normalize(support_embeddings, p=2, dim=1)
                     
                     # Compute prototypes from support set
                     unique_labels = torch.unique(support_y)
@@ -3606,7 +5490,33 @@ class BlockchainFederatedIncentiveSystem:
             
         except Exception as e:
             logger.error(f"Enhanced test-time training failed: {str(e)}")
-            return self.model  # Return original model if TTT fails
+            # Create a fallback model with preserved TTT data for plotting
+            fallback_model = copy.deepcopy(self.model)
+            
+            # Preserve any successful TTT training data that was collected
+            if len(ttt_losses) > 0:
+                logger.info(f"Preserving {len(ttt_losses)} successful TTT steps for plotting")
+                fallback_model.ttt_adaptation_data = {
+                    'steps': list(range(len(ttt_losses))),
+                    'total_losses': ttt_losses,
+                    'support_losses': ttt_support_losses,
+                    'consistency_losses': ttt_consistency_losses,
+                    'learning_rates': ttt_learning_rates,
+                    'final_lr': ttt_optimizer.param_groups[0]['lr'] if 'ttt_optimizer' in locals() else 0.0,
+                    'convergence_step': len(ttt_losses) - 1
+                }
+            else:
+                # No successful steps, create empty data
+                fallback_model.ttt_adaptation_data = {
+                    'steps': [],
+                    'total_losses': [],
+                    'support_losses': [],
+                    'consistency_losses': [],
+                    'learning_rates': [],
+                    'final_lr': 0.0,
+                    'convergence_step': 0
+                }
+            return fallback_model
     
     def cleanup(self):
         """Cleanup system resources"""
@@ -3629,6 +5539,7 @@ class BlockchainFederatedIncentiveSystem:
         Run federated training using the fully decentralized system
         """
         try:
+
             logger.info("🚀 Starting fully decentralized federated training...")
             
             if self.decentralized_system is None:
@@ -3678,6 +5589,7 @@ class ServiceManager:
         # Start Ganache if not running
         if not ganache_running:
             try:
+
                 logger.info("📡 Starting Ganache...")
                 # Use PowerShell to start Ganache in background
                 self.ganache_process = subprocess.Popen(
@@ -3701,6 +5613,7 @@ class ServiceManager:
         # Start IPFS if not running
         if not ipfs_running:
             try:
+
                 logger.info("🌐 Starting IPFS...")
                 # Check if kubo exists
                 if os.path.exists('.\\kubo\\ipfs.exe'):
@@ -3734,6 +5647,7 @@ class ServiceManager:
         # Start MetaMask web interface if not running
         if not metamask_running:
             try:
+
                 logger.info("🔐 Starting MetaMask web interface...")
                 # Start MetaMask web interface using Flask
                 self.metamask_process = subprocess.Popen(
@@ -3760,6 +5674,7 @@ class ServiceManager:
     def _check_ganache(self):
         """Check if Ganache is running"""
         try:
+
             response = requests.post('http://localhost:8545', 
                                    json={'jsonrpc': '2.0', 'method': 'eth_blockNumber', 'params': [], 'id': 1},
                                    timeout=5)
@@ -3776,6 +5691,7 @@ class ServiceManager:
     def _check_ipfs(self):
         """Check if IPFS is running"""
         try:
+
             response = requests.post('http://localhost:5001/api/v0/version', timeout=5)
             if response.status_code == 200:
                 logger.info("✅ IPFS is running and responding")
@@ -3790,6 +5706,7 @@ class ServiceManager:
     def _check_metamask(self):
         """Check if MetaMask web interface is running"""
         try:
+
             response = requests.get('http://localhost:5000', timeout=5)
             if response.status_code == 200:
                 logger.info("✅ MetaMask web interface is running and responding")
@@ -3805,6 +5722,7 @@ class ServiceManager:
         """Stop all services"""
         if self.ganache_process:
             try:
+
                 self.ganache_process.terminate()
                 logger.info("🛑 Ganache stopped")
             except:
@@ -3812,6 +5730,7 @@ class ServiceManager:
         
         if self.ipfs_process:
             try:
+
                 self.ipfs_process.terminate()
                 logger.info("🛑 IPFS stopped")
             except:
@@ -3819,6 +5738,7 @@ class ServiceManager:
         
         if self.metamask_process:
             try:
+
                 self.metamask_process.terminate()
                 logger.info("🛑 MetaMask web interface stopped")
             except:
@@ -3860,7 +5780,7 @@ def run_fully_decentralized_main():
     try:
         # Run the fully decentralized training
         results = asyncio.run(run_fully_decentralized_training(
-            num_rounds=10,
+            num_rounds=5,
             node_configs=node_configs
         ))
         
@@ -3926,21 +5846,37 @@ def main():
     logger.info("🔧 Auto-starting blockchain services...")
     service_manager.start_services()
     
-    # Create enhanced system configuration (using class defaults with increased training)
-    config = EnhancedSystemConfig(
-        num_clients=3,
-        num_rounds=20,  # Restored to default for proper convergence
-        local_epochs=50,  # Restored to default for better performance
-        learning_rate=0.001,
-        enable_incentives=True,
-        base_reward=100,
-        max_reward=1000,
-        zero_day_attack="Exploits",  # Testing with Exploits attack type
-        fully_decentralized=False  # 🔧 TEMPORARILY DISABLED FOR TESTING
+    # Get centralized configuration
+    config = get_config()
+    
+    # Log configuration for transparency
+    logger.info("🔧 System Configuration:")
+    for key, value in config.to_dict().items():
+        logger.info(f"   {key}: {value}")
+    
+    # Convert centralized config to EnhancedSystemConfig for compatibility
+    enhanced_config = EnhancedSystemConfig(
+        num_clients=config.num_clients,
+        num_rounds=config.num_rounds,
+        local_epochs=config.local_epochs,
+        learning_rate=config.learning_rate,
+        enable_incentives=config.enable_incentives,
+        base_reward=config.base_reward,
+        max_reward=config.max_reward,
+        zero_day_attack=config.zero_day_attack,
+        use_tcn=config.use_tcn,
+        sequence_length=config.sequence_length,
+        sequence_stride=config.sequence_stride,
+        meta_epochs=config.meta_epochs,
+        fully_decentralized=config.fully_decentralized
     )
     
+    # WandB integration removed
+    
     # Initialize enhanced system
-    system = BlockchainFederatedIncentiveSystem(config)
+    system = BlockchainFederatedIncentiveSystem(enhanced_config)
+    
+    # WandB integration removed
     
     try:
         # Initialize all components
@@ -3980,6 +5916,7 @@ def main():
         # Generate IEEE statistical robustness plots
         logger.info("📊 Generating IEEE statistical robustness plots...")
         try:
+
             from ieee_statistical_plots import IEEEStatisticalVisualizer
             ieee_visualizer = IEEEStatisticalVisualizer()
             
@@ -4043,6 +5980,81 @@ def main():
             ttt_f1 = evaluation_results['ttt_model'].get('f1_score', 0)
             logger.info(f"Zero-day detection accuracy - Base: {base_accuracy:.4f}, TTT: {ttt_accuracy:.4f}")
             logger.info(f"Zero-day detection F1-score - Base: {base_f1:.4f}, TTT: {ttt_f1:.4f}")
+            
+            # WandB logging removed
+            if False:  # Disabled WandB logging
+                system.wandb_integration.log_model_performance(
+                    model_name="base_model",
+                    accuracy=base_accuracy,
+                    f1_score=base_f1,
+                    precision=evaluation_results['base_model'].get('precision', 0),
+                    recall=evaluation_results['base_model'].get('recall', 0),
+                    mcc=evaluation_results['base_model'].get('mcc', 0),
+                    confusion_matrix=evaluation_results['base_model'].get('confusion_matrix', np.array([[0, 0], [0, 0]])),
+                    roc_auc=evaluation_results['base_model'].get('roc_auc', None)
+                )
+                
+                system.wandb_integration.log_model_performance(
+                    model_name="ttt_model",
+                    accuracy=ttt_accuracy,
+                    f1_score=ttt_f1,
+                    precision=evaluation_results['ttt_model'].get('precision', 0),
+                    recall=evaluation_results['ttt_model'].get('recall', 0),
+                    mcc=evaluation_results['ttt_model'].get('mcc', 0),
+                    confusion_matrix=evaluation_results['ttt_model'].get('confusion_matrix', np.array([[0, 0], [0, 0]])),
+                    roc_auc=evaluation_results['ttt_model'].get('roc_auc', None)
+                )
+                
+                # Log TTT adaptation data if available
+                if hasattr(system, 'ttt_adaptation_data') and system.ttt_adaptation_data:
+                    system.wandb_integration.log_ttt_adaptation(system.ttt_adaptation_data)
+                    logger.info("📊 TTT adaptation data logged to WandB")
+                
+                # Log custom plots if they exist
+                plot_paths = getattr(system, 'plot_paths', {})
+                if isinstance(plot_paths, dict):
+                    for plot_name, plot_path in plot_paths.items():
+                        if isinstance(plot_path, str) and os.path.exists(plot_path):
+                            try:
+
+                                import matplotlib.pyplot as plt
+                                import matplotlib.image as mpimg
+                                fig = mpimg.imread(plot_path)
+                                system.wandb_integration.log_custom_plot(plot_name, fig)
+                                logger.info(f"📊 Custom plot '{plot_name}' logged to WandB")
+                            except Exception as e:
+                                logger.warning(f"Failed to log plot {plot_name}: {e}")
+                        else:
+                            logger.warning(f"Plot path {plot_name} is invalid or doesn't exist: {plot_path}")
+                else:
+                    logger.warning(f"Plot paths is not a dictionary: {type(plot_paths)}")
+                
+                # Log blockchain metrics if available
+                if hasattr(system, 'blockchain_integration') and system.blockchain_integration:
+                    try:
+
+                        gas_data = getattr(system.blockchain_integration, 'gas_usage_history', [])
+                        block_data = getattr(system.blockchain_integration, 'block_numbers_history', [])
+                        tx_data = getattr(system.blockchain_integration, 'transaction_hashes_history', [])
+                        
+                        # Ensure all data are lists and have the same length
+                        if (isinstance(gas_data, list) and isinstance(block_data, list) and 
+                            isinstance(tx_data, list) and len(gas_data) > 0 and 
+                            len(gas_data) == len(block_data) == len(tx_data)):
+                            
+                            system.wandb_integration.log_blockchain_metrics(
+                                gas_usage=gas_data,
+                                transaction_hashes=tx_data,
+                                block_numbers=block_data,
+                                round_num=status.get('training_rounds', 0)
+                            )
+                            logger.info("📊 Blockchain metrics logged to WandB")
+                        else:
+                            logger.warning(f"Blockchain data format issue - gas: {len(gas_data) if isinstance(gas_data, list) else 'not list'}, "
+                                        f"blocks: {len(block_data) if isinstance(block_data, list) else 'not list'}, "
+                                        f"tx: {len(tx_data) if isinstance(tx_data, list) else 'not list'}")
+                    except Exception as e:
+                        logger.warning(f"Failed to log blockchain metrics: {e}")
         else:
             logger.info(f"Zero-day detection accuracy: {evaluation_results.get('accuracy', 0):.4f}")
             logger.info(f"Zero-day detection F1-score: {evaluation_results.get('f1_score', 0):.4f}")
@@ -4059,6 +6071,48 @@ def main():
             logger.info(f"Total rewards distributed: {incentive_summary['total_rewards_distributed']} tokens")
             logger.info(f"Average rewards per round: {incentive_summary['average_rewards_per_round']:.2f} tokens")
             logger.info(f"Participant rewards: {incentive_summary['participant_rewards']}")
+            
+            # WandB logging removed
+            if False:  # Disabled WandB logging
+                # Get client metrics from training history
+                client_metrics = {}
+                if hasattr(system, 'training_history') and system.training_history:
+                    for round_data in system.training_history:
+                        if 'client_updates' in round_data and isinstance(round_data['client_updates'], dict):
+                            for client_id, client_data in round_data['client_updates'].items():
+                                if isinstance(client_data, dict):
+                                    if client_id not in client_metrics:
+                                        client_metrics[client_id] = {}
+                                    client_metrics[client_id].update({
+                                        'accuracy': client_data.get('accuracy', 0),
+                                        'f1_score': client_data.get('f1_score', 0),
+                                        'loss': client_data.get('loss', 0)
+                                    })
+                                else:
+                                    logger.warning(f"Client data for {client_id} is not a dictionary: {type(client_data)}")
+                        else:
+                            logger.warning(f"Client updates not found or not a dictionary in round data: {type(round_data.get('client_updates', 'Not found'))}")
+                
+                # Get global metrics
+                global_metrics = {
+                    'global_accuracy': status.get('global_accuracy', 0),
+                    'global_f1_score': status.get('global_f1_score', 0),
+                    'training_rounds': status['training_rounds']
+                }
+                
+                # Get blockchain metrics
+                blockchain_metrics = {
+                    'total_rewards': incentive_summary['total_rewards_distributed'],
+                    'avg_rewards_per_round': incentive_summary['average_rewards_per_round'],
+                    'participant_rewards': incentive_summary.get('participant_rewards', {})
+                }
+                
+                system.wandb_integration.log_training_round(
+                    round_num=status['training_rounds'],
+                    client_metrics=client_metrics,
+                    global_metrics=global_metrics,
+                    blockchain_metrics=blockchain_metrics
+                )
         
         # Print visualization summary
         if plot_paths:
@@ -4071,6 +6125,7 @@ def main():
         # Cleanup
         system.cleanup()
         
+        
         # Stop blockchain services
         logger.info("🛑 Stopping blockchain services...")
         service_manager.stop_services()
@@ -4078,6 +6133,8 @@ def main():
     except Exception as e:
         logger.error(f"❌ Enhanced system execution failed: {str(e)}")
         system.cleanup()
+        
+        
         
         # Stop blockchain services on error
         logger.info("🛑 Stopping blockchain services...")

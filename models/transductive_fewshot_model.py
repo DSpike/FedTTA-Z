@@ -2,6 +2,30 @@
 """
 Transductive Few-Shot Model with Test-Time Training for Zero-Day Detection
 Implements meta-learning approach for rapid adaptation to new attack patterns
+
+DATA LEAKAGE PREVENTION:
+This module implements several safeguards to prevent data leakage in evaluation:
+
+1. EVALUATION MODE: The detect_zero_day() method has an evaluation_mode parameter that
+   prevents test-time training adaptation during evaluation to avoid using support set
+   information that could leak training patterns.
+
+2. DATA SPLIT VALIDATION: The validate_data_splits() method checks for exact duplicates
+   between train/val/test splits to ensure no data overlap.
+
+3. PROPER SUPPORT SET USAGE: During evaluation, only validation data should be used as
+   the support set, never training data. The support set is only used for:
+   - Computing class prototypes (no adaptation)
+   - Distance-based classification (no model updates)
+
+4. EVALUATION WORKFLOW:
+   - Training: Use training data for meta-learning
+   - Validation: Use validation data for hyperparameter tuning
+   - Testing: Use test data for final evaluation with validation data as support set
+   - Support set is used ONLY for prototype computation, NOT for model adaptation
+
+CRITICAL: Never use training data as support set during evaluation as this creates
+data leakage and inflates performance metrics.
 """
 
 import torch
@@ -11,7 +35,7 @@ import torch.optim as optim
 import numpy as np
 from typing import Dict, List, Tuple, Optional
 import logging
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support, roc_auc_score
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support, roc_auc_score, confusion_matrix, matthews_corrcoef
 import copy
 import math
 import random
@@ -327,21 +351,20 @@ class EmbeddingUtils:
         Unified method for extracting and normalizing features with self-attention
         
         Args:
-            feature_extractors: Multi-scale feature extractors
+            feature_extractors: TCN-based multi-scale feature extractors (OptimizedMultiScaleTCN)
             feature_projection: Feature projection layer
             self_attention: Self-attention mechanism
-            x: Input features
+            x: Input features (batch_size, sequence_length, input_dim)
             
         Returns:
             Normalized embeddings with self-attention applied
         """
-        # Extract features from multiple scales
-        features = []
-        for extractor in feature_extractors:
-            features.append(extractor(x))
+        # Extract features using TCN-based multi-scale extractor
+        # TCN expects input shape: (batch_size, sequence_length, input_dim)
+        # Our input is already in the correct format: (batch_size, sequence_length, input_dim)
         
-        # Concatenate multi-scale features
-        combined_features = torch.cat(features, dim=1)
+        # Extract multi-scale features using TCN
+        combined_features = feature_extractors(x)  # (batch_size, tcn_output_dim)
         
         # Project to embedding space
         embeddings = feature_projection(combined_features)
@@ -436,9 +459,27 @@ class LossUtils:
     
     @staticmethod
     def compute_support_loss(support_embeddings, support_y, classifier):
-        """Compute classification loss on support set"""
+        """Compute classification loss on support set with class weighting"""
         support_logits = classifier(support_embeddings)
-        return F.cross_entropy(support_logits, support_y)
+        
+        # Calculate class weights for imbalanced data
+        class_counts = torch.bincount(support_y)
+        total_samples = len(support_y)
+        
+        # Create weights for all possible classes (0-9) to match model output
+        num_classes = support_logits.size(1)  # Get number of classes from model output
+        class_weights = torch.ones(num_classes, device=support_y.device)
+        
+        # Set weights for classes present in the batch
+        for class_id in range(num_classes):
+            if class_id < len(class_counts) and class_counts[class_id] > 0:
+                class_weights[class_id] = total_samples / (len(class_counts) * class_counts[class_id].float())
+        
+        # Normalize weights
+        class_weights = class_weights / class_weights.sum() * num_classes
+        
+        # Apply class weights
+        return F.cross_entropy(support_logits, support_y, weight=class_weights)
     
     @staticmethod
     def compute_consistency_loss(test_embeddings, test_predictions, classifier):
@@ -640,11 +681,11 @@ class TransductiveLearner(nn.Module):
     Streamlined implementation with unified methods for better maintainability
     """
     
-    def __init__(self, input_dim: int, hidden_dim: int = 128, embedding_dim: int = 64, num_classes: int = 2, support_weight: float = 0.7, test_weight: float = 0.3):
+    def __init__(self, input_dim: int, hidden_dim: int = 128, embedding_dim: int = 64, num_classes: int = 2, support_weight: float = 0.7, test_weight: float = 0.3, sequence_length: int = 1):
         super(TransductiveLearner, self).__init__()
         
         self.embedding_dim = embedding_dim
-        self.num_classes = num_classes
+        self.num_classes = num_classes  # Now supports 10 classes for UNSW-NB15
         self.support_weight = support_weight
         self.test_weight = test_weight
         
@@ -653,50 +694,59 @@ class TransductiveLearner(nn.Module):
         self.ttt_threshold = 0.5  # Fallback threshold
         self.adaptation_success_history = []
         
-        # Multi-scale feature extractors with increased dropout for TTT overfitting prevention
-        self.feature_extractors = nn.ModuleList([
-            nn.Sequential(
-                nn.Linear(input_dim, hidden_dim),
-                nn.ReLU(),
-                nn.Dropout(0.5)
-            ),
-            nn.Sequential(
-                nn.Linear(input_dim, hidden_dim // 2),
-                nn.ReLU(),
-                nn.Dropout(0.5)
-            ),
-            nn.Sequential(
-                nn.Linear(input_dim, hidden_dim * 2),
-                nn.ReLU(),
-                nn.Dropout(0.5)
-            )
-        ])
+        # Multi-scale TCN feature extractors for temporal pattern recognition
+        from .optimized_tcn_module import OptimizedMultiScaleTCN
         
-        # Feature projection to embedding space
+        self.feature_extractors = OptimizedMultiScaleTCN(
+            input_dim=input_dim,
+            sequence_length=sequence_length,  # Use configurable sequence length
+            hidden_dim=hidden_dim,
+            dropout=0.2
+        )
+        
+        # Feature projection to embedding space (TCN output: hidden_dim + hidden_dim//2 + hidden_dim*2)
+        tcn_output_dim = hidden_dim + (hidden_dim // 2) + (hidden_dim * 2)
         self.feature_projection = nn.Sequential(
-            nn.Linear(hidden_dim + hidden_dim // 2 + hidden_dim * 2, embedding_dim),
+            nn.Linear(tcn_output_dim, embedding_dim),
             nn.ReLU(),
             nn.Dropout(0.5)
         )
         
-        # Classification network
+        # Enhanced classification network for better handling of imbalanced data
         self.classifier = nn.Sequential(
-            nn.Linear(embedding_dim, hidden_dim // 2),
+            nn.Linear(embedding_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
             nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(hidden_dim // 2, embedding_dim // 2),
+            nn.Dropout(0.3),
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.BatchNorm1d(hidden_dim // 2),
             nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(embedding_dim // 2, num_classes)
+            nn.Dropout(0.3),
+            nn.Linear(hidden_dim // 2, hidden_dim // 4),
+            nn.BatchNorm1d(hidden_dim // 4),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(hidden_dim // 4, num_classes)
         )
         
         # Attention mechanism for global context
         self.self_attention = nn.MultiheadAttention(embedding_dim, num_heads=2)
         self.layer_norm = nn.LayerNorm(embedding_dim)
         
-        # Transductive learning parameters
-        self.transductive_lr = 0.001
-        self.transductive_steps = 25
+        # Enhanced transductive learning parameters for better convergence
+        self.transductive_lr = 0.01  # Increased learning rate for faster convergence
+        self.transductive_steps = 50  # Increased steps for better adaptation
+        
+        # Meta-learner compatibility (for TTT adaptation)
+        # Note: meta_learner will be set after initialization to avoid recursion
+        
+        # Initialize weights for better learning on imbalanced data
+        self._initialize_weights()
+    
+    @property
+    def meta_learner(self):
+        """Meta-learner compatibility property"""
+        return self
     
     def get_dynamic_threshold(self, confidence_scores):
         """
@@ -722,6 +772,87 @@ class TransductiveLearner(nn.Module):
         self.ttt_threshold = threshold
         
         return threshold
+    
+    def select_ttt_samples(self, confidence_scores, threshold=None):
+        """
+        Select samples for TTT based on confidence scores
+        Args:
+            confidence_scores: torch.Tensor of confidence scores
+            threshold: Optional threshold value
+        Returns:
+            selected_indices: Indices of samples selected for TTT
+        """
+        if threshold is None:
+            threshold = self.get_dynamic_threshold(confidence_scores)
+        
+        selected_indices = torch.where(confidence_scores < threshold)[0]
+        return selected_indices
+    
+    def get_confidence_scores(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Calculates confidence scores for the input samples.
+        Args:
+            x: Input tensor of shape (batch_size, sequence_length, input_dim)
+        Returns:
+            confidence_scores: Confidence scores for each sample
+        """
+        with torch.no_grad():
+            logits = self.forward(x)
+            probabilities = torch.softmax(logits, dim=1)
+            confidence_scores = torch.max(probabilities, dim=1)[0]
+        
+        return confidence_scores
+    
+    def get_embeddings(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Extract embeddings from the model
+        Args:
+            x: Input tensor of shape (batch_size, sequence_length, input_dim)
+        Returns:
+            embeddings: Feature embeddings of shape (batch_size, embedding_dim)
+        """
+        return self.extract_embeddings(x)
+    
+    def extract_features(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Extract features from the model (alias for extract_embeddings for TTT compatibility)
+        Args:
+            x: Input tensor of shape (batch_size, sequence_length, input_dim)
+        Returns:
+            features: Feature embeddings of shape (batch_size, embedding_dim)
+        """
+        return self.extract_embeddings(x)
+    
+    def set_ttt_mode(self, training=True):
+        """
+        Set the model to training or evaluation mode for TTT
+        Args:
+            training: If True, set to training mode; if False, set to evaluation mode
+        """
+        if training:
+            self.train()
+            # Enable dropout for TTT training
+            for module in self.modules():
+                if isinstance(module, nn.Dropout):
+                    module.p = 0.2  # Lower dropout for TTT
+        else:
+            self.eval()
+            # Disable dropout for evaluation
+            for module in self.modules():
+                if isinstance(module, nn.Dropout):
+                    module.p = 0.0
+    
+    def get_dropout_status(self):
+        """
+        Get current dropout status of the model
+        Returns:
+            dropout_layers: List of dropout layers and their probabilities
+        """
+        dropout_layers = []
+        for name, module in self.named_modules():
+            if isinstance(module, nn.Dropout):
+                dropout_layers.append(f"{name}: p={module.p}")
+        return dropout_layers
     
     def update_adaptation_success(self, success_rate, accuracy_improvement, 
                                  initial_predictions=None, adapted_predictions=None, 
@@ -756,36 +887,41 @@ class TransductiveLearner(nn.Module):
             else:
                 true_labels_np = true_labels
             
-            # Calculate confusion matrix components
-            tp = ((adapted_preds == 1) & (true_labels_np == 1)).sum()
-            tn = ((adapted_preds == 0) & (true_labels_np == 0)).sum()
-            fp = ((adapted_preds == 1) & (true_labels_np == 0)).sum()
-            fn = ((adapted_preds == 0) & (true_labels_np == 1)).sum()
+            # Calculate multiclass metrics using sklearn
+            precision_macro, recall_macro, f1_macro, _ = precision_recall_fscore_support(
+                true_labels_np, adapted_preds, average='macro', zero_division=0
+            )
             
-            # Calculate precision, recall, and F1
-            if tp + fp > 0:
-                precision = tp / (tp + fp)
-            else:
-                precision = 0.0
+            # Calculate confusion matrix for zero-day class (e.g., DoS=4)
+            cm = confusion_matrix(true_labels_np, adapted_preds)
+            zero_day_class = 4  # DoS attack class
+            if zero_day_class < cm.shape[0] and zero_day_class < cm.shape[1]:
+                # True positives for zero-day class
+                tp_zero_day = cm[zero_day_class, zero_day_class]
+                # False negatives for zero-day class
+                fn_zero_day = cm[zero_day_class, :].sum() - tp_zero_day
+                # False positives for zero-day class
+                fp_zero_day = cm[:, zero_day_class].sum() - tp_zero_day
                 
-            if tp + fn > 0:
-                recall = tp / (tp + fn)
+                # Zero-day class precision and recall
+                if tp_zero_day + fp_zero_day > 0:
+                    precision_zero_day = tp_zero_day / (tp_zero_day + fp_zero_day)
             else:
-                recall = 0.0
+                precision_zero_day = 0.0
                 
-            if precision + recall > 0:
-                f1_score = 2 * (precision * recall) / (precision + recall)
+            if tp_zero_day + fn_zero_day > 0:
+                recall_zero_day = tp_zero_day / (tp_zero_day + fn_zero_day)
             else:
-                f1_score = 0.0
+                recall_zero_day = 0.0
         else:
             # Default values when predictions are not available
-            tp = tn = fp = fn = 0
-            precision = recall = f1_score = 0.0
+            precision_macro = recall_macro = f1_macro = 0.0
+            precision_zero_day = recall_zero_day = 0.0
         
         # Update the agent with comprehensive metrics
         self.threshold_agent.update(
             state, self.ttt_threshold, success_rate, accuracy_improvement,
-            fp, fn, tp, tn, precision, recall, f1_score, 
+            0, 0, 0, 0, precision_macro, recall_macro, f1_macro, 
             samples_selected, total_samples
         )
         
@@ -821,6 +957,35 @@ class TransductiveLearner(nn.Module):
             embeddings_reshaped, embeddings_reshaped, embeddings_reshaped
         )
         return attended_embeddings.squeeze(1) + embeddings  # Residual connection
+    
+    def _focal_loss(self, logits, targets, class_weights, alpha=0.25, gamma=2.0):
+        """
+        Focal loss implementation for handling class imbalance
+        """
+        # Compute cross entropy loss
+        ce_loss = F.cross_entropy(logits, targets, weight=class_weights, reduction='none')
+        
+        # Compute probabilities
+        pt = torch.exp(-ce_loss)
+        
+        # Compute focal loss
+        focal_loss = alpha * (1 - pt) ** gamma * ce_loss
+        
+        return focal_loss.mean()
+    
+    def _initialize_weights(self):
+        """
+        Initialize weights for better learning on imbalanced data
+        """
+        for module in self.modules():
+            if isinstance(module, nn.Linear):
+                # Use Xavier initialization for better gradient flow
+                nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
+            elif isinstance(module, nn.BatchNorm1d):
+                nn.init.constant_(module.weight, 1)
+                nn.init.constant_(module.bias, 0)
     
     
     def transductive_optimization(self, support_x, support_y, test_x, test_y=None):
@@ -893,6 +1058,130 @@ class TransductiveLearner(nn.Module):
         
         return test_predictions, prototypes, unique_labels
     
+    def transductive_adaptation(self, support_x: torch.Tensor, support_y: torch.Tensor, 
+                                query_x: torch.Tensor, query_y: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, Dict]:
+        """
+        Performs transductive adaptation (Test-Time Training) on the query set.
+        This is the optimized version with confidence-based sample selection.
+        Args:
+            support_x: Support set features (batch_size, sequence_length, input_dim)
+            support_y: Support set labels (batch_size,)
+            query_x: Query set features (batch_size, sequence_length, input_dim)
+            query_y: Optional query set labels for evaluation (batch_size,)
+        Returns:
+            adapted_logits: Logits for the query set after adaptation
+            adaptation_metrics: Dictionary of metrics from the adaptation process
+        """
+        import copy
+        
+        self_copy = copy.deepcopy(self)
+        self_copy.train()
+        
+        # Use a separate optimizer for TTT
+        ttt_optimizer = optim.Adam(self_copy.parameters(), lr=0.0005)
+        
+        # Store initial predictions for comparison
+        with torch.no_grad():
+            initial_logits = self_copy(query_x)
+            initial_predictions = torch.argmax(initial_logits, dim=1)
+        
+        losses = []
+        accuracies = []
+        support_losses = []
+        consistency_losses = []
+        
+        # Select samples for TTT based on confidence
+        with torch.no_grad():
+            confidence_scores = self_copy.get_confidence_scores(query_x)
+            self.ttt_threshold = self_copy.get_dynamic_threshold(confidence_scores)
+            
+            selected_indices = torch.where(confidence_scores < self.ttt_threshold)[0]
+            
+            if len(selected_indices) == 0:
+                logger.info(f"No samples selected for TTT (all above threshold {self.ttt_threshold:.4f}). Skipping adaptation.")
+                adaptation_metrics = {
+                    'losses': [], 'accuracies': [], 'support_losses': [], 'consistency_losses': [],
+                    'accuracy_improvement': 0.0, 'success_rate': 0.0,
+                    'initial_predictions': initial_logits, 'adapted_predictions': initial_logits
+                }
+                return initial_logits, adaptation_metrics
+            
+            ttt_query_x = query_x[selected_indices]
+            ttt_query_y = query_y[selected_indices] if query_y is not None else None
+            
+            logger.info(f"Selected {len(selected_indices)} samples out of {len(query_x)} for TTT adaptation (threshold: {self.ttt_threshold:.4f})")
+        
+        # TTT adaptation loop
+        for step in range(5):  # Reduced steps for efficiency
+            ttt_optimizer.zero_grad()
+            
+            # Forward pass on support and selected query samples
+            support_logits = self_copy(support_x)
+            query_logits = self_copy(ttt_query_x)
+            
+            # Support loss
+            support_loss = F.cross_entropy(support_logits, support_y)
+            
+            # Consistency loss on query samples
+            consistency_loss = F.cross_entropy(query_logits, torch.argmax(query_logits, dim=1))
+            
+            # Total loss
+            total_loss = support_loss + 0.1 * consistency_loss
+            
+            # Backward pass
+            total_loss.backward()
+            torch.nn.utils.clip_grad_norm_(self_copy.parameters(), max_norm=1.0)
+            ttt_optimizer.step()
+            
+            # Store metrics
+            losses.append(total_loss.item())
+            support_losses.append(support_loss.item())
+            consistency_losses.append(consistency_loss.item())
+            
+            # Calculate accuracy if labels available
+            if ttt_query_y is not None:
+                with torch.no_grad():
+                    query_preds = torch.argmax(query_logits, dim=1)
+                    accuracy = (query_preds == ttt_query_y).float().mean().item()
+                    accuracies.append(accuracy)
+        
+        # Get final predictions
+        with torch.no_grad():
+            adapted_logits = self_copy(query_x)
+            adapted_predictions = torch.argmax(adapted_logits, dim=1)
+        
+        # Calculate improvement metrics
+        accuracy_improvement = 0.0
+        if query_y is not None:
+            initial_acc = (initial_predictions == query_y).float().mean().item()
+            final_acc = (adapted_predictions == query_y).float().mean().item()
+            accuracy_improvement = final_acc - initial_acc
+        
+        # Update adaptation success
+        success_rate = 1.0 if accuracy_improvement > 0 else 0.0
+        self.update_adaptation_success(
+            success_rate, accuracy_improvement,
+            initial_predictions, adapted_predictions,
+            query_y, len(selected_indices), len(query_x)
+        )
+        
+        # Prepare metrics
+        adaptation_metrics = {
+            'losses': losses,
+            'accuracies': accuracies,
+            'support_losses': support_losses,
+            'consistency_losses': consistency_losses,
+            'accuracy_improvement': accuracy_improvement,
+            'success_rate': success_rate,
+            'samples_selected': len(selected_indices),
+            'total_samples': len(query_x),
+            'threshold_used': self.ttt_threshold,
+            'initial_predictions': initial_logits,
+            'adapted_predictions': adapted_logits
+        }
+        
+        return adapted_logits, adaptation_metrics
+    
     def update_prototypes(self, support_embeddings, support_y, test_embeddings, test_predictions):
         """
         Unified prototype update method handling both support and test contributions
@@ -920,6 +1209,148 @@ class TransductiveLearner(nn.Module):
         """
         return PredictionUtils.update_predictions_with_confidence(test_embeddings, prototypes)
     
+    def meta_train(self, meta_tasks: List[Dict], meta_epochs: int = 100):
+        """
+        Meta-train the model on multiple tasks
+        
+        Args:
+            meta_tasks: List of meta-learning tasks
+            meta_epochs: Number of meta-training epochs
+            
+        Returns:
+            training_history: Training metrics
+        """
+        logger.info(f"Starting transductive meta-training for {meta_epochs} epochs")
+        
+        training_history = {
+            'epoch_losses': [],
+            'epoch_accuracies': []
+        }
+        
+        # Enhanced optimizer for better convergence on imbalanced data
+        meta_optimizer = optim.AdamW(self.parameters(), lr=0.01, weight_decay=1e-4)
+        
+        for epoch in range(meta_epochs):
+            epoch_losses = []
+            epoch_accuracies = []
+            
+            # Sample tasks for this epoch
+            np.random.shuffle(meta_tasks)
+            
+            for task in meta_tasks:
+                # Move tensors to the same device as the model
+                device = next(self.parameters()).device
+                support_x = task['support_x'].to(device)
+                support_y = task['support_y'].to(device)
+                query_x = task['query_x'].to(device)
+                query_y = task['query_y'].to(device)
+                
+                # Forward pass on support set
+                support_logits = self(support_x)
+                
+                # Calculate class weights for support set
+                support_class_counts = torch.bincount(support_y)
+                support_total = len(support_y)
+                num_classes = support_logits.size(1)
+                
+                # Create stronger weights for class imbalance handling
+                support_class_weights = torch.ones(num_classes, device=support_y.device)
+                for class_id in range(num_classes):
+                    if class_id < len(support_class_counts) and support_class_counts[class_id] > 0:
+                        # Use inverse frequency with square root to reduce extreme weights
+                        support_class_weights[class_id] = torch.sqrt(support_total / support_class_counts[class_id].float())
+                    else:
+                        # Give very high weight to missing classes to encourage learning
+                        support_class_weights[class_id] = support_total * 2.0
+                
+                # Normalize weights but keep them strong
+                support_class_weights = support_class_weights / support_class_weights.sum() * num_classes * 2.0
+                
+                # Use focal loss for better handling of hard examples
+                support_loss = self._focal_loss(support_logits, support_y, support_class_weights, alpha=0.25, gamma=2.0)
+                
+                # Forward pass on query set
+                query_logits = self(query_x)
+                
+                # Calculate stronger class weights for query set
+                query_class_counts = torch.bincount(query_y)
+                query_total = len(query_y)
+                query_class_weights = torch.ones(num_classes, device=query_y.device)
+                for class_id in range(num_classes):
+                    if class_id < len(query_class_counts) and query_class_counts[class_id] > 0:
+                        # Use inverse frequency with square root to reduce extreme weights
+                        query_class_weights[class_id] = torch.sqrt(query_total / query_class_counts[class_id].float())
+                    else:
+                        # Give very high weight to missing classes to encourage learning
+                        query_class_weights[class_id] = query_total * 2.0
+                
+                # Normalize weights but keep them strong
+                query_class_weights = query_class_weights / query_class_weights.sum() * num_classes * 2.0
+                
+                # Use focal loss for better handling of hard examples
+                query_loss = self._focal_loss(query_logits, query_y, query_class_weights, alpha=0.25, gamma=2.0)
+                
+                # Total loss
+                total_loss = support_loss + query_loss
+                
+                # Compute accuracy
+                predictions = torch.argmax(query_logits, dim=1)
+                accuracy = (predictions == query_y).float().mean().item()
+                
+                # Backward pass
+                meta_optimizer.zero_grad()
+                total_loss.backward()
+                meta_optimizer.step()
+                
+                epoch_losses.append(total_loss.item())
+                epoch_accuracies.append(accuracy)
+            
+            # Record epoch metrics
+            avg_loss = np.mean(epoch_losses)
+            avg_accuracy = np.mean(epoch_accuracies)
+            
+            training_history['epoch_losses'].append(avg_loss)
+            training_history['epoch_accuracies'].append(avg_accuracy)
+            
+            if epoch % 10 == 0:
+                logger.info(f"Epoch {epoch}: Loss={avg_loss:.4f}, Accuracy={avg_accuracy:.4f}")
+        
+        logger.info("Transductive meta-training completed")
+        return training_history
+    
+    def adapt_to_task(self, support_x, support_y, adaptation_steps: int = None):
+        """
+        Adapt the model to a specific task using transductive learning
+        Args:
+            support_x: Support set features
+            support_y: Support set labels
+            adaptation_steps: Number of adaptation steps (default: self.transductive_steps)
+        Returns:
+            adapted_model: Adapted model
+        """
+        if adaptation_steps is None:
+            adaptation_steps = self.transductive_steps
+        
+        # Create a copy for adaptation
+        adapted_model = copy.deepcopy(self)
+        adapted_model.train()
+        
+        # Use transductive optimization
+        optimizer = optim.Adam(adapted_model.parameters(), lr=self.transductive_lr)
+        
+        for step in range(adaptation_steps):
+            optimizer.zero_grad()
+            
+            # Forward pass
+            support_logits = adapted_model(support_x)
+            support_loss = F.cross_entropy(support_logits, support_y)
+            
+            # Backward pass
+            support_loss.backward()
+            optimizer.step()
+        
+        return adapted_model
+    
 
 class MetaLearner(nn.Module):
     """
@@ -927,10 +1358,10 @@ class MetaLearner(nn.Module):
     Learns to quickly adapt to new tasks with minimal examples
     """
     
-    def __init__(self, input_dim: int, hidden_dim: int = 128, embedding_dim: int = 64, num_classes: int = 2, support_weight: float = 0.7, test_weight: float = 0.3):
+    def __init__(self, input_dim: int, hidden_dim: int = 128, embedding_dim: int = 64, num_classes: int = 2, support_weight: float = 0.7, test_weight: float = 0.3, sequence_length: int = 1):
         super(MetaLearner, self).__init__()
         
-        self.transductive_net = TransductiveLearner(input_dim, hidden_dim, embedding_dim, num_classes, support_weight, test_weight)
+        self.transductive_net = TransductiveLearner(input_dim, hidden_dim, embedding_dim, num_classes, support_weight, test_weight, sequence_length)
         self.meta_optimizer = optim.AdamW(self.parameters(), lr=0.001, weight_decay=1e-4)
         
         # Meta-learning parameters
@@ -1031,10 +1462,10 @@ class TransductiveFewShotModel(nn.Module):
     Combines meta-learning with test-time training for rapid adaptation
     """
     
-    def __init__(self, input_dim: int, hidden_dim: int = 128, embedding_dim: int = 64, num_classes: int = 2, support_weight: float = 0.7, test_weight: float = 0.3):
+    def __init__(self, input_dim: int, hidden_dim: int = 128, embedding_dim: int = 64, num_classes: int = 2, support_weight: float = 0.7, test_weight: float = 0.3, sequence_length: int = 1):
         super(TransductiveFewShotModel, self).__init__()
         
-        self.meta_learner = MetaLearner(input_dim, hidden_dim, embedding_dim, num_classes, support_weight, test_weight)
+        self.meta_learner = MetaLearner(input_dim, hidden_dim, embedding_dim, num_classes, support_weight, test_weight, sequence_length)
         self.embedding_dim = embedding_dim
         self.num_classes = num_classes
         
@@ -1111,18 +1542,20 @@ class TransductiveFewShotModel(nn.Module):
         confidence = 1.0 - (min_distances / (max_distances + 1e-8))
         return confidence
     
-    def detect_zero_day(self, x, support_x, support_y, adaptation_steps: int = None):
+    def detect_zero_day(self, x, support_x, support_y, adaptation_steps: int = None, test_y=None, evaluation_mode: bool = False):
         """
-        Detect zero-day attacks using transductive few-shot learning
+        Detect zero-day attacks using transductive few-shot learning with multiclass support
         
         Args:
             x: Test samples
             support_x: Support set (known attacks)
-            support_y: Support set labels
+            support_y: Support set labels (10-class: 0=Normal, 1-9=Attack types)
             adaptation_steps: Number of adaptation steps
+            test_y: Optional test labels for evaluation
+            evaluation_mode: If True, prevents adaptation using support set to avoid data leakage
             
         Returns:
-            predictions: Binary predictions (0=normal, 1=attack)
+            predictions: Multiclass predictions (0-9: Normal, Fuzzers, Analysis, Backdoor, DoS, Exploits, Generic, Reconnaissance, Shellcode, Worms)
             confidence: Confidence scores
             is_zero_day: Zero-day detection flags
         """
@@ -1142,7 +1575,7 @@ class TransductiveFewShotModel(nn.Module):
         support_embeddings = self.meta_learner.get_embeddings(support_x)
         
         # Compute prototypes from support set
-        prototypes, prototype_labels = self.meta_learner.transductive_net.update_prototypes(
+        prototypes, prototype_labels = self.update_prototypes(
             support_embeddings, support_y, test_embeddings, None
         )
         
@@ -1162,7 +1595,7 @@ class TransductiveFewShotModel(nn.Module):
         
         logger.info(f"Dynamic TTT threshold: {dynamic_threshold:.4f}, Selected {len(low_confidence_indices)} samples for adaptation")
         
-        if len(low_confidence_indices) > 0:
+        if len(low_confidence_indices) > 0 and not evaluation_mode:
             logger.info(f"Test-time training on {len(low_confidence_indices)} low-confidence samples")
             
             # Perform test-time training on low-confidence samples
@@ -1187,10 +1620,10 @@ class TransductiveFewShotModel(nn.Module):
             final_confidence[low_confidence_mask] = adapted_confidence
             
             # Calculate adaptation success metrics for RL agent
-            if len(low_confidence_indices) > 0:
+            if len(low_confidence_indices) > 0 and test_y is not None:
                 # Calculate accuracy improvement
-                initial_accuracy = (initial_predictions[low_confidence_mask] == y[low_confidence_mask]).float().mean().item()
-                adapted_accuracy = (adapted_predictions == y[low_confidence_mask]).float().mean().item()
+                initial_accuracy = (initial_predictions[low_confidence_mask] == test_y[low_confidence_mask]).float().mean().item()
+                adapted_accuracy = (adapted_predictions == test_y[low_confidence_mask]).float().mean().item()
                 accuracy_improvement = adapted_accuracy - initial_accuracy
                 
                 # Calculate success rate (how many samples improved)
@@ -1202,29 +1635,34 @@ class TransductiveFewShotModel(nn.Module):
                     success_rate, accuracy_improvement,
                     initial_predictions[low_confidence_mask], 
                     adapted_predictions,
-                    y[low_confidence_mask],
+                    test_y[low_confidence_mask],
                     len(low_confidence_indices),
-                    len(y)
+                    len(test_y)
                 )
                 
                 # Log comprehensive metrics
                 logger.info(f"TTT Adaptation Success - Rate: {success_rate:.3f}, Accuracy Improvement: {accuracy_improvement:.3f}")
-                logger.info(f"Enhanced RL Metrics - Samples Selected: {len(low_confidence_indices)}/{len(y)} ({len(low_confidence_indices)/len(y)*100:.1f}%)")
+                logger.info(f"Enhanced RL Metrics - Samples Selected: {len(low_confidence_indices)}/{len(test_y)} ({len(low_confidence_indices)/len(test_y)*100:.1f}%)")
+        elif len(low_confidence_indices) > 0 and evaluation_mode:
+            logger.info(f"Evaluation mode: Skipping TTT adaptation on {len(low_confidence_indices)} low-confidence samples to prevent data leakage")
+            final_predictions = initial_predictions
+            final_confidence = confidence
         else:
             final_predictions = initial_predictions
             final_confidence = confidence
         
-        # Zero-day detection: samples with low confidence and predicted as attack
-        attack_mask = final_predictions == 1
-        low_confidence_attacks = attack_mask & (final_confidence < self.adaptation_threshold)
+        # Zero-day detection: samples with low confidence regardless of predicted class
+        # This allows for proper multiclass evaluation without binary simplification
+        low_confidence_attacks = final_confidence < self.adaptation_threshold
         
-        # Convert to binary labels (0=normal, 1=attack)
-        binary_predictions = (final_predictions == 1).long()
+        # Return multiclass predictions (0-9) instead of binary
+        # This preserves the original 10-class classification for accurate evaluation
         
-        logger.info(f"Transductive zero-day detection completed")
+        logger.info(f"Transductive zero-day detection completed (10-class multiclass)")
         logger.info(f"Zero-day samples detected: {low_confidence_attacks.sum().item()}")
+        logger.info(f"Predicted classes distribution: {torch.bincount(final_predictions, minlength=10).tolist()}")
         
-        return binary_predictions, final_confidence, low_confidence_attacks
+        return final_predictions, final_confidence, low_confidence_attacks
     
     def meta_train(self, meta_tasks: List[Dict], meta_epochs: int = 100):
         """
@@ -1288,90 +1726,147 @@ class TransductiveFewShotModel(nn.Module):
         logger.info("Transductive meta-training completed")
         return training_history
     
-    def evaluate_zero_day_detection(self, test_x, test_y, support_x, support_y):
+    def evaluate_zero_day_detection(self, test_x, test_y, support_x, support_y, zero_day_indices=None):
         """
-        Evaluate zero-day detection performance
+        Evaluate zero-day detection performance using binary classification with base vs. TTT comparison
         
         Args:
             test_x: Test samples
-            test_y: Test labels
-            support_x: Support set
-            support_y: Support set labels
+            test_y: Test labels (binary: 0=Normal, 1=Attack)
+            support_x: Support set (known attacks)
+            support_y: Support set labels (binary: 0=Normal, 1=Attack)
+            zero_day_indices: Indices of DoS samples for focused evaluation
             
         Returns:
-            metrics: Evaluation metrics
+            metrics: Dictionary containing evaluation metrics for both base and TTT predictions
         """
-        logger.info("Evaluating transductive zero-day detection performance")
+        logger.info("Evaluating transductive zero-day detection performance with base vs. TTT comparison")
         
-        # Detect zero-day attacks
-        predictions, confidence, is_zero_day = self.detect_zero_day(
-            test_x, support_x, support_y
-        )
+        # Base model evaluation (pre-TTT)
+        with torch.no_grad():
+            base_logits = self(test_x)
+            base_predictions = torch.argmax(base_logits, dim=1)
+        
+        # TTT evaluation (in evaluation mode to prevent data leakage)
+        ttt_predictions, confidence, is_zero_day = self.detect_zero_day(test_x, support_x, support_y, test_y=test_y, evaluation_mode=True)
         
         # Convert to numpy for sklearn metrics
-        predictions_np = predictions.detach().cpu().numpy()
+        base_predictions_np = base_predictions.detach().cpu().numpy()
+        ttt_predictions_np = ttt_predictions.detach().cpu().numpy()
         test_y_np = test_y.detach().cpu().numpy()
         confidence_np = confidence.detach().cpu().numpy()
         is_zero_day_np = is_zero_day.detach().cpu().numpy()
         
-        # Compute metrics
-        accuracy = accuracy_score(test_y_np, predictions_np)
-        precision, recall, f1, _ = precision_recall_fscore_support(
-            test_y_np, predictions_np, average='binary'
-        )
+        # Compute metrics for base and TTT
+        def compute_metrics(predictions_np, true_labels_np, zero_day_indices):
+            # Overall binary classification metrics
+            accuracy = accuracy_score(true_labels_np, predictions_np)
+            precision, recall, f1, _ = precision_recall_fscore_support(
+                true_labels_np, predictions_np, average='binary', zero_division=0
+            )
+            mccc = matthews_corrcoef(true_labels_np, predictions_np)
+            cm = confusion_matrix(true_labels_np, predictions_np)
+            
+            # DoS-specific metrics (zero-day detection)
+            if zero_day_indices is not None and len(zero_day_indices) > 0:
+                dos_predictions = predictions_np[zero_day_indices]
+                dos_true = true_labels_np[zero_day_indices]
+                dos_accuracy = accuracy_score(dos_true, dos_predictions)
+                dos_precision, dos_recall, dos_f1, _ = precision_recall_fscore_support(
+                    dos_true, dos_predictions, average='binary', zero_division=0
+                )
+                zero_day_detection_rate = (dos_predictions == 1).mean()  # Rate of detecting DoS as attack
+            else:
+                dos_accuracy = dos_precision = dos_recall = dos_f1 = zero_day_detection_rate = 0.0
+            
+            return {
+                'accuracy': accuracy,
+                'precision': precision,
+                'recall': recall,
+                'f1_score': f1,
+                'mccc': mccc,
+                'dos_accuracy': dos_accuracy,
+                'dos_precision': dos_precision,
+                'dos_recall': dos_recall,
+                'dos_f1_score': dos_f1,
+                'zero_day_detection_rate': zero_day_detection_rate,
+                'confusion_matrix': cm.tolist()
+            }
         
-        try:
-            roc_auc = roc_auc_score(test_y_np, confidence_np)
-        except:
-            roc_auc = 0.5
+        base_metrics = compute_metrics(base_predictions_np, test_y_np, zero_day_indices)
+        ttt_metrics = compute_metrics(ttt_predictions_np, test_y_np, zero_day_indices)
         
-        # Compute confusion matrix
-        from sklearn.metrics import confusion_matrix, matthews_corrcoef
-        cm = confusion_matrix(test_y_np, predictions_np)
-        tn, fp, fn, tp = cm.ravel() if cm.size == 4 else (0, 0, 0, 0)
+        metrics = {'base': base_metrics, 'ttt': ttt_metrics}
         
-        # Compute Matthews Correlation Coefficient (MCCC)
-        try:
-            mccc = matthews_corrcoef(test_y_np, predictions_np)
-        except:
-            mccc = 0.0
-        
-        # Zero-day specific metrics
-        zero_day_detection_rate = is_zero_day_np.mean()
-        avg_confidence = confidence_np.mean()
-        
-        metrics = {
-            'accuracy': accuracy,
-            'precision': precision,
-            'recall': recall,
-            'f1_score': f1,
-            'roc_auc': roc_auc,
-            'mccc': mccc,
-            'zero_day_detection_rate': zero_day_detection_rate,
-            'avg_confidence': avg_confidence,
-            'num_zero_day_samples': is_zero_day_np.sum(),
-            'confusion_matrix': {
-                'tn': int(tn),
-                'fp': int(fp),
-                'fn': int(fn),
-                'tp': int(tp)
-            },
-            'total_samples': len(test_y_np)
-        }
-        
-        logger.info(f"Transductive zero-day detection results:")
-        logger.info(f"  Accuracy: {accuracy:.4f}")
-        logger.info(f"  F1-Score: {f1:.4f}")
-        logger.info(f"  MCCC: {mccc:.4f}")
-        logger.info(f"  Zero-day detection rate: {zero_day_detection_rate:.4f}")
-        logger.info(f"  Average confidence: {avg_confidence:.4f}")
-        logger.info(f"  Confusion Matrix - TN: {tn}, FP: {fp}, FN: {fn}, TP: {tp}")
+        logger.info("Base vs. TTT Performance (Binary Classification):")
+        logger.info(f"  Base F1: {base_metrics['f1_score']:.4f}, TTT F1: {ttt_metrics['f1_score']:.4f}")
+        logger.info(f"  Base DoS F1: {base_metrics['dos_f1_score']:.4f}, TTT DoS F1: {ttt_metrics['dos_f1_score']:.4f}")
+        logger.info(f"  Base Zero-Day Rate: {base_metrics['zero_day_detection_rate']:.4f}, TTT Zero-Day Rate: {ttt_metrics['zero_day_detection_rate']:.4f}")
         
         return metrics
 
-def create_meta_tasks(data_x, data_y, n_way: int = 2, k_shot: int = 5, n_query: int = 15, n_tasks: int = 100):
+    def validate_data_splits(self, train_x, train_y, val_x, val_y, test_x, test_y):
+        """
+        Validate that data splits don't have overlap to prevent data leakage
+        
+        Args:
+            train_x, train_y: Training data
+            val_x, val_y: Validation data  
+            test_x, test_y: Test data
+            
+        Returns:
+            is_valid: Boolean indicating if splits are valid
+            overlap_info: Dictionary with overlap details
+        """
+        logger.info("🔍 Validating data splits to prevent data leakage...")
+        
+        overlap_info = {
+            'train_val_overlap': 0,
+            'train_test_overlap': 0,
+            'val_test_overlap': 0,
+            'total_overlaps': 0
+        }
+        
+        # Convert to numpy for comparison
+        train_x_np = train_x.detach().cpu().numpy() if torch.is_tensor(train_x) else train_x
+        val_x_np = val_x.detach().cpu().numpy() if torch.is_tensor(val_x) else val_x
+        test_x_np = test_x.detach().cpu().numpy() if torch.is_tensor(test_x) else test_x
+        
+        # Check for exact duplicates between splits
+        def find_overlaps(data1, data2, name1, name2):
+            overlaps = 0
+            for i, sample1 in enumerate(data1):
+                for j, sample2 in enumerate(data2):
+                    if np.array_equal(sample1, sample2):
+                        overlaps += 1
+                        logger.warning(f"Overlap found: {name1}[{i}] == {name2}[{j}]")
+            return overlaps
+        
+        # Check all pairwise overlaps
+        overlap_info['train_val_overlap'] = find_overlaps(train_x_np, val_x_np, 'train', 'val')
+        overlap_info['train_test_overlap'] = find_overlaps(train_x_np, test_x_np, 'train', 'test')
+        overlap_info['val_test_overlap'] = find_overlaps(val_x_np, test_x_np, 'val', 'test')
+        
+        overlap_info['total_overlaps'] = (overlap_info['train_val_overlap'] + 
+                                        overlap_info['train_test_overlap'] + 
+                                        overlap_info['val_test_overlap'])
+        
+        is_valid = overlap_info['total_overlaps'] == 0
+        
+        if is_valid:
+            logger.info("✅ Data splits are valid - no overlaps detected")
+        else:
+            logger.error(f"❌ Data leakage detected! Total overlaps: {overlap_info['total_overlaps']}")
+            logger.error(f"  Train-Val overlaps: {overlap_info['train_val_overlap']}")
+            logger.error(f"  Train-Test overlaps: {overlap_info['train_test_overlap']}")
+            logger.error(f"  Val-Test overlaps: {overlap_info['val_test_overlap']}")
+        
+        return is_valid, overlap_info
+
+def create_meta_tasks(data_x, data_y, n_way: int = 2, k_shot: int = 5, n_query: int = 15, n_tasks: int = 100, 
+                     phase: str = "training", normal_query_ratio: float = 0.8, zero_day_attack_label: int = None):
     """
-    Create meta-learning tasks for few-shot learning
+    Create meta-learning tasks for few-shot learning with controlled query set distribution
     
     Args:
         data_x: Input data
@@ -1380,48 +1875,110 @@ def create_meta_tasks(data_x, data_y, n_way: int = 2, k_shot: int = 5, n_query: 
         k_shot: Number of support samples per class
         n_query: Number of query samples per class
         n_tasks: Number of tasks to create
+        phase: Phase of learning ("training", "validation", "testing")
+        normal_query_ratio: Ratio of normal samples in query set (0.8 for training/validation, 0.9 for testing)
+        zero_day_attack_label: Label of zero-day attack to exclude from training (None for testing phase)
         
     Returns:
         meta_tasks: List of meta-learning tasks
     """
-    logger.info(f"Creating {n_tasks} meta-learning tasks ({n_way}-way, {k_shot}-shot)")
+    logger.info(f"Creating {n_tasks} meta-learning tasks ({n_way}-way, {k_shot}-shot) for {phase} phase")
+    logger.info(f"Query set will have {normal_query_ratio*100:.0f}% Normal samples")
+    if zero_day_attack_label is not None:
+        logger.info(f"Excluding zero-day attack (label {zero_day_attack_label}) from training")
     
     meta_tasks = []
     unique_labels = torch.unique(data_y)
     
+    # For training phase, exclude zero-day attack if specified
+    if phase in ["training", "validation"] and zero_day_attack_label is not None:
+        # Filter out zero-day attack from available labels
+        available_labels = unique_labels[unique_labels != zero_day_attack_label]
+        logger.info(f"Available labels for {phase}: {available_labels.tolist()}")
+    else:
+        available_labels = unique_labels
+        logger.info(f"Available labels for {phase}: {available_labels.tolist()}")
+    
+    # Separate Normal (0) and Attack samples
+    normal_mask = data_y == 0
+    normal_indices = torch.where(normal_mask)[0]
+    
+    # For attack samples, exclude zero-day attack if specified
+    if zero_day_attack_label is not None:
+        attack_mask = (data_y != 0) & (data_y != zero_day_attack_label)
+    else:
+        attack_mask = data_y != 0
+    attack_indices = torch.where(attack_mask)[0]
+    
     for _ in range(n_tasks):
-        # Sample classes for this task
-        task_classes = torch.randperm(len(unique_labels))[:n_way]
-        selected_labels = unique_labels[task_classes]
+        # Sample classes for this task from available labels
+        task_classes = torch.randperm(len(available_labels))[:n_way]
+        selected_labels = available_labels[task_classes]
         
+        # Create support set for each selected class
         support_x_list = []
         support_y_list = []
-        query_x_list = []
-        query_y_list = []
         
         for label in selected_labels:
             # Get samples for this class
             class_mask = data_y == label
             class_indices = torch.where(class_mask)[0]
             
-            # Shuffle and select samples
+            # Shuffle and select samples for support set
             shuffled_indices = class_indices[torch.randperm(len(class_indices))]
-            
-            # Support set
             support_indices = shuffled_indices[:k_shot]
+            
             support_x_list.append(data_x[support_indices])
             support_y_list.append(data_y[support_indices])
             
-            # Query set
-            query_indices = shuffled_indices[k_shot:k_shot + n_query]
-            query_x_list.append(data_x[query_indices])
-            query_y_list.append(data_y[query_indices])
-        
-        # Combine all classes
+        # Combine support sets
         support_x = torch.cat(support_x_list, dim=0)
         support_y = torch.cat(support_y_list, dim=0)
-        query_x = torch.cat(query_x_list, dim=0)
-        query_y = torch.cat(query_y_list, dim=0)
+        
+        # Create query set with controlled distribution
+        # Calculate target distribution
+        total_query_samples = n_query * n_way
+        target_normal_count = int(total_query_samples * normal_query_ratio)
+        target_attack_count = total_query_samples - target_normal_count
+        
+        # For query set, we need to ensure proper distribution regardless of selected classes
+        # Sample normal samples for query set (from all available normal samples)
+        if len(normal_indices) >= target_normal_count:
+            normal_query_indices = normal_indices[torch.randperm(len(normal_indices))[:target_normal_count]]
+        else:
+            normal_query_indices = normal_indices
+        
+        # Sample attack samples for query set (from all available attack samples, excluding zero-day if specified)
+        if len(attack_indices) >= target_attack_count:
+            attack_query_indices = attack_indices[torch.randperm(len(attack_indices))[:target_attack_count]]
+        else:
+            attack_query_indices = attack_indices
+        
+        # Combine query samples
+        if len(normal_query_indices) > 0 and len(attack_query_indices) > 0:
+            query_indices = torch.cat([normal_query_indices, attack_query_indices])
+        elif len(normal_query_indices) > 0:
+            query_indices = normal_query_indices
+        elif len(attack_query_indices) > 0:
+            query_indices = attack_query_indices
+        else:
+            # Fallback: use all available samples
+            query_indices = torch.cat([normal_indices, attack_indices])
+        
+        # Shuffle query indices
+        query_indices = query_indices[torch.randperm(len(query_indices))]
+        
+        # Create query set
+        query_x = data_x[query_indices]
+        query_y = data_y[query_indices]
+        
+        # Verify query set distribution
+        query_normal_count = (query_y == 0).sum().item()
+        query_attack_count = (query_y != 0).sum().item()
+        total_query = len(query_y)
+        actual_normal_ratio = query_normal_count / total_query if total_query > 0 else 0
+        
+        logger.debug(f"Query set distribution: {query_normal_count}/{total_query} Normal ({actual_normal_ratio:.1%}), target: {normal_query_ratio:.1%}")
         
         # Relabel to 0, 1, 2, ... for this task
         label_mapping = {label.item(): i for i, label in enumerate(selected_labels)}
@@ -1465,14 +2022,20 @@ def main():
     # Initialize model
     model = TransductiveFewShotModel(input_dim=n_features)
     
+    # Validate data splits to prevent data leakage
+    is_valid, overlap_info = model.validate_data_splits(X_train, y_train, X_val, y_val, X_test, y_test)
+    if not is_valid:
+        logger.error("Data leakage detected! Cannot proceed with evaluation.")
+        return
+    
     # Create meta-tasks
     meta_tasks = create_meta_tasks(X_train, y_train, n_tasks=50)
     
     # Meta-train the model
     training_history = model.meta_train(meta_tasks, meta_epochs=20)
     
-    # Evaluate zero-day detection
-    metrics = model.evaluate_zero_day_detection(X_test, y_test, X_train, y_train)
+    # Evaluate zero-day detection (using validation data as support set to prevent data leakage)
+    metrics = model.evaluate_zero_day_detection(X_test, y_test, X_val, y_val)
     
     logger.info("✅ Transductive few-shot model test completed!")
     logger.info(f"Final metrics: {metrics}")

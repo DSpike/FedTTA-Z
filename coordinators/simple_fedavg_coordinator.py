@@ -146,10 +146,13 @@ class SimpleFederatedClient:
             local_meta_tasks = create_meta_tasks(
                 self.train_data,
                 self.train_labels,
-                n_way=2,  # Binary classification
-                k_shot=5,  # 5-shot learning
-                n_query=10,  # 10 query samples
-                n_tasks=5  # 5 tasks per epoch
+                n_way=10,  # 10-way classification (1 Normal + 9 Attack types)
+                k_shot=50,  # 50-shot learning (5 samples per class)
+                n_query=100,  # 100 query samples
+                n_tasks=5,  # 5 tasks per epoch
+                phase="training",
+                normal_query_ratio=0.8,  # 80% Normal samples in query set for training
+                zero_day_attack_label=4  # Exclude DoS (label 4) from training
             )
             
             # Phase 2: Meta-learning training
@@ -202,18 +205,18 @@ class SimpleFederatedClient:
             adaptation_steps = 5
             inner_lr = 0.01
             
-            # Create optimizer for the meta_learner
-            ttt_optimizer = torch.optim.SGD(self.model.meta_learner.parameters(), lr=inner_lr)
+            # Create optimizer for the model
+            ttt_optimizer = torch.optim.SGD(self.model.parameters(), lr=inner_lr)
             
             # Perform adaptation steps
             for step in range(adaptation_steps):
                 ttt_optimizer.zero_grad()
                 
-                # Get embeddings
-                support_embeddings = self.model.meta_learner.transductive_net(support_x)
+                # Get embeddings using the model's extract_embeddings method
+                support_embeddings = self.model.extract_embeddings(support_x)
                 
-                # Compute prototypes
-                prototypes, prototype_labels = self.model.meta_learner.transductive_net.update_prototypes(
+                # Compute prototypes using the model's update_prototypes method
+                prototypes, prototype_labels = self.model.update_prototypes(
                     support_embeddings, support_y, support_embeddings, None
                 )
                 

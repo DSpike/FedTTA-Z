@@ -223,7 +223,13 @@ class EdgeIIoTSystemConfig:
     batch_size: int = 32
     
     # TTT configuration
-    ttt_steps: int = 200
+    ttt_base_steps: int = 50  # Base number of TTT adaptation steps
+    ttt_max_steps: int = 200  # Maximum TTT steps (safety limit)
+    ttt_lr: float = 0.001  # TTT learning rate
+    ttt_weight_decay: float = 1e-4  # TTT weight decay
+    ttt_patience: int = 15  # Early stopping patience
+    ttt_timeout: int = 30  # TTT timeout in seconds
+    ttt_improvement_threshold: float = 1e-4  # Minimum improvement threshold
     support_size: int = 50  # Support samples for few-shot learning
     query_size: int = 450   # Query samples for evaluation
     
@@ -1875,7 +1881,7 @@ class EdgeIIoTFederatedLearningSystem:
                     'roc_curve': {'fpr': fpr.tolist(), 'tpr': tpr.tolist(), 'thresholds': thresholds.tolist()},
                     'confusion_matrix': cm.tolist(),
                     'zero_day_detection_rate': zero_day_detection_rate,
-                    'ttt_adaptation_steps': self.config.ttt_steps,
+                    'ttt_adaptation_steps': self.config.ttt_base_steps,
                     'support_samples': support_size,
                     'query_samples': query_size,
                     'zero_day_samples': query_zero_day_mask.sum().item()

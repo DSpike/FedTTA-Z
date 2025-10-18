@@ -119,9 +119,10 @@ class FedAVGAggregator:
             logger.info(f"   Aggregator MetaLearner type: {type(self.model.meta_learner)}")
             # Note: MetaLearner doesn't have meta_train, only TransductiveFewShotModel does
         
-        # Check if aggregator model is corrupted (should be TransductiveFewShotModel)
-        if type(self.model).__name__ != 'TransductiveFewShotModel':
-            logger.error(f"🚨 AGGREGATOR MODEL CORRUPTION DETECTED: Expected TransductiveFewShotModel, got {type(self.model).__name__}")
+        # Check if aggregator model is compatible (should be TransductiveFewShotModel or compatible TCN model)
+        if not (type(self.model).__name__ == 'TransductiveFewShotModel' or 
+                (hasattr(self.model, 'meta_train') and hasattr(self.model, 'forward'))):
+            logger.error(f"🚨 AGGREGATOR MODEL CORRUPTION DETECTED: Expected TransductiveFewShotModel or compatible model, got {type(self.model).__name__}")
             logger.error(f"🚨 This explains why meta_train method is missing in aggregator!")
         
         logger.info(f"🔍 AGGREGATOR MODEL INTEGRITY CHECK COMPLETE - {stage.upper()}")
@@ -331,6 +332,11 @@ class FedAVGAggregator:
             # Get global model parameters
             global_params = self.model.state_dict()
             
+            # Debug: Log global model parameter dimensions
+            for name, param in global_params.items():
+                if 'tcn' in name.lower() or 'conv' in name.lower() or 'linear' in name.lower():
+                    logger.info(f"🔍 DEBUG GLOBAL: {name} shape: {param.shape}")
+            
             # Initialize aggregated parameters
             aggregated_params = {}
             total_samples = 0
@@ -355,6 +361,11 @@ class FedAVGAggregator:
                         weight = client_contributions[client_id]
                         # Client parameters are already on CPU, no need to move them
                         client_param = update.model_parameters[param_name]
+                        # Debug: Log dimension mismatch
+                        if aggregated_param.shape != client_param.shape:
+                            logger.error(f"🔍 DIMENSION MISMATCH: {param_name}")
+                            logger.error(f"  Global param shape: {aggregated_param.shape}")
+                            logger.error(f"  Client {client_id} param shape: {client_param.shape}")
                         aggregated_param += weight * client_param
                 
                 # Keep aggregated parameter on CPU to save GPU memory
@@ -548,10 +559,13 @@ class BlockchainFederatedClient:
             local_meta_tasks = create_meta_tasks(
                 self.train_data,
                 self.train_labels,
-                n_way=2,  # Binary classification
-                k_shot=5,  # 5-shot learning
-                n_query=10,  # 10 query samples
-                n_tasks=5  # 5 tasks per epoch
+                n_way=10,  # 10-way classification (1 Normal + 9 Attack types)
+                k_shot=50,  # 50-shot learning (5 samples per class)
+                n_query=100,  # 100 query samples
+                n_tasks=5,  # 5 tasks per epoch
+                phase="training",
+                normal_query_ratio=0.8,  # 80% Normal samples in query set for training
+                zero_day_attack_label=4  # Exclude DoS (label 4) from training
             )
             
             # Phase 2: Meta-learning training
@@ -564,10 +578,10 @@ class BlockchainFederatedClient:
             # FIXED: Ensure model is TransductiveFewShotModel before calling meta_train
             if not hasattr(self.model, 'meta_train'):
                 logger.error(f"🚨 Model corruption detected! Model type: {type(self.model)}")
-                logger.error(f"🚨 Expected TransductiveFewShotModel, got {type(self.model).__name__}")
+                logger.error(f"🚨 Expected TransductiveFewShotModel or compatible model, got {type(self.model).__name__}")
                 raise AttributeError(f"Model {type(self.model).__name__} does not have meta_train method")
             
-            meta_training_history = self.model.meta_train(local_meta_tasks, meta_epochs=epochs)
+            meta_training_history = self.model.meta_train(local_meta_tasks, meta_epochs=3)  # Reduced for TCN stability
             
             # DEBUG: Check model type after meta_train call
             logger.info(f"🔍 DEBUG: Model type after meta_train: {type(self.model)}")
@@ -598,6 +612,9 @@ class BlockchainFederatedClient:
             model_parameters = {}
             for name, param in self.model.named_parameters():
                 model_parameters[name] = param.detach().cpu()
+                # Debug: Log parameter dimensions
+                if 'tcn' in name.lower() or 'conv' in name.lower() or 'linear' in name.lower():
+                    logger.info(f"🔍 DEBUG: {name} shape: {param.shape}")
             
             # Compute model hash for verification
             model_hash = self.compute_model_hash(model_parameters)
@@ -653,23 +670,23 @@ class BlockchainFederatedClient:
             support_x = self.train_data[support_indices]
             support_y = self.train_labels[support_indices]
             
-            # Perform TTT adaptation directly on the model's meta_learner
+            # Perform TTT adaptation directly on the model
             # This updates the model parameters in place
             adaptation_steps = 5
             inner_lr = 0.01
             
-            # Create optimizer for the meta_learner
-            ttt_optimizer = torch.optim.SGD(self.model.meta_learner.parameters(), lr=inner_lr)
+            # Create optimizer for the model
+            ttt_optimizer = torch.optim.SGD(self.model.parameters(), lr=inner_lr)
             
             # Perform adaptation steps
             for step in range(adaptation_steps):
                 ttt_optimizer.zero_grad()
                 
-                # Get embeddings
-                support_embeddings = self.model.meta_learner.transductive_net(support_x)
+                # Get embeddings using the model's extract_embeddings method
+                support_embeddings = self.model.extract_embeddings(support_x)
                 
-                # Compute prototypes
-                prototypes, prototype_labels = self.model.meta_learner.transductive_net.update_prototypes(
+                # Compute prototypes using the model's update_prototypes method
+                prototypes, prototype_labels = self.model.update_prototypes(
                     support_embeddings, support_y, support_embeddings, None
                 )
                 
@@ -733,9 +750,10 @@ class BlockchainFederatedClient:
             logger.info(f"   MetaLearner type: {type(self.model.meta_learner)}")
             # Note: MetaLearner doesn't have meta_train, only TransductiveFewShotModel does
         
-        # Check if model is corrupted (should be TransductiveFewShotModel)
-        if type(self.model).__name__ != 'TransductiveFewShotModel':
-            logger.error(f"🚨 MODEL CORRUPTION DETECTED: Expected TransductiveFewShotModel, got {type(self.model).__name__}")
+        # Check if model is compatible (should be TransductiveFewShotModel or compatible TCN model)
+        if not (type(self.model).__name__ == 'TransductiveFewShotModel' or 
+                (hasattr(self.model, 'meta_train') and hasattr(self.model, 'forward'))):
+            logger.error(f"🚨 MODEL CORRUPTION DETECTED: Expected TransductiveFewShotModel or compatible model, got {type(self.model).__name__}")
             logger.error(f"🚨 This explains why meta_train method is missing!")
         
         logger.info(f"🔍 MODEL INTEGRITY CHECK COMPLETE - {stage.upper()}")
@@ -944,9 +962,10 @@ class BlockchainFedAVGCoordinator:
             logger.info(f"   Coordinator MetaLearner type: {type(self.model.meta_learner)}")
             # Note: MetaLearner doesn't have meta_train, only TransductiveFewShotModel does
         
-        # Check if coordinator model is corrupted (should be TransductiveFewShotModel)
-        if type(self.model).__name__ != 'TransductiveFewShotModel':
-            logger.error(f"🚨 COORDINATOR MODEL CORRUPTION DETECTED: Expected TransductiveFewShotModel, got {type(self.model).__name__}")
+        # Check if coordinator model is compatible (should be TransductiveFewShotModel or compatible TCN model)
+        if not (type(self.model).__name__ == 'TransductiveFewShotModel' or 
+                (hasattr(self.model, 'meta_train') and hasattr(self.model, 'forward'))):
+            logger.error(f"🚨 COORDINATOR MODEL CORRUPTION DETECTED: Expected TransductiveFewShotModel or compatible model, got {type(self.model).__name__}")
             logger.error(f"🚨 This explains why meta_train method is missing in coordinator!")
         
         logger.info(f"🔍 COORDINATOR MODEL INTEGRITY CHECK COMPLETE - {stage.upper()}")

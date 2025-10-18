@@ -39,7 +39,8 @@ class PerformanceVisualizer:
         self.output_dir = output_dir
         self.attack_name = attack_name
         # Use fixed filenames to avoid accumulation
-        self.timestamp = "latest"
+        self.timestamp = ""
+        self._call_count = 0
         
         # Create output directory
         os.makedirs(output_dir, exist_ok=True)
@@ -159,8 +160,39 @@ class PerformanceVisualizer:
         # Fix dimension mismatch by ensuring all arrays have the same length
         min_length = min(len(steps), len(total_losses), len(support_losses), len(consistency_losses))
         if min_length == 0:
-            logger.warning("No valid TTT adaptation data to plot")
-            return ""
+            logger.warning("No valid TTT adaptation data to plot - TTT training may have failed")
+            # Create a minimal plot indicating TTT failure
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+            
+            # Left plot: TTT Failure Message
+            ax1.text(0.5, 0.5, 'TTT Training Failed\n\nNo adaptation data available\n\nThis may be due to:\n• Tensor dimension mismatches\n• Model architecture issues\n• Training timeout', 
+                    ha='center', va='center', fontsize=12, 
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor="lightcoral", alpha=0.7))
+            ax1.set_title('TTT Adaptation Status', fontsize=14, fontweight='bold')
+            ax1.set_xlim(0, 1)
+            ax1.set_ylim(0, 1)
+            ax1.axis('off')
+            
+            # Right plot: Empty loss components
+            ax2.text(0.5, 0.5, 'No Loss Data Available\n\nTTT training did not complete\nsuccessfully', 
+                    ha='center', va='center', fontsize=12,
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.7))
+            ax2.set_title('Loss Components', fontsize=14, fontweight='bold')
+            ax2.set_xlim(0, 1)
+            ax2.set_ylim(0, 1)
+            ax2.axis('off')
+            
+            plt.tight_layout()
+            
+            if save:
+                plot_path = os.path.join(self.output_dir, f"ttt_adaptation_{self.attack_name}_latest.png")
+                plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+                logger.info(f"TTT adaptation failure plot saved: {plot_path}")
+                plt.close()
+                return plot_path
+            else:
+                plt.show()
+                return ""
         
         # Truncate all arrays to the minimum length
         steps = steps[:min_length]
@@ -186,10 +218,11 @@ class PerformanceVisualizer:
                             textcoords="offset points", xytext=(0,10), ha='center',
                             fontsize=8, fontfamily='Times New Roman')
         
-        # Plot 2: Loss Components
+        # Plot 2: Loss Components (including Total Loss for comparison)
+        ax2.plot(steps, total_losses, 'b-', linewidth=2, marker='o', markersize=6, label='Total Loss')
         ax2.plot(steps, support_losses, 'g-', linewidth=2, marker='s', markersize=6, label='Support Loss')
         ax2.plot(steps, consistency_losses, 'r-', linewidth=2, marker='^', markersize=6, label='Consistency Loss')
-        ax2.set_title('TTT Adaptation: Loss Components', fontweight='bold', fontfamily='Times New Roman')
+        ax2.set_title('TTT Adaptation: All Loss Components', fontweight='bold', fontfamily='Times New Roman')
         ax2.set_xlabel('TTT Step', fontfamily='Times New Roman')
         ax2.set_ylabel('Loss Value', fontfamily='Times New Roman')
         ax2.grid(True, alpha=0.3)
@@ -859,78 +892,123 @@ class PerformanceVisualizer:
         Returns:
             plot_path: Path to saved plot
         """
+        # Set matplotlib backend to ensure proper rendering
+        import matplotlib
+        matplotlib.use('Agg')  # Use non-interactive backend
+        
         if not evaluation_results:
             logger.warning("No evaluation results provided for confusion matrix plotting")
             return ""
         
-        # Extract confusion matrix data
+        # Extract confusion matrix data - check both old and new formats
         confusion_data = evaluation_results.get('confusion_matrix', {})
         if not confusion_data:
-            logger.warning("No confusion matrix data found in evaluation results")
+            # Try to get confusion matrix from base_model or ttt_model
+            if 'base_model' in evaluation_results and 'confusion_matrix' in evaluation_results['base_model']:
+                confusion_data = evaluation_results['base_model']['confusion_matrix']
+            elif 'ttt_model' in evaluation_results and 'confusion_matrix' in evaluation_results['ttt_model']:
+                confusion_data = evaluation_results['ttt_model']['confusion_matrix']
+            else:
+                logger.warning("No confusion matrix data found in evaluation results")
+                return ""
+        
+        # Determine if we have one or two models
+        available_models = []
+        if 'base_model' in evaluation_results and 'confusion_matrix' in evaluation_results['base_model']:
+            available_models.append(('base_model', 'Base Model'))
+        if 'ttt_model' in evaluation_results and 'confusion_matrix' in evaluation_results['ttt_model']:
+            available_models.append(('ttt_model', 'TTT Model'))
+        
+        if not available_models:
+            logger.warning("No valid confusion matrix data found")
             return ""
         
-        # Create figure with IEEE standard styling
-        fig, ax = plt.subplots(1, 1, figsize=(8, 6))
-        
-        # Handle both dictionary and list formats for confusion matrix
-        if isinstance(confusion_data, dict):
-            # Dictionary format: {'tn': x, 'fp': y, 'fn': z, 'tp': w}
-            tn = confusion_data.get('tn', 0)
-            fp = confusion_data.get('fp', 0)
-            fn = confusion_data.get('fn', 0)
-            tp = confusion_data.get('tp', 0)
-            cm = np.array([[tn, fp], [fn, tp]])
-        elif isinstance(confusion_data, list) and len(confusion_data) == 2:
-            # List format: [[tn, fp], [fn, tp]]
-            cm = np.array(confusion_data)
+        # Create figure - single plot if only one model, side-by-side if both
+        if len(available_models) == 1:
+            fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+            axes = [ax]
         else:
-            logger.warning(f"Unsupported confusion matrix format: {type(confusion_data)}")
-            return ""
+            fig, axes = plt.subplots(1, 2, figsize=(16, 6))
         
-        # Plot confusion matrix
-        im = ax.imshow(cm, interpolation='nearest', cmap=plt.cm.Greens)
-        ax.figure.colorbar(im, ax=ax)
+        # Plot confusion matrices
+        for idx, (model_key, title) in enumerate(available_models):
+            ax = axes[idx]
+            
+            # Get confusion matrix data for this model
+            if model_key in evaluation_results and 'confusion_matrix' in evaluation_results[model_key]:
+                model_data = evaluation_results[model_key]
+                confusion_data = model_data['confusion_matrix']
+                
+                # Handle both dictionary and list formats for confusion matrix
+                if isinstance(confusion_data, dict):
+                    # Dictionary format: {'tn': x, 'fp': y, 'fn': z, 'tp': w}
+                    tn = confusion_data.get('tn', 0)
+                    fp = confusion_data.get('fp', 0)
+                    fn = confusion_data.get('fn', 0)
+                    tp = confusion_data.get('tp', 0)
+                    cm = np.array([[tn, fp], [fn, tp]])
+                elif isinstance(confusion_data, list) and len(confusion_data) == 2:
+                    # List format: [[tn, fp], [fn, tp]]
+                    cm = np.array(confusion_data)
+                else:
+                    logger.warning(f"Unsupported confusion matrix format for {model_key}: {type(confusion_data)}")
+                    continue
+                
+                # Plot confusion matrix
+                im = ax.imshow(cm, interpolation='nearest', cmap=plt.cm.Greens)
+                ax.figure.colorbar(im, ax=ax)
+                
+                # Set labels
+                classes = ['Normal', 'Attack']
+                tick_marks = np.arange(len(classes))
+                ax.set_xticks(tick_marks)
+                ax.set_yticks(tick_marks)
+                ax.set_xticklabels(classes)
+                ax.set_yticklabels(classes)
+                
+                # Add text annotations
+                thresh = cm.max() / 2.
+                for i in range(cm.shape[0]):
+                    for j in range(cm.shape[1]):
+                        ax.text(j, i, format(cm[i, j], 'd'),
+                               ha="center", va="center",
+                               color="white" if cm[i, j] > thresh else "black",
+                               fontsize=14, fontweight='bold')
+                
+                # Add performance metrics as text
+                # Try both old and new metric key formats
+                accuracy = model_data.get('accuracy_mean', model_data.get('accuracy', 0))
+                precision = model_data.get('precision_mean', model_data.get('precision', 0))
+                recall = model_data.get('recall_mean', model_data.get('recall', 0))
+                f1_score = model_data.get('macro_f1_mean', model_data.get('f1_score', 0))
+                mcc = model_data.get('mcc_mean', model_data.get('mcc', model_data.get('mccc', 0)))
+                
+                metrics_text = f'Accuracy: {accuracy:.3f}\nPrecision: {precision:.3f}\nRecall: {recall:.3f}\nF1-Score: {f1_score:.3f}\nMCC: {mcc:.3f}'
+                ax.text(0.02, 0.98, metrics_text, transform=ax.transAxes, fontsize=10,
+                        verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+                
+                ax.set_title(f'{title} Confusion Matrix', fontsize=14, fontweight='bold')
         
-        # Set labels
-        classes = ['Normal', 'Attack']
-        tick_marks = np.arange(len(classes))
-        ax.set_xticks(tick_marks)
-        ax.set_yticks(tick_marks)
-        ax.set_xticklabels(classes)
-        ax.set_yticklabels(classes)
+        # Set overall title and labels
+        if len(available_models) == 1:
+            # Single model - use model-specific title
+            fig.suptitle(f'{available_models[0][1]} Confusion Matrix - Zero-Day Detection{title_suffix}', fontsize=16, fontweight='bold')
+        else:
+            # Multiple models - use comparison title
+            fig.suptitle(f'Confusion Matrix Comparison - Zero-Day Detection{title_suffix}', fontsize=16, fontweight='bold')
         
-        # Add text annotations
-        thresh = cm.max() / 2.
-        for i in range(cm.shape[0]):
-            for j in range(cm.shape[1]):
-                ax.text(j, i, format(cm[i, j], 'd'),
-                       ha="center", va="center",
-                       color="white" if cm[i, j] > thresh else "black",
-                       fontsize=14, fontweight='bold')
+        # Add labels to both subplots
+        for ax in axes:
+            ax.set_ylabel('True Label', fontsize=12)
+            ax.set_xlabel('Predicted Label', fontsize=12)
         
-        # Add performance metrics as text
-        # Try both old and new metric key formats
-        accuracy = evaluation_results.get('accuracy_mean', evaluation_results.get('accuracy', 0))
-        precision = evaluation_results.get('precision_mean', evaluation_results.get('precision', 0))
-        recall = evaluation_results.get('recall_mean', evaluation_results.get('recall', 0))
-        f1_score = evaluation_results.get('macro_f1_mean', evaluation_results.get('f1_score', 0))
-        mcc = evaluation_results.get('mcc_mean', evaluation_results.get('mcc', 0))
-        
-        metrics_text = f'Accuracy: {accuracy:.3f}\nPrecision: {precision:.3f}\nRecall: {recall:.3f}\nF1-Score: {f1_score:.3f}\nMCC: {mcc:.3f}'
-        ax.text(0.02, 0.98, metrics_text, transform=ax.transAxes, fontsize=10,
-                verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
-        
-        # Set title and labels
-        title = f'Confusion Matrix - Zero-Day Detection{title_suffix}'
-        ax.set_title(title, fontsize=16, fontweight='bold')
-        ax.set_ylabel('True Label', fontsize=12)
-        ax.set_xlabel('Predicted Label', fontsize=12)
-        
-        # Apply IEEE standard styling
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.spines['left'].set_linewidth(0.5)
-        ax.spines['bottom'].set_linewidth(0.5)
+        # Apply IEEE standard styling to all subplots
+        for ax in axes:
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.spines['left'].set_linewidth(0.5)
+            ax.spines['bottom'].set_linewidth(0.5)
+            ax.tick_params(axis='both', which='major', labelsize=10)
         
         plt.tight_layout()
         
@@ -938,14 +1016,29 @@ class PerformanceVisualizer:
             # Generate filename based on title suffix
             if title_suffix:
                 model_type = title_suffix.replace(" - ", "_").replace(" ", "_").lower()
-                filename = f"confusion_matrices_{model_type}_{self.timestamp}.png"
+                if self.timestamp:
+                    filename = f"confusion_matrices_{model_type}_{self.timestamp}.png"
+                else:
+                    filename = f"confusion_matrices_{model_type}.png"
             else:
-                filename = f"confusion_matrices_{self.timestamp}.png"
+                # Use call count to make unique filenames
+                self._call_count += 1
+                if self.timestamp:
+                    filename = f"confusion_matrices_{self.timestamp}_{self._call_count}.png"
+                else:
+                    filename = f"confusion_matrices_{self._call_count}.png"
             
             plot_path = os.path.join(self.output_dir, filename)
-            plt.savefig(plot_path, dpi=300, bbox_inches='tight', facecolor='white')
+            
+            # Ensure the output directory exists
+            os.makedirs(self.output_dir, exist_ok=True)
+            
+            # Save with explicit backend and settings
+            plt.savefig(plot_path, dpi=300, bbox_inches='tight', facecolor='white', 
+                       edgecolor='none', pad_inches=0.1)
             logger.info(f"Confusion matrix plot saved: {plot_path}")
-            plt.close()
+            
+            # Don't close immediately, let the caller handle it
             return plot_path
         else:
             plt.close()  # Close figure instead of showing it
@@ -1295,7 +1388,7 @@ class PerformanceVisualizer:
             base_auc = base_results.get('roc_auc', 0)
             base_threshold = base_results.get('optimal_threshold', 0.5)
             
-            ax.plot(base_fpr, base_tpr, 'b-', linewidth=2, 
+            ax.plot(base_fpr, base_tpr,color="brown", marker='o', linewidth=3, 
                    label=f'Base Model (AUC = {base_auc:.3f}, Threshold = {base_threshold:.3f})')
         
         # Plot TTT model ROC curve
@@ -1305,18 +1398,18 @@ class PerformanceVisualizer:
             ttt_auc = ttt_results.get('roc_auc', 0)
             ttt_threshold = ttt_results.get('optimal_threshold', 0.5)
             
-            ax.plot(ttt_fpr, ttt_tpr, 'r-', linewidth=2,
+            ax.plot(ttt_fpr, ttt_tpr, color="blue",marker='D',linestyle='--', linewidth=2,
                    label=f'TTT Model (AUC = {ttt_auc:.3f}, Threshold = {ttt_threshold:.3f})')
         
         # Plot diagonal line (random classifier)
         ax.plot([0, 1], [0, 1], 'k--', linewidth=1, alpha=0.5, label='Random Classifier')
         
         # Customize plot
-        ax.set_xlabel('False Positive Rate', fontfamily='Times New Roman', fontsize=12)
-        ax.set_ylabel('True Positive Rate', fontfamily='Times New Roman', fontsize=12)
+        ax.set_xlabel('False Positive Rate', fontfamily='Times New Roman', fontsize=14)
+        ax.set_ylabel('True Positive Rate', fontfamily='Times New Roman', fontsize=14)
         ax.set_title('ROC Curves Comparison: Base vs TTT Models', fontweight='bold', fontfamily='Times New Roman', fontsize=14)
         ax.legend(prop={'family': 'Times New Roman'}, loc='lower right')
-        ax.grid(True, alpha=0.3)
+        ax.grid(False)
         ax.set_xlim([0, 1])
         ax.set_ylim([0, 1])
         
@@ -1329,7 +1422,9 @@ class PerformanceVisualizer:
             ax.text(0.6, 0.2, f'AUC Improvement: {improvement:+.3f}', 
                    fontsize=10, fontfamily='Times New Roman',
                    bbox=dict(boxstyle='round,pad=0.3', facecolor='lightblue', alpha=0.8))
-        
+        ax.spines['top'].set_visible(True)
+        ax.spines['right'].set_visible(True)
+     
         plt.tight_layout()
         
         if save:
