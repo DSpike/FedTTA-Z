@@ -34,6 +34,15 @@ class UNSWPreprocessor:
     """
     UNSW-NB15 Dataset Preprocessor for Blockchain Federated Learning
     Implements 6-step preprocessing pipeline for zero-day detection
+    
+    Preprocessing Pipeline Order:
+    1. Data Quality Assessment
+    2. Feature Engineering  
+    3. Data Cleaning (handles missing values, duplicates, infinite values)
+    4. Categorical Encoding (after cleaning to avoid encoding invalid data)
+    5. Feature Selection (IGRF-RFE hybrid)
+    6. Feature Scaling
+    7. Data Rebalancing
     """
     
     def __init__(self, data_path: str = "UNSW_NB15_training-set.csv", test_path: str = "UNSW_NB15_testing-set.csv"):
@@ -362,8 +371,11 @@ class UNSWPreprocessor:
         Low-cardinality features: One-hot encoding
         Selected features → 56 features
         
+        Note: This step is called AFTER data cleaning (step 3) to ensure
+        all missing values, duplicates, and invalid data are handled first.
+        
         Args:
-            df: Input dataframe
+            df: Input dataframe (should be cleaned)
             
         Returns:
             df: Dataframe with encoded features
@@ -846,11 +858,12 @@ class UNSWPreprocessor:
         logger.info(f"Combined dataset shape: {complete_df.shape}")
         
         # Process complete dataset
+        # Correct preprocessing order: Quality Assessment → Feature Engineering → Data Cleaning → Categorical Encoding → Feature Selection
         logger.info("\nProcessing complete dataset...")
         complete_quality = self.step1_data_quality_assessment(complete_df)
         complete_df = self.step2_feature_engineering(complete_df)
-        complete_df = self.step4_categorical_encoding(complete_df)  # Moved before data cleaning
-        complete_df = self.step3_data_cleaning(complete_df)
+        complete_df = self.step3_data_cleaning(complete_df)  # Data cleaning before encoding
+        complete_df = self.step4_categorical_encoding(complete_df)  # Encoding after cleaning
         # Apply IGRF-RFE hybrid feature selection after encoding
         logger.info("Applying IGRF-RFE hybrid feature selection...")
         complete_df = self.step5_igrf_rfe_feature_selection(complete_df, target_col='attack_cat')
