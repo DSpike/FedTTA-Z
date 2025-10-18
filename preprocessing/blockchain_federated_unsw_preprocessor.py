@@ -219,6 +219,9 @@ class UNSWPreprocessor:
         Combines Information Gain (IG) and Random Forest (RF) with optimized RFE using LinearSVC
         Adds correlation filtering (drop features with Pearson corr > 0.8) before RFE
         
+        Note: This step is called AFTER categorical encoding (step 4) to work with
+        properly encoded features for better feature selection performance.
+        
         Performance Optimizations:
         - Subsamples data (~20%) for RFE training to reduce computational cost
         - Uses LinearSVC instead of LogisticRegression for faster training on high-dimensional data
@@ -859,6 +862,7 @@ class UNSWPreprocessor:
         
         # Process complete dataset
         # Correct preprocessing order: Quality Assessment → Feature Engineering → Data Cleaning → Categorical Encoding → Feature Selection
+        # Note: Categorical encoding comes before feature selection to provide encoded features for selection algorithms
         logger.info("\nProcessing complete dataset...")
         complete_quality = self.step1_data_quality_assessment(complete_df)
         complete_df = self.step2_feature_engineering(complete_df)
@@ -866,7 +870,7 @@ class UNSWPreprocessor:
         complete_df = self.step4_categorical_encoding(complete_df)  # Encoding after cleaning
         # Apply IGRF-RFE hybrid feature selection after encoding
         logger.info("Applying IGRF-RFE hybrid feature selection...")
-        complete_df = self.step5_igrf_rfe_feature_selection(complete_df, target_col='attack_cat')
+        complete_df = self.step5_igrf_rfe_feature_selection(complete_df, target_col='attack_cat')  # Feature selection after encoding
         
         # Apply data rebalancing to complete dataset using 10-class labels
         logger.info("\nApplying data rebalancing to complete dataset...")
