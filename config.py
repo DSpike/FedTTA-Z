@@ -13,8 +13,8 @@ class SystemConfig:
     """Centralized system configuration - single source of truth"""
     
     # === FEDERATED LEARNING CONFIGURATION ===
-    num_clients: int = 10
-    num_rounds: int = 15  # Increased rounds for better federated learning convergence
+    num_clients: int = 6
+    num_rounds: int = 3  # Increased rounds for better federated learning convergence
     local_epochs: int = 50  # Balanced epochs per round for better federated learning
     learning_rate: float = 0.001
     batch_size: int = 32

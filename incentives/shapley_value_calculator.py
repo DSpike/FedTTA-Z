@@ -40,19 +40,23 @@ class ShapleyValueCalculator:
     incentive distribution.
     """
     
-    def __init__(self, num_clients: int = 3, evaluation_metric: str = 'accuracy'):
+    def __init__(self, num_clients: int = 3, evaluation_metric: str = 'accuracy', client_ids: List[str] = None):
         """
         Initialize the Shapley value calculator.
         
         Args:
             num_clients: Number of clients in the federated learning system
             evaluation_metric: Metric used for performance evaluation ('accuracy', 'f1', 'mcc')
+            client_ids: List of actual client IDs (if None, will generate default ones)
         """
         self.num_clients = num_clients
         self.evaluation_metric = evaluation_metric
-        self.client_ids = [f"client_{i+1}" for i in range(num_clients)]
+        if client_ids is not None:
+            self.client_ids = client_ids
+        else:
+            self.client_ids = [f"client_{i+1}" for i in range(num_clients)]
         
-        logger.info(f"Initialized Shapley value calculator for {num_clients} clients")
+        logger.info(f"Initialized Shapley value calculator for {num_clients} clients: {self.client_ids}")
     
     def calculate_coalition_performance(self, 
                                       client_subset: List[str], 

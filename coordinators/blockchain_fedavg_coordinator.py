@@ -1152,11 +1152,45 @@ class BlockchainFedAVGCoordinator:
         """
         logger.info(f"Starting federated round {self.current_round + 1}")
         
-        # Train all clients
+        # Train all clients with error handling
         client_updates = []
-        for client in self.clients:
-            update = client.train_local_model(epochs, batch_size, learning_rate)
-            client_updates.append(update)
+        successful_clients = 0
+        failed_clients = 0
+        
+        for i, client in enumerate(self.clients):
+            try:
+                logger.info(f"Training client {i+1}/{len(self.clients)}: {client.client_id}")
+                update = client.train_local_model(epochs, batch_size, learning_rate)
+                client_updates.append(update)
+                successful_clients += 1
+                logger.info(f"✅ Client {client.client_id} training completed successfully")
+            except Exception as e:
+                logger.error(f"❌ Client {client.client_id} training failed: {str(e)}")
+                failed_clients += 1
+                # Create a fallback update with current model parameters
+                try:
+                    fallback_update = ClientUpdate(
+                        client_id=client.client_id,
+                        model_parameters=client.model.state_dict(),
+                        sample_count=len(client.train_data) if client.train_data is not None else 0,
+                        training_loss=1.0,  # High loss to indicate failure
+                        validation_accuracy=0.5,  # Low accuracy to indicate failure
+                        model_hash="failed_training",
+                        ipfs_cid=None,
+                        blockchain_tx_hash=None,
+                        timestamp=time.time()
+                    )
+                    client_updates.append(fallback_update)
+                    logger.info(f"🔄 Created fallback update for failed client {client.client_id}")
+                except Exception as fallback_error:
+                    logger.error(f"❌ Failed to create fallback update for client {client.client_id}: {str(fallback_error)}")
+        
+        logger.info(f"📊 Training Summary: {successful_clients} successful, {failed_clients} failed out of {len(self.clients)} clients")
+        
+        # Ensure we have at least some client updates
+        if not client_updates:
+            logger.error("❌ No client updates available - all clients failed")
+            return None
         
         # Add updates to aggregator
         for update in client_updates:

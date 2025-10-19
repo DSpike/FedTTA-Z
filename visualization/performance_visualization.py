@@ -1464,6 +1464,10 @@ class PerformanceVisualizer:
             participant_names = [f"Client {i+1}" for i in range(len(sorted_participants))]
             token_amounts = [amount for _, amount in sorted_participants]
             
+            logger.info(f"🔍 DEBUG: Token distribution visualization - {len(sorted_participants)} clients")
+            logger.info(f"🔍 DEBUG: Participant rewards: {participant_rewards}")
+            logger.info(f"🔍 DEBUG: Sorted participants: {sorted_participants}")
+            
             # Create bar chart with IEEE-standard styling
             bars = ax.bar(participant_names, token_amounts, 
                          color=['#FCF4A4',  '#D1D0C8', '#6A642A', '#d62728', '#9467bd', '#8c564b'][:len(participant_names)],

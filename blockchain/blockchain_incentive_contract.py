@@ -435,9 +435,20 @@ class BlockchainIncentiveContract:
                     logger.error("ERC20 token contract not loaded. Cannot distribute rewards.")
                     return False
                 
+                # Ensure recipients and amounts are proper arrays
+                recipients_array = list(recipients) if isinstance(recipients, (list, tuple)) else [recipients]
+                amounts_array = list(int_amounts) if isinstance(int_amounts, (list, tuple)) else [int_amounts]
+                
+                # Log the data being sent for debugging
+                logger.info(f"🔍 DEBUG: distributeRewards called with:")
+                logger.info(f"  Recipients: {recipients_array} (type: {type(recipients_array)})")
+                logger.info(f"  Amounts: {amounts_array} (type: {type(amounts_array)})")
+                logger.info(f"  Recipients length: {len(recipients_array)}")
+                logger.info(f"  Amounts length: {len(amounts_array)}")
+                
                 tx = self.token_contract.functions.distributeRewards(
-                    recipients,
-                    int_amounts
+                    recipients_array,
+                    amounts_array
                 ).build_transaction({
                     'from': from_address,
                     'gas': 300000,
@@ -807,23 +818,32 @@ class BlockchainIncentiveManager:
                     logger.info(f"DEBUG: accuracy_improvement={accuracy_improvement} (type: {type(accuracy_improvement)})")
                     logger.info(f"DEBUG: About to calculate contribution_score = int(accuracy_improvement * 100)")
                     
-                    # Calculate contribution score with Shapley value-based reward formula
+                    # Calculate contribution score with balanced reward formula
                     if shapley_values and client_address in shapley_values:
                         # Use Shapley value for fair distribution
                         shapley_value = shapley_values[client_address]
-                        base_reward = 20  # Higher base reward for participation
-                        # Ensure Shapley reward is never negative, but give minimum reward
-                        shapley_reward = max(10, int(shapley_value * 1000))  # Minimum 10 tokens, scale Shapley value
+                        base_reward = 50  # Higher base reward for participation
+                        # Scale Shapley value more reasonably to avoid huge disparities
+                        shapley_reward = max(20, int(shapley_value * 500))  # Minimum 20 tokens, reasonable scaling
                         token_reward = base_reward + shapley_reward
                         contribution_score = int(shapley_value * 100)  # For logging
                         logger.info(f"Using Shapley value {shapley_value:.4f} for client {client_address}")
                     else:
-                        # Fallback to old formula for backward compatibility
+                        # Balanced fallback formula to prevent huge disparities
                         contribution_score = int(accuracy_improvement * 100)  # Convert to percentage
-                        base_reward = 20  # Higher base reward
-                        improvement_reward = max(10, contribution_score * 2)  # Minimum 10 tokens, 2 tokens per percentage point
-                        token_reward = base_reward + improvement_reward
-                        logger.info(f"Using fallback formula for client {client_address}")
+                        base_reward = 50  # Higher base reward for participation
+                        
+                        # Cap the improvement reward to prevent extreme disparities
+                        capped_improvement = min(accuracy_improvement * 100, 50)  # Cap at 50% improvement
+                        improvement_reward = max(20, int(capped_improvement * 1.5))  # More reasonable scaling
+                        
+                        # Additional bonus for data quality and reliability
+                        quality_bonus = int((data_quality - 50) * 0.5)  # Bonus based on data quality
+                        reliability_bonus = int((reliability - 50) * 0.3)  # Bonus based on reliability
+                        
+                        token_reward = base_reward + improvement_reward + quality_bonus + reliability_bonus
+                        logger.info(f"Using balanced fallback formula for client {client_address}")
+                        logger.info(f"  Base: {base_reward}, Improvement: {improvement_reward}, Quality: {quality_bonus}, Reliability: {reliability_bonus}")
                     
                     # Ensure token_reward is never negative and has minimum value
                     token_reward = max(15, token_reward)  # Minimum 15 tokens for participation
@@ -956,9 +976,39 @@ class BlockchainIncentiveManager:
             
             # Call ERC20 distributeRewards function with proper error handling
             try:
+                # Ensure recipients and amounts are proper arrays
+                recipients_array = list(recipients) if isinstance(recipients, (list, tuple)) else [recipients]
+                amounts_array = list(amounts) if isinstance(amounts, (list, tuple)) else [amounts]
+                
+                # Log the data being sent for debugging
+                logger.info(f"🔍 DEBUG: distributeRewards called with:")
+                logger.info(f"  Recipients: {recipients_array} (type: {type(recipients_array)})")
+                logger.info(f"  Amounts: {amounts_array} (type: {type(amounts_array)})")
+                logger.info(f"  Recipients length: {len(recipients_array)}")
+                logger.info(f"  Amounts length: {len(amounts_array)}")
+                
+                # Check if we have an incentive contract set up
+                try:
+                    incentive_contract_address = self.token_contract.functions.incentiveContract().call()
+                    logger.info(f"🔍 DEBUG: Incentive contract address: {incentive_contract_address}")
+                    
+                    if incentive_contract_address == '0x0000000000000000000000000000000000000000':
+                        logger.warning("⚠️ No incentive contract set. Setting deployer as incentive contract...")
+                        # Set the deployer account as the incentive contract
+                        set_tx = self.token_contract.functions.setIncentiveContract(from_address).transact({
+                            'from': from_address,
+                            'gas': 100000,
+                            'gasPrice': self.web3.eth.gas_price,
+                            'nonce': self.web3.eth.get_transaction_count(from_address)
+                        })
+                        self.web3.eth.wait_for_transaction_receipt(set_tx)
+                        logger.info("✅ Incentive contract set successfully")
+                except Exception as e:
+                    logger.warning(f"Could not check/set incentive contract: {str(e)}")
+                
                 tx = self.token_contract.functions.distributeRewards(
-                    recipients,
-                    amounts
+                    recipients_array,
+                    amounts_array
                 ).build_transaction({
                     'from': from_address,
                     'gas': 500000,
