@@ -975,27 +975,51 @@ class PerformanceVisualizer:
                                color="white" if cm[i, j] > thresh else "black",
                                fontsize=14, fontweight='bold')
                 
+                # Calculate total samples for fairness indicator
+                total_samples = int(cm.sum())
+                tn, fp = int(cm[0, 0]), int(cm[0, 1])
+                fn, tp = int(cm[1, 0]), int(cm[1, 1])
+                
                 # Add performance metrics as text
                 # Try both old and new metric key formats
                 accuracy = model_data.get('accuracy_mean', model_data.get('accuracy', 0))
                 precision = model_data.get('precision_mean', model_data.get('precision', 0))
                 recall = model_data.get('recall_mean', model_data.get('recall', 0))
                 f1_score = model_data.get('macro_f1_mean', model_data.get('f1_score', 0))
+                # Fix MCC key lookup - check all possible MCC keys
                 mcc = model_data.get('mcc_mean', model_data.get('mcc', model_data.get('mccc', 0)))
+                if mcc == 0:  # If still zero, try other possible keys
+                    mcc = model_data.get('matthews_corrcoef', model_data.get('matthews_correlation_coefficient', 0))
                 
-                metrics_text = f'Accuracy: {accuracy:.3f}\nPrecision: {precision:.3f}\nRecall: {recall:.3f}\nF1-Score: {f1_score:.3f}\nMCC: {mcc:.3f}'
-                ax.text(0.02, 0.98, metrics_text, transform=ax.transAxes, fontsize=10,
+                # Enhanced metrics text with sample information
+                metrics_text = f'Total Samples: {total_samples}\nTN: {tn}, FP: {fp}\nFN: {fn}, TP: {tp}\n\nAccuracy: {accuracy:.3f}\nPrecision: {precision:.3f}\nRecall: {recall:.3f}\nF1-Score: {f1_score:.3f}\nMCC: {mcc:.3f}'
+                ax.text(0.02, 0.98, metrics_text, transform=ax.transAxes, fontsize=9,
                         verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
                 
-                ax.set_title(f'{title} Confusion Matrix', fontsize=14, fontweight='bold')
+                # Enhanced title with sample count
+                ax.set_title(f'{title} Confusion Matrix\nTotal Samples: {total_samples}', fontsize=12, fontweight='bold')
         
         # Set overall title and labels
         if len(available_models) == 1:
             # Single model - use model-specific title
             fig.suptitle(f'{available_models[0][1]} Confusion Matrix - Zero-Day Detection{title_suffix}', fontsize=16, fontweight='bold')
         else:
-            # Multiple models - use comparison title
-            fig.suptitle(f'Confusion Matrix Comparison - Zero-Day Detection{title_suffix}', fontsize=16, fontweight='bold')
+            # Multiple models - check for fair comparison
+            base_cm = evaluation_results['base_model']['confusion_matrix']
+            ttt_cm = evaluation_results['ttt_model']['confusion_matrix']
+            
+            # Calculate total samples for each model
+            base_total = sum(sum(row) for row in base_cm) if isinstance(base_cm, list) else int(np.array(base_cm).sum())
+            ttt_total = sum(sum(row) for row in ttt_cm) if isinstance(ttt_cm, list) else int(np.array(ttt_cm).sum())
+            
+            if base_total == ttt_total:
+                # Fair comparison
+                fig.suptitle(f'Fair Confusion Matrix Comparison - {base_total} Samples Each - Zero-Day Detection{title_suffix}', 
+                            fontsize=16, fontweight='bold', color='green')
+            else:
+                # Unfair comparison
+                fig.suptitle(f'Unfair Confusion Matrix Comparison - Base: {base_total}, TTT: {ttt_total} - Zero-Day Detection{title_suffix}', 
+                            fontsize=16, fontweight='bold', color='red')
         
         # Add labels to both subplots
         for ax in axes:

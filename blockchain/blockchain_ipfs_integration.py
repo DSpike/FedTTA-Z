@@ -924,17 +924,6 @@ FEDERATED_LEARNING_ABI = [
     },
     {
         "inputs": [
-            {"internalType": "bytes32", "name": "modelHash", "type": "bytes32"},
-            {"internalType": "bytes32", "name": "ipfsCid", "type": "bytes32"},
-            {"internalType": "uint256", "name": "roundNumber", "type": "uint256"}
-        ],
-        "name": "submitModelUpdate",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [
             {"internalType": "address", "name": "client", "type": "address"},
             {"internalType": "bytes32", "name": "modelHash", "type": "bytes32"},
             {"internalType": "bytes32", "name": "ipfsCid", "type": "bytes32"},

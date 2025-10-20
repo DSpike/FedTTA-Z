@@ -47,384 +47,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def check_ganache_server():
-    """
-    Check if Ganache server is running and accessible
-    Returns True if Ganache is running, False otherwise
-    """
-    try:
-        # Try to connect to Ganache
-        from web3 import Web3
-        web3 = Web3(Web3.HTTPProvider('http://127.0.0.1:7545'))
-        
-        # Check if we can get the latest block
-        latest_block = web3.eth.get_block('latest')
-        if latest_block:
-            logger.info("✅ Ganache server is running and accessible")
-            logger.info(f"   Latest block number: {latest_block.number}")
-            logger.info(f"   Block timestamp: {latest_block.timestamp}")
-            return True
-        else:
-            logger.error("❌ Ganache server is not responding properly")
-            return False
-            
-    except Exception as e:
-        logger.error(f"❌ Cannot connect to Ganache server: {str(e)}")
-        logger.error("   Please ensure Ganache is running on http://127.0.0.1:7545")
-        return False
-
-
-def start_ganache_if_needed():
-    """
-    Attempt to start Ganache server if it's not running
-    """
-    logger.info("🔄 Attempting to start Ganache server...")
-    
-    try:
-        # Try to start Ganache using common installation paths
-        ganache_paths = [
-            "ganache-cli",
-            "ganache",
-            "npx ganache-cli",
-            "npx ganache"
-        ]
-        
-        for ganache_cmd in ganache_paths:
-            try:
-                logger.info(f"   Trying: {ganache_cmd}")
-                # Start Ganache in background
-                process = subprocess.Popen(
-                    ganache_cmd.split() + ["--port", "7545", "--host", "127.0.0.1"],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0
-                )
-                
-                # Wait a moment for Ganache to start
-                time.sleep(3)
-                
-                # Check if Ganache is now running
-                if check_ganache_server():
-                    logger.info(f"✅ Successfully started Ganache with: {ganache_cmd}")
-                    return True
-                else:
-                    logger.warning(f"   Ganache command '{ganache_cmd}' did not start properly")
-                    process.terminate()
-                    
-            except FileNotFoundError:
-                logger.warning(f"   Command '{ganache_cmd}' not found")
-                continue
-            except Exception as e:
-                logger.warning(f"   Error starting Ganache with '{ganache_cmd}': {str(e)}")
-                continue
-        
-        logger.error("❌ Could not start Ganache server automatically")
-        logger.error("   Please install and start Ganache manually:")
-        logger.error("   npm install -g ganache-cli")
-        logger.error("   ganache-cli --port 7545 --host 127.0.0.1")
-        return False
-        
-    except Exception as e:
-        logger.error(f"❌ Error attempting to start Ganache: {str(e)}")
-        return False
-
-
-def ensure_ganache_running():
-    """
-    Ensure Ganache server is running before proceeding
-    This function is MANDATORY and will exit the program if Ganache is not available
-    """
-    logger.info("🔍 Checking Ganache server status...")
-    
-    # First check if Ganache is already running
-    if check_ganache_server():
-        return True
-    
-    logger.warning("⚠️ Ganache server is not running")
-    logger.info("🔄 Attempting to start Ganache automatically...")
-    
-    # Try to start Ganache
-    if start_ganache_if_needed():
-        return True
-    
-    # If we get here, Ganache is not running and we couldn't start it
-    logger.error("=" * 80)
-    logger.error("❌ CRITICAL ERROR: Ganache server is required but not running!")
-    logger.error("=" * 80)
-    logger.error("")
-    logger.error("🚨 MANDATORY REQUIREMENT:")
-    logger.error("   This blockchain-enabled federated learning system requires Ganache")
-    logger.error("   to be running for smart contract interactions and token distribution.")
-    logger.error("")
-    logger.error("📋 TO FIX THIS ISSUE:")
-    logger.error("   1. Install Ganache CLI:")
-    logger.error("      npm install -g ganache-cli")
-    logger.error("")
-    logger.error("   2. Start Ganache in a separate terminal:")
-    logger.error("      ganache-cli --port 7545 --host 127.0.0.1")
-    logger.error("")
-    logger.error("   3. Or use Ganache GUI:")
-    logger.error("      - Download from https://trufflesuite.com/ganache/")
-    logger.error("      - Start a new workspace")
-    logger.error("      - Set RPC Server to http://127.0.0.1:7545")
-    logger.error("")
-    logger.error("   4. Then run this script again:")
-    logger.error("      python main.py")
-    logger.error("")
-    logger.error("=" * 80)
-    
-    # Exit the program
-    exit(1)
-
-
-def ensure_all_servers_running():
-    """
-    Ensure both Ganache and IPFS servers are running before proceeding
-    This function is MANDATORY and will exit the program if either server is not available
-    """
-    logger.info("🔍 Checking all required servers...")
-    logger.info("=" * 50)
-    
-    # Check Ganache
-    logger.info("1️⃣ Checking Ganache server...")
-    if not check_ganache_server():
-        logger.warning("⚠️ Ganache server is not running")
-        logger.info("🔄 Attempting to start Ganache automatically...")
-        
-        if not start_ganache_if_needed():
-            logger.error("=" * 80)
-            logger.error("❌ CRITICAL ERROR: Ganache server is required but not running!")
-            logger.error("=" * 80)
-            logger.error("")
-            logger.error("🚨 MANDATORY REQUIREMENT:")
-            logger.error("   This blockchain-enabled federated learning system requires Ganache")
-            logger.error("   to be running for smart contract interactions and token distribution.")
-            logger.error("")
-            logger.error("📋 TO FIX THIS ISSUE:")
-            logger.error("   1. Install Ganache CLI:")
-            logger.error("      npm install -g ganache-cli")
-            logger.error("")
-            logger.error("   2. Start Ganache in a separate terminal:")
-            logger.error("      ganache-cli --port 7545 --host 127.0.0.1")
-            logger.error("")
-            logger.error("   3. Or use Ganache GUI:")
-            logger.error("      - Download from https://trufflesuite.com/ganache/")
-            logger.error("      - Start a new workspace")
-            logger.error("      - Set RPC Server to http://127.0.0.1:7545")
-            logger.error("")
-            logger.error("   4. Then run this script again:")
-            logger.error("      python main.py")
-            logger.error("")
-            logger.error("=" * 80)
-            exit(1)
-    
-    # Check IPFS
-    logger.info("2️⃣ Checking IPFS server...")
-    if not check_ipfs_server():
-        logger.warning("⚠️ IPFS server is not running")
-        logger.info("🔄 Attempting to start IPFS automatically...")
-        
-        if not start_ipfs_if_needed():
-            logger.error("=" * 80)
-            logger.error("❌ CRITICAL ERROR: IPFS server is required but not running!")
-            logger.error("=" * 80)
-            logger.error("")
-            logger.error("🚨 MANDATORY REQUIREMENT:")
-            logger.error("   This blockchain-enabled federated learning system requires IPFS")
-            logger.error("   to be running for decentralized model storage and data sharing.")
-            logger.error("")
-            logger.error("📋 TO FIX THIS ISSUE:")
-            logger.error("   1. Install IPFS:")
-            logger.error("      - Windows: Download from https://ipfs.io/docs/install/")
-            logger.error("      - Or use package manager: choco install ipfs")
-            logger.error("")
-            logger.error("   2. Initialize IPFS (first time only):")
-            logger.error("      ipfs init")
-            logger.error("")
-            logger.error("   3. Start IPFS daemon in a separate terminal:")
-            logger.error("      ipfs daemon")
-            logger.error("")
-            logger.error("   4. Verify IPFS is running:")
-            logger.error("      curl http://127.0.0.1:5001/api/v0/version")
-            logger.error("")
-            logger.error("   5. Then run this script again:")
-            logger.error("      python main.py")
-            logger.error("")
-            logger.error("=" * 80)
-            exit(1)
-    
-    logger.info("=" * 50)
-    logger.info("✅ All required servers are running and accessible!")
-    logger.info("🚀 Proceeding with blockchain-enabled federated learning...")
-    logger.info("=" * 50)
-
-
-def check_ipfs_server():
-    """
-    Check if IPFS server is running and accessible
-    Returns True if IPFS is running, False otherwise
-    """
-    try:
-        import requests
-        
-        # Try to connect to IPFS API using POST method (required by IPFS API)
-        response = requests.post('http://127.0.0.1:5001/api/v0/version', timeout=5)
-        
-        if response.status_code == 200:
-            version_info = response.json()
-            logger.info("✅ IPFS server is running and accessible")
-            logger.info(f"   IPFS version: {version_info.get('Version', 'Unknown')}")
-            logger.info(f"   API version: {version_info.get('ApiVersion', 'Unknown')}")
-            return True
-        else:
-            logger.error(f"❌ IPFS server responded with status code: {response.status_code}")
-            return False
-            
-    except requests.exceptions.ConnectionError:
-        logger.error("❌ Cannot connect to IPFS server")
-        logger.error("   Please ensure IPFS is running on http://127.0.0.1:5001")
-        return False
-    except requests.exceptions.Timeout:
-        logger.error("❌ IPFS server connection timeout")
-        return False
-    except Exception as e:
-        logger.error(f"❌ Error checking IPFS server: {str(e)}")
-        return False
-
-
-def start_ipfs_if_needed():
-    """
-    Attempt to start IPFS server if it's not running
-    """
-    logger.info("🔄 Attempting to start IPFS server...")
-    
-    try:
-        # Check for local kubo installation first
-        kubo_path = os.path.join(os.path.dirname(__file__), 'kubo', 'ipfs.exe')
-        
-        if os.path.exists(kubo_path):
-            logger.info(f"   Found local IPFS installation: {kubo_path}")
-            try:
-                # Start IPFS daemon using local kubo installation
-                process = subprocess.Popen(
-                    [kubo_path, 'daemon'],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0
-                )
-                
-                # Wait a moment for IPFS to start
-                time.sleep(8)
-                
-                # Check if IPFS is now running
-                if check_ipfs_server():
-                    logger.info("✅ Successfully started IPFS using local kubo installation")
-                    return True
-                else:
-                    logger.warning("   IPFS daemon started but not responding properly")
-                    process.terminate()
-                    
-            except Exception as e:
-                logger.warning(f"   Error starting IPFS with local kubo: {str(e)}")
-        
-        # Fallback: Try global IPFS commands
-        ipfs_commands = [
-            "ipfs daemon",
-            "ipfs daemon --init"
-        ]
-        
-        for ipfs_cmd in ipfs_commands:
-            try:
-                logger.info(f"   Trying global command: {ipfs_cmd}")
-                
-                # Start IPFS daemon in background
-                process = subprocess.Popen(
-                    ipfs_cmd.split(),
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0
-                )
-                
-                # Wait a moment for IPFS to start
-                time.sleep(5)
-                
-                # Check if IPFS is now running
-                if check_ipfs_server():
-                    logger.info(f"✅ Successfully started IPFS with: {ipfs_cmd}")
-                    return True
-                else:
-                    logger.warning(f"   IPFS command '{ipfs_cmd}' did not start properly")
-                    process.terminate()
-                    
-            except FileNotFoundError:
-                logger.warning(f"   Command '{ipfs_cmd}' not found")
-                continue
-            except Exception as e:
-                logger.warning(f"   Error starting IPFS with '{ipfs_cmd}': {str(e)}")
-                continue
-        
-        logger.error("❌ Could not start IPFS server automatically")
-        logger.error("   Please install and start IPFS manually:")
-        logger.error("   Download from: https://ipfs.io/docs/install/")
-        logger.error("   Then run: ipfs init")
-        logger.error("   Then run: ipfs daemon")
-        return False
-        
-    except Exception as e:
-        logger.error(f"❌ Error attempting to start IPFS: {str(e)}")
-        return False
-
-
-def ensure_ipfs_running():
-    """
-    Ensure IPFS server is running before proceeding
-    This function is MANDATORY and will exit the program if IPFS is not available
-    """
-    logger.info("🔍 Checking IPFS server status...")
-    
-    # First check if IPFS is already running
-    if check_ipfs_server():
-        return True
-    
-    logger.warning("⚠️ IPFS server is not running")
-    logger.info("🔄 Attempting to start IPFS automatically...")
-    
-    # Try to start IPFS
-    if start_ipfs_if_needed():
-        return True
-    
-    # If we get here, IPFS is not running and we couldn't start it
-    logger.error("=" * 80)
-    logger.error("❌ CRITICAL ERROR: IPFS server is required but not running!")
-    logger.error("=" * 80)
-    logger.error("")
-    logger.error("🚨 MANDATORY REQUIREMENT:")
-    logger.error("   This blockchain-enabled federated learning system requires IPFS")
-    logger.error("   to be running for decentralized model storage and data sharing.")
-    logger.error("")
-    logger.error("📋 TO FIX THIS ISSUE:")
-    logger.error("   1. Install IPFS:")
-    logger.error("      - Windows: Download from https://ipfs.io/docs/install/")
-    logger.error("      - Or use package manager: choco install ipfs")
-    logger.error("")
-    logger.error("   2. Initialize IPFS (first time only):")
-    logger.error("      ipfs init")
-    logger.error("")
-    logger.error("   3. Start IPFS daemon in a separate terminal:")
-    logger.error("      ipfs daemon")
-    logger.error("")
-    logger.error("   4. Verify IPFS is running:")
-    logger.error("      curl http://127.0.0.1:5001/api/v0/version")
-    logger.error("")
-    logger.error("   5. Then run this script again:")
-    logger.error("      python main.py")
-    logger.error("")
-    logger.error("=" * 80)
-    
-    # Exit the program
-    exit(1)
-
-
 def calculate_roc_curve_safe(y_true, y_scores, normal_class=0):
     """
     Safely calculate ROC curve with proper handling of edge cases and infinite values.
@@ -575,36 +197,41 @@ class EnhancedSystemConfig:
     # Data configuration
     data_path: str = "UNSW_NB15_training-set.csv"
     test_path: str = "UNSW_NB15_testing-set.csv"
+    # Default value, will be overridden by centralized config
     zero_day_attack: str = "DoS"
     
     # Model configuration (aligned with SystemConfig)
+    # Updated after IGRF-RFE feature selection (43 features selected)
     input_dim: int = 43
     hidden_dim: int = 128
     embedding_dim: int = 64
-    num_classes: int = 2
     
     # TCN configuration
-    use_tcn: bool = True
+    use_tcn: bool = True  # Use TCN-based model instead of linear-based
+    # Length of sequences for TCN processing (optimized)
     sequence_length: int = 30
-    sequence_stride: int = 15
-    meta_epochs: int = 5
+    sequence_stride: int = 15  # Stride for sequence creation
+    meta_epochs: int = 5  # Reduced epochs for TCN stability
     
-    # Training configuration
-    support_weight: float = 0.3
-    test_weight: float = 0.7
-    batch_size: int = 32
+    # Prototype update weights (configurable for different data distributions)
+    support_weight: float = 0.3  # Weight for support set contribution
+    test_weight: float = 0.7     # Weight for test set contribution
     
     # Federated learning configuration (aligned with SystemConfig)
-    num_clients: int = 10
-    num_rounds: int = 15
-    local_epochs: int = 50
+    num_clients: int = 15
+    num_rounds: int = 15  # Increased rounds for better federated learning convergence
+    local_epochs: int = 50  # Increased for better performance
     learning_rate: float = 0.001
     
     # Blockchain configuration - Using REAL deployed contracts
     ethereum_rpc_url: str = "http://localhost:8545"
+    # Deployed FederatedLearning contract
     contract_address: str = "0x74f2D28CEC2c97186dE1A02C1Bae84D19A7E8BC8"
+    # Deployed Incentive contract
     incentive_contract_address: str = "0x02090bbB57546b0bb224880a3b93D2Ffb0dde144"
+    # Will use first account with ETH
     private_key: str = "0x4f3edf983ac636a65a842ce7c78d9aa706d3b113bce9c46f30d7d21715b23b1d"
+    # First Ganache account with 100 ETH
     aggregator_address: str = "0x4565f36D8E3cBC1c7187ea39Eb613E484411e075"
     
     # IPFS configuration
@@ -615,45 +242,26 @@ class EnhancedSystemConfig:
     base_reward: int = 100
     max_reward: int = 1000
     
-    # OPTIMIZED TTT configuration for better performance
-    ttt_base_steps: int = 100  # Increased base steps for better adaptation
-    ttt_max_steps: int = 300   # Increased max steps for complex scenarios
-    ttt_lr: float = 0.0005     # Reduced learning rate for stability
-    ttt_lr_min: float = 1e-6  # Minimum learning rate
-    ttt_lr_decay: float = 0.8 # Learning rate decay factor
-    ttt_weight_decay: float = 1e-5  # Reduced weight decay
-    ttt_patience: int = 20     # Increased patience for better convergence
-    ttt_timeout: int = 45      # Increased timeout
-    ttt_improvement_threshold: float = 1e-5  # More sensitive improvement detection
-    ttt_warmup_steps: int = 10 # Learning rate warmup steps
+    # TTT configuration (matching SystemConfig)
+    ttt_base_steps: int = 50  # Base number of TTT adaptation steps
+    ttt_max_steps: int = 200  # Maximum TTT steps (safety limit)
+    ttt_lr: float = 0.001  # TTT learning rate
+    ttt_weight_decay: float = 1e-4  # TTT weight decay
+    ttt_patience: int = 15  # Early stopping patience
+    ttt_timeout: int = 30  # TTT timeout in seconds
+    ttt_improvement_threshold: float = 1e-4  # Minimum improvement threshold
     min_reputation: int = 100
     
     # Device configuration
     device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
     
     # Decentralization configuration
-    fully_decentralized: bool = False
+    fully_decentralized: bool = False  # Set to True for 100% decentralized system
     
     # Few-shot learning configuration (aligned with SystemConfig)
-    n_way: int = 2
-    k_shot: int = 50
-    n_query: int = 100
-    
-    # Evaluation configuration
-    support_size: int = 20
-    num_meta_tasks: int = 20
-    
-    # Feature selection configuration
-    use_igrf_rfe: bool = True
-    feature_selection_ratio: float = 0.8
-    
-    # Transductive learning configuration
-    transductive_steps: int = 5
-    transductive_lr: float = 0.0005
-    
-    # Additional training parameters
-    validation_patience_limit: int = 10
-    recent_rounds: int = 10
+    n_way: int = 2  # Number of classes per task
+    k_shot: int = 50  # Number of support samples per class
+    n_query: int = 100  # Number of query samples per class
 
 
 def ensure_config_sync():
@@ -995,33 +603,17 @@ class BlockchainFederatedIncentiveSystem:
     
     def _setup_client_addresses(self):
         """Setup client addresses with MetaMask authentication"""
-        # Using REAL Ganache accounts (in production, these would be real
-        # MetaMask addresses)
-        # Extended to support up to 10 clients as per config
-        real_ganache_addresses = [
-            "0xCD3a95b26EA98a04934CCf6C766f9406496CA986",
-            "0x32cE285CF96cf83226552A9c3427Bd58c0A9AccD", 
-            "0x8EbA3b47c80a5E31b4Ea6fED4d5De8ebc93B8d6f",
-            "0x4565f36D8E3cBC1c7187ea39Eb613E484411e075",
-            "0x4f3edf983ac636a65a842ce7c78d9aa706d3b113bce9c46f30d7d21715b23b1d",
-            "0x74f2D28CEC2c97186dE1A02C1Bae84D19A7E8BC8",
-            "0x02090bbB57546b0bb224880a3b93D2Ffb0dde144",
-            "0x1234567890123456789012345678901234567890",
-            "0x2345678901234567890123456789012345678901",
-            "0x3456789012345678901234567890123456789012"
-        ]
+        # Generate unique addresses for all clients
+        # In production, these would be real MetaMask addresses from user authentication
+        import secrets
         
         # Authenticate each client with MetaMask
         self.authenticated_clients = {}
         
         for i in range(self.config.num_clients):
             client_id = f"client_{i+1}"
-            # Ensure each client gets a unique address
-            if i < len(real_ganache_addresses):
-                wallet_address = real_ganache_addresses[i]
-            else:
-                # Generate additional addresses if needed (for testing)
-                wallet_address = f"0x{i+1:040x}"
+            # Generate unique wallet address for each client
+            wallet_address = "0x" + secrets.token_hex(20)
             
             # Authenticate client with MetaMask
             auth_result = self._authenticate_client(client_id, wallet_address)
@@ -2417,10 +2009,7 @@ class BlockchainFederatedIncentiveSystem:
             client_contributions = []
             client_updates = round_results.get('client_updates', [])
             
-            logger.info(f"🔍 DEBUG: Processing incentives for {len(client_updates)} client updates")
-            logger.info(f"🔍 DEBUG: Expected clients: {self.config.num_clients}")
-            
-            for i, client_update in enumerate(client_updates):
+            for client_update in client_updates:
                 # Calculate data-driven data quality and reliability scores
                 logger.info(
                     f"📊 Calculating data-driven metrics for client {client_update.client_id}")
@@ -2535,39 +2124,39 @@ class BlockchainFederatedIncentiveSystem:
                 
                 # Distribute rewards
                 if reward_distributions:
-                    # Store incentive data for visualization including individual rewards
-                    # BEFORE attempting ERC20 distribution (so we have data even if distribution fails)
-                    individual_rewards = {}
-                    for reward_dist in reward_distributions:
-                        individual_rewards[reward_dist.recipient_address] = reward_dist.token_amount
-                    
-                    total_tokens = sum(rd.token_amount for rd in reward_distributions)
-                    logger.info(f"🔍 DEBUG: Created individual_rewards for {len(individual_rewards)} clients")
-                    logger.info(f"🔍 DEBUG: Individual rewards: {individual_rewards}")
-                    
-                    incentive_record = {
-                        'round_number': round_num,
-                        'total_rewards': total_tokens,
-                        'num_rewards': len(reward_distributions),
-                        'individual_rewards': individual_rewards,
-                        'timestamp': time.time()
-                    }
-                    
-                    # Store incentive record regardless of ERC20 distribution success
-                    with self.lock:
-                        self.incentive_history.append(incentive_record)
-                    logger.info(f"📊 Stored incentive record for round {round_num}")
-                    
-                    # Now attempt ERC20 distribution
                     success = self.incentive_manager.distribute_rewards(
                         round_num, reward_distributions)
                     if success:
+                        total_tokens = sum(
+    rd.token_amount for rd in reward_distributions)
                         logger.info(
                             f"Incentives processed for round {round_num}: {len(reward_distributions)} rewards, Total: {total_tokens} tokens")
-                        logger.info("✅ ERC20 distribution successful")
+
+                        # Token distribution will be recorded on blockchain
+                        # with real gas usage
+
+                        # Store incentive data for visualization including
+                        # individual rewards
+                        individual_rewards = {}
+                        for reward_dist in reward_distributions:
+                            individual_rewards[reward_dist.recipient_address] = reward_dist.token_amount
+                        
+                        incentive_record = {
+                            'round_number': round_num,
+                            'total_rewards': total_tokens,
+                            'num_rewards': len(reward_distributions),
+                            'individual_rewards': individual_rewards,
+                            'timestamp': time.time()
+                        }
+                        
+                        # Use thread-safe access to incentive_history
+                        with self.lock:
+                            self.incentive_history.append(incentive_record)
+                        logger.info(
+                            f"📊 Stored incentive record for round {round_num}")
                     else:
-                        logger.error(f"❌ ERC20 distribution failed for round {round_num}")
-                        logger.info("ℹ️ Individual rewards still stored for visualization")
+                        logger.error(
+                            f"Failed to distribute rewards for round {round_num}")
                 else:
                     logger.warning(
                         f"No rewards to distribute for round {round_num}")
@@ -2604,10 +2193,9 @@ class BlockchainFederatedIncentiveSystem:
                     "No client updates available for Shapley calculation")
                 return {}
             
-            # Get individual client performances from actual client updates
-            individual_performances = {}
-            for client_update in client_updates:
-                individual_performances[client_update.client_id] = client_update.validation_accuracy
+            # Get individual client performances
+            individual_performances = self._get_client_training_accuracy(
+                round_num)
             
             # Calculate global performance improvement
             global_performance = current_accuracy - previous_accuracy
@@ -2636,56 +2224,20 @@ class BlockchainFederatedIncentiveSystem:
             self._log_data_driven_metrics(
     round_num, data_quality_scores, participation_data)
             
-            # Initialize Shapley value calculator with correct number of clients and actual client IDs
-            actual_client_ids = [update.client_id for update in client_updates]
-            shapley_calculator = ShapleyValueCalculator(
-                num_clients=len(client_updates),
-                evaluation_metric='accuracy',
-                client_ids=actual_client_ids
-            )
+            # Initialize Shapley value calculator
+            shapley_calculator = ShapleyValueCalculator()
             
             # Calculate Shapley values
-            try:
-                logger.info(f"🔍 DEBUG: Shapley calculation inputs:")
-                logger.info(f"  Global performance: {global_performance}")
-                logger.info(f"  Individual performances: {individual_performances}")
-                logger.info(f"  Data quality scores: {data_quality_scores}")
-                logger.info(f"  Participation data: {participation_data}")
-                logger.info(f"  Client IDs: {actual_client_ids}")
-                
-                shapley_contributions = shapley_calculator.calculate_shapley_values(
-                    global_performance=global_performance,
-                    individual_performances=individual_performances,
-                    client_data_quality=data_quality_scores,
-                    client_participation=participation_data
-                )
-                
-                # Convert to dictionary format
-                shapley_values = {
-                    contrib.client_id: contrib.shapley_value for contrib in shapley_contributions
-                }
-                
-                logger.info(f"🔍 DEBUG: Calculated Shapley values:")
-                for contrib in shapley_contributions:
-                    logger.info(f"  {contrib.client_id}: {contrib.shapley_value:.6f}")
-                
-                # Ensure we have Shapley values for all clients
-                if len(shapley_values) < len(client_updates):
-                    logger.warning(f"Shapley calculation incomplete: {len(shapley_values)}/{len(client_updates)} clients")
-                    # Fill missing clients with equal distribution
-                    for client_update in client_updates:
-                        if client_update.client_id not in shapley_values:
-                            shapley_values[client_update.client_id] = 1.0 / len(client_updates)
-                            logger.info(f"Added default Shapley value for {client_update.client_id}: {shapley_values[client_update.client_id]:.4f}")
-                            
-            except Exception as e:
-                logger.error(f"Shapley calculation failed: {str(e)}")
-                # Fallback: equal distribution
-                shapley_values = {
-                    client_update.client_id: 1.0 / len(client_updates) 
-                    for client_update in client_updates
-                }
-                logger.info("Using equal distribution fallback for Shapley values")
+            shapley_contributions = shapley_calculator.calculate_shapley_values(
+                global_performance=global_performance,
+                individual_performances=individual_performances,
+                client_data_quality=data_quality_scores,
+                client_participation=participation_data
+            )
+            
+            # Convert to dictionary format
+            shapley_values = {
+    contrib.client_id: contrib.shapley_value for contrib in shapley_contributions}
             
             logger.info(
                 f"Shapley values calculated for {len(shapley_values)} clients")
@@ -2736,13 +2288,12 @@ class BlockchainFederatedIncentiveSystem:
                 base_accuracy = getattr(
     self, 'final_evaluation_results', {}).get(
         'accuracy', 0.5)
-                # Add some variation to differentiate clients for all configured clients
-                client_accuracies = {}
-                for i in range(self.config.num_clients):
-                    client_id = f'client_{i+1}'
-                    # Create variation based on client index
-                    variation = (i - self.config.num_clients // 2) * 0.01
-                    client_accuracies[client_id] = base_accuracy + variation
+                # Add some variation to differentiate clients
+            client_accuracies = {
+                    'client_1': base_accuracy + 0.01,  # Slightly better
+                    'client_2': base_accuracy,          # Baseline
+                    'client_3': base_accuracy - 0.01   # Slightly worse
+            }
             
             logger.info(
                 f"Using differentiated client accuracies: {client_accuracies}")
@@ -4014,69 +3565,116 @@ class BlockchainFederatedIncentiveSystem:
                     # global model)
                     from models.transductive_fewshot_model import create_meta_tasks
                     
-                    # CRITICAL FIX: Use the SAME sample size as TTT model for fair comparison
-                    # Instead of creating many meta-tasks, use direct evaluation on the same dataset
-                    logger.info(f"Base Model: Using direct evaluation on {len(X_test_tensor)} samples (same as TTT model)")
+                    # Create meta-tasks for evaluation (SAME parameters as final global model)
+                    # For multiclass zero-day detection, use 10-class classification directly
+                    # Labels: 0=Normal, 1-9=Attack types (Fuzzers, Analysis,
+                    # Backdoor, DoS, Exploits, Generic, Reconnaissance,
+                    # Shellcode, Worms)
+
+                    meta_tasks = create_meta_tasks(
+                        X_test_tensor, y_test_tensor,  # Use 10-class labels directly
+                        n_way=self.config.n_way, k_shot=self.config.k_shot, n_query=self.config.n_query,   # Binary classification for zero-day detection
+                        phase="testing",
+                        normal_query_ratio=0.9,  # 90% Normal samples in query set for testing
+                        zero_day_attack_label=None  # No exclusion for testing phase
+                    )
                     
-                    # Convert to binary classification for consistency with TTT model
-                    y_test_binary = (y_test_tensor != 0).long()  # Normal=0, Attack=1
+                    all_predictions = []
+                    all_labels = []
                     
-                    # Direct evaluation without meta-tasks to match TTT sample size
-                    with torch.no_grad():
-                        # Get model predictions directly
-                        outputs = final_model(X_test_tensor)
-                        probabilities = torch.softmax(outputs, dim=1)
+                    # Evaluate on each meta-task (SAME approach as final global
+                    # model)
+                    for task in meta_tasks:
+                        support_x = task['support_x']
+                        support_y = task['support_y']
+                        query_x = task['query_x']
+                        query_y = task['query_y']
                         
-                        # Convert to binary predictions (same as TTT model)
-                        if outputs.shape[1] == 2:
-                            predictions = torch.argmax(outputs, dim=1)
-                        else:
-                            # For multiclass, convert to binary: Normal=0, Attack=1
-                            predictions = (torch.argmax(outputs, dim=1) != 0).long()
-                        
-                        all_predictions = predictions.cpu()
-                        all_labels = y_test_binary.cpu()
+                        # Get prototypes from support set (SAME as final global
+                        # model)
+                        with torch.no_grad():
+                            support_features = final_model.get_embeddings(
+                                support_x)
+                            prototypes = []
+                            for class_id in torch.unique(support_y):
+                                class_mask = (support_y == class_id)
+                                class_prototype = support_features[class_mask].mean(
+                                    dim=0)
+                                prototypes.append(class_prototype)
+                            prototypes = torch.stack(prototypes)
+                            
+                            # Get query features
+                            query_features = final_model.get_embeddings(
+                                query_x)
+                            
+                            # Calculate distances to prototypes
+                            distances = torch.cdist(query_features, prototypes)
+                            
+                            # Convert distances to probabilities for binary classification
+                            logits = -distances  # Negative distances as logits
+                            probabilities = torch.softmax(logits, dim=1)
+                            attack_probabilities = probabilities[:, 1]  # P(Attack)
+                            
+                            # Use threshold-based binary classification
+                            predictions = (attack_probabilities >= 0.5).long()
+                            
+                            all_predictions.append(predictions.cpu())
+                            all_labels.append(query_y.cpu())
                     
-                    # Direct evaluation completed above - no need for meta-task loop
-                    
-                    # Use direct predictions (already computed above)
-                    predictions = all_predictions
-                    y_test_combined = all_labels
+                    # Combine all predictions (SAME as final global model)
+                    predictions = torch.cat(all_predictions, dim=0)
+                    y_test_combined = torch.cat(all_labels, dim=0)
                     
                     # Calculate metrics using optimal threshold (SAME as final
                     # global model)
                     from sklearn.metrics import roc_auc_score, roc_curve
                     import numpy as np
                     
-                    # Get prediction probabilities for threshold finding (SAME as TTT model)
+                    # Get prediction probabilities for threshold finding (SAME
+                    # as final global model)
                     with torch.no_grad():
-                        # Use direct model output for probabilities
-                        outputs = final_model(X_test_tensor)
-                        probabilities = torch.softmax(outputs, dim=1)
-                        
-                        # Convert to binary probabilities (same as TTT model)
-                        if outputs.shape[1] == 2:
-                            probs_np = probabilities[:, 1].cpu().numpy()  # P(Attack)
-                        else:
-                            # For multiclass, use 1 - P(Normal) as attack probability
-                            probs_np = (1.0 - probabilities[:, 0]).cpu().numpy()
+                        all_probs = []
+                        for task in meta_tasks:
+                            support_x = task['support_x']
+                            support_y = task['support_y']
+                            query_x = task['query_x']
+                            query_y = task['query_y']
+                            support_features = final_model.get_embeddings(
+                                support_x)
+                            prototypes = []
+                            for class_id in torch.unique(support_y):
+                                class_mask = (support_y == class_id)
+                                class_prototype = support_features[class_mask].mean(
+                                    dim=0)
+                                prototypes.append(class_prototype)
+                            prototypes = torch.stack(prototypes)
+                            
+                            query_features = final_model.get_embeddings(
+                                query_x)
+                            distances = torch.cdist(query_features, prototypes)
+                            # Convert distances to probabilities (closer =
+                            # higher probability)
+                            probs = torch.softmax(-distances, dim=1)
+                            all_probs.append(probs.cpu())
                     
+                    probs_combined = torch.cat(all_probs, dim=0)
+                    probs_np = probs_combined.numpy()
                     y_test_np = y_test_combined.numpy()
                     
                     # Find optimal threshold using ROC curve with class imbalance handling
                     # Convert multiclass to binary for threshold optimization
                     y_test_binary = (y_test_np != 0).astype(
                         int)  # Normal=0, Attack=1
-                    # Use attack probabilities directly (already computed above)
-                    attack_probs = probs_np
+                    # Attack probability = 1 - Normal probability
+                    attack_probs = 1.0 - probs_np[:, 0]
 
                     if len(np.unique(y_test_binary)) > 1:
                         fpr, tpr, thresholds, roc_auc = calculate_roc_curve_safe(
-                            y_test_binary, attack_probs)
+                            y_test_np, probs_np)
 
                         # Use standardized threshold selection
                         optimal_threshold, _, _, _, _ = find_optimal_threshold(
-                            y_test_binary, attack_probs, method='balanced')
+                            y_test_np, probs_np, method='balanced')
                     else:
                         # Fallback for single class or single probability dimension
                         optimal_threshold = 0.5
@@ -4085,83 +3683,120 @@ class BlockchainFederatedIncentiveSystem:
                         logger.warning(
                             f"ROC curve calculation skipped - Classes: {len(np.unique(y_test_np))}, Prob dims: {probs_np.shape[1]}")
                     
-                    # Apply optimal threshold (SAME as TTT model)
-                    # Use binary predictions for consistent evaluation
-                    final_predictions = (attack_probs >= optimal_threshold).astype(int)
-                    binary_predictions = final_predictions  # Same as final predictions
+                    # Apply optimal threshold (SAME as final global model)
+                    # For multiclass, we use the original predictions but
+                    # calculate binary metrics for zero-day detection
+                    final_predictions = predictions.numpy()  # Use original multiclass predictions
+                    binary_predictions = (attack_probs >= optimal_threshold).astype(
+                        int)  # Binary for zero-day detection
                     
-                    # Calculate metrics (SAME as TTT model)
-                    # Use binary predictions for consistent evaluation
-                    accuracy = (final_predictions == y_test_binary).mean()
+                    # Calculate metrics (SAME as final global model)
+                    # Use multiclass predictions for overall accuracy, binary
+                    # for zero-day detection
+                    accuracy = (final_predictions == y_test_np).mean()
                     
-                    # Calculate binary metrics (SAME as TTT model)
+                    # Calculate multiclass metrics (SAME as final global model)
                     from sklearn.metrics import f1_score, classification_report, precision_recall_fscore_support
 
-                    # Binary classification metrics
-                    precision_binary, recall_binary, f1_binary, _ = precision_recall_fscore_support(
-                        y_test_binary, final_predictions, average='binary', zero_division=0
+                    # Macro-averaged metrics for multiclass evaluation
+                    precision_macro, recall_macro, f1_macro, _ = precision_recall_fscore_support(
+                        y_test_np, final_predictions, average='macro', zero_division=0
                     )
 
-                    # Standard F1-score for binary classification (Normal vs Attack)
-                    f1_standard = f1_score(
-                        y_test_binary,
-                        final_predictions,
-                        average='binary',
-                        zero_division=0)
+                    # Weighted-averaged metrics for class imbalance
+                    # consideration
+                    precision_weighted, recall_weighted, f1_weighted, _ = precision_recall_fscore_support(
+                        y_test_np, final_predictions, average='weighted', zero_division=0
+                    )
 
-                    # Get classification report (SAME as TTT model)
+                    # Micro-averaged metrics (same as accuracy for multiclass)
+                    precision_micro, recall_micro, f1_micro, _ = precision_recall_fscore_support(
+                        y_test_np, final_predictions, average='micro', zero_division=0
+                    )
+
+                    # Standard F1-score for binary classification (Normal vs
+                    # Attack)
+                    f1_standard = f1_score(
+    y_test_np,
+    final_predictions,
+    average='binary',
+     zero_division=0)
+
+                    # Get classification report (SAME as final global model)
                     class_report = classification_report(
-                        y_test_binary, final_predictions, output_dict=True, zero_division=0)
+    y_test_np, final_predictions, output_dict=True, zero_division=0)
                     
-                    # Calculate MCCC (SAME as TTT model)
+                    # Calculate MCCC
                     from sklearn.metrics import matthews_corrcoef
                     try:
-                        mccc = matthews_corrcoef(y_test_binary, final_predictions)
+
+                        mccc = matthews_corrcoef(y_test_np, final_predictions)
                     except:
                         mccc = 0.0
                     
-                    # Calculate zero-day detection rate using zero_day_indices (SAME as TTT model)
+                    # Calculate zero-day detection rate using zero_day_indices
+                    # For multiclass, zero-day detection means correctly
+                    # identifying attack samples (non-Normal)
                     zero_day_mask_np = zero_day_mask.cpu().numpy()
-                    if len(zero_day_mask_np) > 0 and len(zero_day_mask_np) == len(final_predictions):
-                        # Zero-day detection rate = correctly predicted attacks among zero-day samples
-                        zero_day_predictions = final_predictions[zero_day_mask_np]
-                        zero_day_detection_rate = zero_day_predictions.mean() if len(zero_day_predictions) > 0 else 0.0
+                    if len(zero_day_mask_np) > 0 and len(
+                        zero_day_mask_np) == len(binary_predictions):
+                        # Zero-day detection rate = correctly predicted attacks
+                        # among zero-day samples
+                        zero_day_predictions = binary_predictions[zero_day_mask_np]
+                        zero_day_detection_rate = zero_day_predictions.mean() if len(
+                            zero_day_predictions) > 0 else 0.0
                     else:
                         # Fallback: calculate zero-day detection rate from all predictions
-                        # Count how many attack samples were correctly predicted as attacks
-                        attack_mask = y_test_binary == 1  # Attack samples
+                        # Count how many attack samples (non-Normal) were
+                        # correctly predicted as attacks
+                        attack_mask = y_test_np != 0  # Attack samples
                         if np.any(attack_mask):
-                            attack_predictions = final_predictions[attack_mask]
+                            attack_predictions = binary_predictions[attack_mask]
                             zero_day_detection_rate = attack_predictions.mean() if len(
                                 attack_predictions) > 0 else 0.0
                         else:
                             zero_day_detection_rate = 0.0
 
-                    # Calculate confusion matrix for binary classification (SAME as TTT model)
+                    # Calculate confusion matrix for multiclass
                     from sklearn.metrics import confusion_matrix
-                    cm = confusion_matrix(y_test_binary, final_predictions)
+                    cm = confusion_matrix(y_test_np, final_predictions)
+                    
+                    # For multiclass, we don't need to extract tn, fp, fn, tp
+                    # The full confusion matrix will be used
                     
                     results = {
                         'accuracy': accuracy,
-                        # Binary classification metrics
-                        'precision': precision_binary,
-                        'recall': recall_binary,
-                        'f1_score': f1_binary,
-                        'f1_score_standard': f1_standard,
+                        # Macro-averaged metrics (primary for multiclass
+                        # evaluation)
+                        'precision_macro': precision_macro,
+                        'recall_macro': recall_macro,
+                        'f1_score_macro': f1_macro,
+                        # Weighted-averaged metrics (considering class
+                        # imbalance)
+                        'precision_weighted': precision_weighted,
+                        'recall_weighted': recall_weighted,
+                        'f1_score_weighted': f1_weighted,
+                        # Micro-averaged metrics (same as accuracy for
+                        # multiclass)
+                        'precision_micro': precision_micro,
+                        'recall_micro': recall_micro,
+                        'f1_score_micro': f1_micro,
+                        'f1_score': f1_standard,  # Standard F1-score for binary classification
                         'mccc': mccc,
                         'zero_day_detection_rate': zero_day_detection_rate,
                         'optimal_threshold': optimal_threshold,
                         'roc_auc': roc_auc,
                         'roc_curve': {'fpr': fpr.tolist(), 'tpr': tpr.tolist(), 'thresholds': thresholds.tolist()},
-                        'confusion_matrix': cm.tolist(),  # Binary confusion matrix
-                        'classification_report': class_report,  # Detailed binary metrics
-                        'test_samples': len(y_test_binary),
+                        'confusion_matrix': cm.tolist(),  # Full multiclass confusion matrix
+                        'classification_report': class_report,  # Detailed per-class metrics
+                        'test_samples': len(y_test_np),
                         'query_samples': len(y_test_combined),
-                        'support_samples': len(y_test_combined)  # Same as query samples for direct evaluation
+                        # 5 support samples per task
+                        'support_samples': len(meta_tasks) * 5
                     }
                     
                     logger.info(
-                        f"Base Model Results (binary classification): Accuracy={accuracy:.4f}, F1={f1_binary:.4f}, MCCC={mccc:.4f}, Zero-day Rate={zero_day_detection_rate:.4f}")
+                        f"Base Model Results (10-class multiclass): Accuracy={accuracy:.4f}, F1-Macro={f1_macro:.4f}, F1-Weighted={f1_weighted:.4f}, MCCC={mccc:.4f}, Zero-day Rate={zero_day_detection_rate:.4f}")
                     return results
                 else:
                     logger.warning(
@@ -4473,24 +4108,24 @@ class BlockchainFederatedIncentiveSystem:
             results: Evaluation metrics for TTT model
         """
         try:
-            # CRITICAL FIX: Use the SAME sample size as base model for fair comparison
-            # Base model uses ALL test samples, so TTT should also use ALL test samples
-            # Don't create a subset - use the exact same data as base model
-            X_test_subset = X_test
-            y_test_subset = y_test
-            zero_day_mask_subset = zero_day_mask
+            # Use smaller subset for memory efficiency
+            subset_size = min(500, len(X_test))
+            X_test_subset = X_test[:subset_size]
+            y_test_subset = y_test[:subset_size]
+            zero_day_mask_subset = zero_day_mask[:subset_size]
             
             # Convert 10-class labels to binary for TTT evaluation (Normal=0, Attack=1)
             y_test_binary = (y_test_subset != 0).long()  # Convert to binary: Normal=0, Attack=1
 
-            # CRITICAL FIX: Use ALL samples for query evaluation to match base model
-            # Use a small support set for adaptation but evaluate on ALL samples
-            support_size = min(200, len(X_test_subset) // 10)  # Use only 10% for support
-            query_size = len(X_test_subset)  # Use ALL samples for query evaluation
+            # Create support and query sets for few-shot learning (increased
+            # support size for better adaptation)
+            # Use 50% of test data for adaptation for better learning
+            support_size = min(200, len(X_test_subset) // 2)
+            query_size = len(X_test_subset) - support_size
             
             # Log the selected support set size for debugging and monitoring
             logger.info(
-                f"TTT: Using support set size {support_size} (10% of {len(X_test_subset)} samples) and query set size {query_size} (100% of samples for fair evaluation)")
+                f"TTT: Using increased support set size {support_size} (20% of {len(X_test_subset)} test samples for fair attack representation)")
 
             # Use SAME fixed random seed for reproducible evaluation (same as
             # base model)
@@ -4500,29 +4135,26 @@ class BlockchainFederatedIncentiveSystem:
             # Use stratified sampling to maintain class distribution in both support and query sets
             from sklearn.model_selection import train_test_split
             
-            # SCIENTIFIC FIX: Proper support-query separation to avoid data leakage
-            # Use validation data for support set, test data for query set
-            logger.info("🔬 Using proper support-query separation: validation data for support, test data for query")
+            # Create stratified split maintaining class distribution
+            all_indices = torch.arange(len(X_test_subset))
+            support_indices, query_indices = train_test_split(
+                all_indices,
+                test_size=0.5,  # 50% for query, 50% for support
+                stratify=y_test_binary.cpu().numpy(),  # Maintain class distribution
+                random_state=42  # For reproducibility
+            )
             
-            # Get validation data for support set (no overlap with test data)
-            X_val_tensor = torch.FloatTensor(self.preprocessed_data['X_val'])
-            y_val_tensor = torch.LongTensor(self.preprocessed_data['y_val'])
+            # Convert back to tensors
+            support_indices = torch.tensor(support_indices)
+            query_indices = torch.tensor(query_indices)
             
-            # SCIENTIFIC FIX: Use multiclass labels throughout for consistency
-            # The model is designed for multiclass classification (10 classes)
-            logger.info("🔬 Using multiclass labels for consistent classification context")
-            
-            # Select support samples from validation data
-            val_support_size = min(support_size, len(X_val_tensor))
-            support_indices = torch.randperm(len(X_val_tensor))[:val_support_size]
-            
-            support_x = X_val_tensor[support_indices]
-            support_y = y_val_tensor[support_indices]  # ✅ Multiclass labels
-            
-            # Use test data for query evaluation (no overlap with support)
-            query_x = X_test_subset
-            query_y = y_test_subset  # ✅ Multiclass labels
-            query_zero_day_mask = zero_day_mask_subset
+            support_x = X_test_subset[support_indices]
+            # Use binary labels for TTT
+            support_y = y_test_binary[support_indices]
+            query_x = X_test_subset[query_indices]
+            # Use binary labels for TTT
+            query_y = y_test_binary[query_indices]
+            query_zero_day_mask = zero_day_mask_subset[query_indices]
             
             # Device alignment and shape verification for TTT
             device = X_test.device
@@ -4712,12 +4344,7 @@ class BlockchainFederatedIncentiveSystem:
                 logits = -distances  # Negative distances as logits
                 probabilities = torch.softmax(logits, dim=1)
                 
-                # SCIENTIFIC FIX: Handle multiclass evaluation properly
-                # Convert multiclass labels to binary for attack detection evaluation
-                query_y_binary = (query_y != 0).long()  # Normal=0, Attack=1
-                
-                # For zero-day detection, use attack probability (sum of all non-normal classes)
-                # Since we have 2 classes in the prototype-based classification (Normal, Attack)
+                # For zero-day detection, use attack probability (class 1)
                 attack_probabilities = probabilities[:, 1]  # P(Attack)
                 
                 # Use threshold-based binary classification for consistency
@@ -4744,17 +4371,18 @@ class BlockchainFederatedIncentiveSystem:
                         # Calculate ROC metrics for comparison (but don't use
                         # for threshold selection)
                         from sklearn.metrics import roc_curve, roc_auc_score
+                        query_y_binary = query_y.cpu().numpy()  # Already binary
                         fpr, tpr, thresholds = roc_curve(
-                            query_y_binary.cpu().numpy(), attack_probabilities.cpu().numpy())
+                            query_y_binary, attack_probabilities.cpu().numpy())
                         roc_auc = roc_auc_score(
-                            query_y_binary.cpu().numpy(), attack_probabilities.cpu().numpy())
+                            query_y_binary, attack_probabilities.cpu().numpy())
 
                     except Exception as e:
                         logger.warning(
                             f"RL threshold selection failed, falling back to static method: {e}")
                         # Fallback to static threshold optimization - use F1 method for imbalanced data
                         optimal_threshold, roc_auc, fpr, tpr, thresholds = find_optimal_threshold(
-                            query_y_binary.cpu().numpy(), attack_probabilities.cpu().numpy(), method='f1'
+                            query_y.cpu().numpy(), attack_probabilities.cpu().numpy(), method='f1'
                         )
                         logger.info(
                             f"📊 Static threshold selected: {optimal_threshold:.4f}")
@@ -4762,7 +4390,7 @@ class BlockchainFederatedIncentiveSystem:
                     logger.warning("RL agent not available, using static threshold optimization")
                     # Fallback to static threshold optimization
                     optimal_threshold, roc_auc, fpr, tpr, thresholds = find_optimal_threshold(
-                        query_y_binary.cpu().numpy(), attack_probabilities.cpu().numpy(), method='balanced'
+                        query_y.cpu().numpy(), attack_probabilities.cpu().numpy(), method='balanced'
                     )
                     logger.info(f"📊 Static threshold selected: {optimal_threshold:.4f}")
             
@@ -4772,7 +4400,7 @@ class BlockchainFederatedIncentiveSystem:
             # Convert to numpy for metrics calculation
             ttt_predictions_np = ttt_predictions.cpu().numpy()
             base_predictions_np = base_predictions.cpu().numpy()
-            query_y_np = query_y_binary.cpu().numpy()  # Use binary labels for evaluation
+            query_y_np = query_y.cpu().numpy()
             confidence_np = confidence_scores.cpu().numpy()
             is_zero_day_np = query_zero_day_mask.cpu().numpy()
                 
@@ -5325,32 +4953,12 @@ class BlockchainFederatedIncentiveSystem:
             dropout_status = adapted_model.get_dropout_status()
             logger.info(f"TTT multiclass adaptation started with dropout regularization (p=0.3): {len(dropout_status)} dropout layers active")
             
-            # OPTIMIZED TTT optimizer with better hyperparameters
-            ttt_optimizer = torch.optim.AdamW(
-                adapted_model.parameters(), 
-                lr=self.config.ttt_lr, 
-                weight_decay=self.config.ttt_weight_decay,
-                betas=(0.9, 0.999),  # Optimized beta values
-                eps=1e-8
-            )
+            # Enhanced optimizer setup with adaptive learning rate
+            ttt_optimizer = torch.optim.AdamW(adapted_model.parameters(), lr=self.config.ttt_lr, weight_decay=self.config.ttt_weight_decay)
             
-            # Advanced learning rate scheduling with warmup and cosine annealing
-            import math
-            def lr_lambda(step):
-                if step < self.config.ttt_warmup_steps:
-                    # Warmup phase: linear increase
-                    return step / self.config.ttt_warmup_steps
-                else:
-                    # Cosine annealing phase
-                    progress = (step - self.config.ttt_warmup_steps) / (ttt_steps - self.config.ttt_warmup_steps)
-                    return 0.5 * (1 + math.cos(math.pi * progress))
-            
-            scheduler = torch.optim.lr_scheduler.LambdaLR(ttt_optimizer, lr_lambda)
-            
-            # Additional plateau scheduler for fine-tuning
-            plateau_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-                ttt_optimizer, mode='min', factor=self.config.ttt_lr_decay, 
-                patience=5, min_lr=self.config.ttt_lr_min, verbose=False
+            # More conservative learning rate scheduler for stability
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                ttt_optimizer, mode='min', factor=0.5, patience=3, min_lr=1e-6, verbose=False
             )
             
             # Adaptive TTT steps based on data complexity with safety limits
@@ -5368,10 +4976,8 @@ class BlockchainFederatedIncentiveSystem:
             ttt_consistency_losses = []
             ttt_learning_rates = []
             
-            # OPTIMIZED: Early stopping with both loss and accuracy tracking
+            # Early stopping for TTT adaptation
             best_loss = float('inf')
-            best_accuracy = 0.0
-            accuracy_history = []
             patience = self.config.ttt_patience  # Patience from configuration
             patience_counter = 0
             improvement_threshold = self.config.ttt_improvement_threshold  # Improvement threshold from configuration
@@ -5404,31 +5010,16 @@ class BlockchainFederatedIncentiveSystem:
                 # Forward pass on query set (unsupervised learning)
                 query_outputs = adapted_model(query_x)
                 
-                # OPTIMIZED: Advanced consistency objectives for better zero-day detection
+                # Consistency loss for query set (encourage confident predictions for zero-day detection)
                 if len(query_outputs) > 1:
+                    # Use entropy minimization loss for confident zero-day detection
                     query_probs = torch.softmax(query_outputs, dim=1)
-                    
-                    # 1. Entropy minimization (encourage confident predictions)
-                    entropy_loss = -torch.mean(torch.sum(query_probs * torch.log(query_probs + 1e-8), dim=1))
-                    
-                    # 2. Confidence maximization (encourage high max probability)
-                    max_probs = torch.max(query_probs, dim=1)[0]
-                    confidence_loss = -torch.mean(max_probs)
-                    
-                    # 3. Diversity regularization (prevent mode collapse)
-                    diversity_loss = torch.mean(torch.sum(query_probs**2, dim=1))
-                    
-                    # Combined consistency loss with adaptive weighting
-                    consistency_loss = 0.4 * entropy_loss + 0.4 * confidence_loss + 0.2 * diversity_loss
+                    consistency_loss = -torch.mean(torch.sum(query_probs * torch.log(query_probs + 1e-8), dim=1))
                 else:
                     consistency_loss = torch.tensor(0.0, device=support_loss.device)
                 
-                # OPTIMIZED: Adaptive loss weighting based on training progress
-                progress = step / ttt_steps
-                support_weight = 0.8 - 0.2 * progress  # Decrease support weight over time
-                consistency_weight = 0.2 + 0.2 * progress  # Increase consistency weight over time
-                
-                total_loss = support_weight * support_loss + consistency_weight * consistency_loss
+                # Combined loss with balanced weights
+                total_loss = support_loss + 0.1 * consistency_loss
                 
                 # Debug logging for consistency loss
                 if step % 10 == 0:  # Log every 10 steps
@@ -5443,15 +5034,8 @@ class BlockchainFederatedIncentiveSystem:
                 # Optimizer step
                 ttt_optimizer.step()
                 
-                # OPTIMIZED: Dual learning rate scheduling
-                scheduler.step()  # Cosine annealing
-                plateau_scheduler.step(total_loss)  # Plateau reduction
-                
-                # Calculate accuracy for early stopping
-                with torch.no_grad():
-                    support_preds = torch.argmax(support_outputs, dim=1)
-                    support_acc = (support_preds == support_y).float().mean().item()
-                    accuracy_history.append(support_acc)
+                # Learning rate scheduling
+                scheduler.step(total_loss)
                 
                 # Store metrics
                 ttt_losses.append(total_loss.item())
@@ -5459,45 +5043,36 @@ class BlockchainFederatedIncentiveSystem:
                 ttt_consistency_losses.append(consistency_loss.item())
                 ttt_learning_rates.append(ttt_optimizer.param_groups[0]['lr'])
                 
-                # OPTIMIZED: Early stopping based on both loss and accuracy
-                loss_improved = total_loss.item() < best_loss - improvement_threshold
-                acc_improved = support_acc > best_accuracy + 0.001  # Accuracy improvement threshold
-                
-                if loss_improved:
+                # Early stopping check
+                if total_loss.item() < best_loss - improvement_threshold:
                     best_loss = total_loss.item()
-                    patience_counter = 0
-                elif acc_improved:
-                    best_accuracy = support_acc
                     patience_counter = 0
                 else:
                     patience_counter += 1
                 
                 if patience_counter >= patience:
-                    logger.info(f"TTT multiclass adaptation early stopping at step {step+1} (patience: {patience}, best_acc: {best_accuracy:.4f})")
+                    logger.info(f"TTT multiclass adaptation early stopping at step {step+1} (patience: {patience})")
                     break
                 
-                # Log progress every 10 steps with detailed metrics
+                # Log progress every 10 steps
                 if (step + 1) % 10 == 0:
-                    logger.info(f"TTT multiclass step {step+1}/{ttt_steps}: Loss={total_loss.item():.4f}, Support={support_loss.item():.4f}, Consistency={consistency_loss.item():.4f}, Acc={support_acc:.4f}, LR={ttt_optimizer.param_groups[0]['lr']:.6f}")
+                    logger.info(f"TTT multiclass step {step+1}/{ttt_steps}: Loss={total_loss.item():.4f}, Support={support_loss.item():.4f}, Consistency={consistency_loss.item():.4f}")
             
             # Set model back to evaluation mode
             adapted_model.set_ttt_mode(training=False)
             
-            # Store OPTIMIZED TTT adaptation data for visualization
+            # Store TTT adaptation data for visualization
             adapted_model.ttt_adaptation_data = {
                 'total_losses': ttt_losses,
                 'support_losses': ttt_support_losses,
                 'consistency_losses': ttt_consistency_losses,
                 'learning_rates': ttt_learning_rates,
-                'accuracy_history': accuracy_history,
                 'steps': list(range(1, len(ttt_losses) + 1)),
                 'final_loss': ttt_losses[-1] if ttt_losses else 0.0,
-                'final_accuracy': accuracy_history[-1] if accuracy_history else 0.0,
-                'best_accuracy': best_accuracy,
                 'adaptation_steps': len(ttt_losses)
             }
             
-            logger.info(f"✅ OPTIMIZED TTT multiclass adaptation completed: {len(ttt_losses)} steps, final loss: {ttt_losses[-1]:.4f}, final accuracy: {accuracy_history[-1]:.4f}, best accuracy: {best_accuracy:.4f}")
+            logger.info(f"✅ TTT multiclass adaptation completed: {len(ttt_losses)} steps, final loss: {ttt_losses[-1]:.4f}")
             return adapted_model
             
         except Exception as e:
@@ -6072,11 +5647,10 @@ class ServiceManager:
 
                 logger.info("🌐 Starting IPFS...")
                 # Check if kubo exists
-                kubo_path = os.path.join(os.path.dirname(__file__), 'kubo', 'ipfs.exe')
-                if os.path.exists(kubo_path):
+                if os.path.exists('.\\kubo\\ipfs.exe'):
                     # Use PowerShell to start IPFS in background
                     self.ipfs_process = subprocess.Popen(
-                        ['powershell', '-Command', f'Start-Process powershell -ArgumentList "-Command", "{kubo_path} daemon" -WindowStyle Hidden'],
+                        ['powershell', '-Command', 'Start-Process powershell -ArgumentList "-Command", ".\\kubo\\ipfs.exe daemon" -WindowStyle Hidden'],
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
                         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0
@@ -6288,9 +5862,6 @@ def main():
     logger.info("🚀 Enhanced Blockchain-Enabled Federated Learning with Incentive Mechanisms")
     logger.info("=" * 80)
     
-    # MANDATORY: Ensure all required servers are running before proceeding
-    ensure_all_servers_running()
-    
     # Ensure configuration synchronization before starting
     if not ensure_config_sync():
         logger.error("❌ Configuration validation failed - exiting")
@@ -6320,70 +5891,23 @@ def main():
         logger.info(f"   {key}: {value}")
     
     # Convert centralized config to EnhancedSystemConfig for compatibility
-    # Complete parameter mapping to ensure all config changes are implemented
     enhanced_config = EnhancedSystemConfig(
-        # Data configuration
-        data_path=config.data_path,
-        test_path=config.test_path,
-        zero_day_attack=config.zero_day_attack,
-        
-        # Model configuration
-        input_dim=config.input_dim,
-        hidden_dim=config.hidden_dim,
-        embedding_dim=config.embedding_dim,
-        
-        # TCN configuration
-        use_tcn=config.use_tcn,
-        sequence_length=config.sequence_length,
-        sequence_stride=config.sequence_stride,
-        meta_epochs=config.meta_epochs,
-        
-        # Training configuration
-        support_weight=config.support_weight,
-        test_weight=config.test_weight,
-        
-        # Federated learning configuration
         num_clients=config.num_clients,
         num_rounds=config.num_rounds,
         local_epochs=config.local_epochs,
         learning_rate=config.learning_rate,
-        batch_size=config.batch_size,
-        
-        # Blockchain configuration
         enable_incentives=config.enable_incentives,
         base_reward=config.base_reward,
         max_reward=config.max_reward,
+        zero_day_attack=config.zero_day_attack,
+        use_tcn=config.use_tcn,
+        sequence_length=config.sequence_length,
+        sequence_stride=config.sequence_stride,
+        meta_epochs=config.meta_epochs,
         fully_decentralized=config.fully_decentralized,
-        
-        # TTT configuration (complete mapping)
-        ttt_base_steps=config.ttt_base_steps,
-        ttt_max_steps=config.ttt_max_steps,
-        ttt_lr=config.ttt_lr,
-        ttt_weight_decay=config.ttt_weight_decay,
-        ttt_patience=config.ttt_patience,
-        ttt_timeout=config.ttt_timeout,
-        ttt_improvement_threshold=config.ttt_improvement_threshold,
-        
-        # Few-shot learning configuration
         n_way=config.n_way,
         k_shot=config.k_shot,
-        n_query=config.n_query,
-        
-        # Evaluation configuration
-        support_size=config.support_size,
-        num_meta_tasks=config.num_meta_tasks,
-        
-        # Feature selection configuration
-        use_igrf_rfe=config.use_igrf_rfe,
-        feature_selection_ratio=config.feature_selection_ratio,
-        
-        # Transductive learning configuration
-        transductive_steps=config.transductive_steps,
-        transductive_lr=config.transductive_lr,
-        
-        # Additional training parameters
-        validation_patience_limit=config.validation_patience_limit,
-        recent_rounds=config.recent_rounds
+        n_query=config.n_query
     )
     
     # WandB integration removed

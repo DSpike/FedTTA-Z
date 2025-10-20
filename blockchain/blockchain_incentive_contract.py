@@ -439,6 +439,11 @@ class BlockchainIncentiveContract:
                 recipients_array = list(recipients) if isinstance(recipients, (list, tuple)) else [recipients]
                 amounts_array = list(int_amounts) if isinstance(int_amounts, (list, tuple)) else [int_amounts]
                 
+                # FIX: Ensure arrays are properly formatted for Solidity
+                # Convert to proper types that Solidity expects
+                recipients_array = [self.web3.to_checksum_address(addr) for addr in recipients_array]
+                amounts_array = [int(amount) for amount in amounts_array]
+                
                 # Log the data being sent for debugging
                 logger.info(f"🔍 DEBUG: distributeRewards called with:")
                 logger.info(f"  Recipients: {recipients_array} (type: {type(recipients_array)})")
@@ -446,15 +451,31 @@ class BlockchainIncentiveContract:
                 logger.info(f"  Recipients length: {len(recipients_array)}")
                 logger.info(f"  Amounts length: {len(amounts_array)}")
                 
-                tx = self.token_contract.functions.distributeRewards(
-                    recipients_array,
-                    amounts_array
-                ).build_transaction({
-                    'from': from_address,
-                    'gas': 300000,
-                    'gasPrice': self.web3.eth.gas_price,
-                    'nonce': self.web3.eth.get_transaction_count(from_address)
-                })
+                # FIX: Use the correct function call format
+                try:
+                    # CRITICAL FIX: Ensure we pass arrays, not individual arguments
+                    recipients_list = list(recipients_array)
+                    amounts_list = list(amounts_array)
+                    
+                    # CRITICAL FIX: Use tuple instead of list to prevent unpacking
+                    recipients_tuple = tuple(recipients_list)
+                    amounts_tuple = tuple(amounts_list)
+                    
+                    tx = self.token_contract.functions.distributeRewards(
+                        recipients_tuple,
+                        amounts_tuple
+                    ).build_transaction({
+                        'from': from_address,
+                        'gas': 300000,
+                        'gasPrice': self.web3.eth.gas_price,
+                        'nonce': self.web3.eth.get_transaction_count(from_address)
+                    })
+                except Exception as e:
+                    logger.error(f"ERC20 transaction building failed: {str(e)}")
+                    logger.error(f"Recipients type: {type(recipients_array)}, Amounts type: {type(amounts_array)}")
+                    logger.error(f"First recipient: {recipients_array[0] if recipients_array else 'None'}")
+                    logger.error(f"First amount: {amounts_array[0] if amounts_array else 'None'}")
+                    return False
             else:
                 logger.warning("No recipients or amounts to distribute")
                 return False
@@ -1006,9 +1027,26 @@ class BlockchainIncentiveManager:
                 except Exception as e:
                     logger.warning(f"Could not check/set incentive contract: {str(e)}")
                 
+                # CRITICAL FIX: Ensure we pass arrays, not individual arguments
+                # Convert to proper Solidity-compatible format
+                recipients_list = list(recipients_array)
+                amounts_list = list(amounts_array)
+                
+                logger.info(f"🔍 DEBUG: Calling distributeRewards with arrays:")
+                logger.info(f"  Recipients list: {recipients_list}")
+                logger.info(f"  Amounts list: {amounts_list}")
+                
+                # CRITICAL FIX: Use tuple instead of list to prevent unpacking
+                recipients_tuple = tuple(recipients_list)
+                amounts_tuple = tuple(amounts_list)
+                
+                logger.info(f"🔍 DEBUG: Using tuples to prevent unpacking:")
+                logger.info(f"  Recipients tuple: {recipients_tuple}")
+                logger.info(f"  Amounts tuple: {amounts_tuple}")
+                
                 tx = self.token_contract.functions.distributeRewards(
-                    recipients_array,
-                    amounts_array
+                    recipients_tuple,
+                    amounts_tuple
                 ).build_transaction({
                     'from': from_address,
                     'gas': 500000,
