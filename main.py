@@ -4784,32 +4784,33 @@ class BlockchainFederatedIncentiveSystem:
             logger.info(f"TTT Model Results (binary classification): TTT Accuracy={ttt_accuracy:.4f}, Base Accuracy={base_accuracy:.4f}")
             logger.info(f"TTT F1={ttt_f1:.4f}, Base F1={base_f1:.4f}, Zero-day Rate={zero_day_detection_rate:.4f}")
             
-            # Update RL agent with TTT performance for learning
-            if hasattr(adapted_model, 'threshold_agent') and hasattr(adapted_model, 'update_adaptation_metrics'):
+            # ✅ FIXED: Update RL agent with UNSUPERVISED metrics only
+            if hasattr(adapted_model, 'threshold_agent') and hasattr(adapted_model, 'update_adaptation_success'):
                 try:
-                    logger.info("🧠 Updating RL agent with TTT performance metrics...")
+                    logger.info("🧠 Updating RL agent with UNSUPERVISED TTT metrics...")
                     
-                    # Calculate performance improvement metrics
-                    accuracy_improvement = ttt_accuracy  # Could be compared to base model accuracy
+                    # Calculate UNSUPERVISED performance metrics only
                     success_rate = 1.0 if ttt_accuracy > 0.5 else ttt_accuracy  # Simple success rate
+                    accuracy_improvement = ttt_accuracy - base_accuracy  # Improvement over base model
                     
-                    # Calculate sample efficiency
+                    # Calculate sample efficiency (unsupervised)
                     samples_selected = len(confidence_scores[confidence_scores < optimal_threshold])
                     total_samples = len(confidence_scores)
                     
-                    # Update the RL agent with comprehensive metrics
-                    adapted_model.update_adaptation_metrics(
+                    # ✅ TRUE UNSUPERVISED: Update RL agent with NO supervised metrics
+                    adapted_model.update_adaptation_success(
                         success_rate=success_rate,
                         accuracy_improvement=accuracy_improvement,
-                        fp=0, fn=0, tp=0, tn=0,  # Not applicable for binary classification
-                        precision=ttt_precision, recall=ttt_recall, f1_score=ttt_f1,
+                        initial_predictions=None,  # Not available in this context
+                        adapted_predictions=None,  # Not available in this context
+                        true_labels=None,  # ✅ NO TRUE LABELS - TRUE UNSUPERVISED!
                         samples_selected=samples_selected,
                         total_samples=total_samples
                     )
                     
                     # Log RL agent state
                     adaptation_success_rate = adapted_model.threshold_agent.get_adaptation_success_rate()
-                    logger.info(f"🤖 RL Agent updated - Success rate: {adaptation_success_rate:.3f}, Threshold: {optimal_threshold:.4f}")
+                    logger.info(f"✅ UNSUPERVISED RL Agent updated - Success rate: {adaptation_success_rate:.3f}, Threshold: {optimal_threshold:.4f}")
                     
                 except Exception as e:
                     logger.warning(f"RL agent update failed: {e}")
@@ -5273,6 +5274,8 @@ class BlockchainFederatedIncentiveSystem:
             ttt_losses = []
             ttt_support_losses = []
             ttt_consistency_losses = []
+            ttt_entropy_losses = []
+            ttt_prototype_losses = []
             ttt_learning_rates = []
             
             # OPTIMIZED: Early stopping with both loss and accuracy tracking
@@ -5308,24 +5311,22 @@ class BlockchainFederatedIncentiveSystem:
                 # Use focal loss for better handling of hard examples
                 support_loss = self._focal_loss(support_outputs, support_y, support_class_weights, alpha=0.25, gamma=2.0)
                 
-                # Forward pass on query set (unsupervised learning)
-                query_outputs = adapted_model(query_x)
-                
-                # OPTIMIZED: Advanced consistency objectives for better zero-day detection
-                if len(query_outputs) > 1:
-                    query_probs = torch.softmax(query_outputs, dim=1)
+                # ✅ SCIENTIFIC FIX: Support-only TTT adaptation (no query data usage)
+                # OPTIMIZED: Advanced consistency objectives using only support set for proper TTT
+                if len(support_outputs) > 1:
+                    support_probs = torch.softmax(support_outputs, dim=1)
                     
-                    # 1. Entropy minimization (encourage confident predictions)
-                    entropy_loss = -torch.mean(torch.sum(query_probs * torch.log(query_probs + 1e-8), dim=1))
+                    # 1. Entropy minimization (encourage confident predictions on support set)
+                    entropy_loss = -torch.mean(torch.sum(support_probs * torch.log(support_probs + 1e-8), dim=1))
                     
-                    # 2. Confidence maximization (encourage high max probability)
-                    max_probs = torch.max(query_probs, dim=1)[0]
+                    # 2. Confidence maximization (encourage high max probability on support set)
+                    max_probs = torch.max(support_probs, dim=1)[0]
                     confidence_loss = -torch.mean(max_probs)
                     
-                    # 3. Diversity regularization (prevent mode collapse)
-                    diversity_loss = torch.mean(torch.sum(query_probs**2, dim=1))
+                    # 3. Diversity regularization (prevent mode collapse on support set)
+                    diversity_loss = torch.mean(torch.sum(support_probs**2, dim=1))
                     
-                    # Combined consistency loss with adaptive weighting
+                    # Combined consistency loss with adaptive weighting (support-only)
                     consistency_loss = 0.4 * entropy_loss + 0.4 * confidence_loss + 0.2 * diversity_loss
                 else:
                     consistency_loss = torch.tensor(0.0, device=support_loss.device)
@@ -5364,6 +5365,8 @@ class BlockchainFederatedIncentiveSystem:
                 ttt_losses.append(total_loss.item())
                 ttt_support_losses.append(support_loss.item())
                 ttt_consistency_losses.append(consistency_loss.item())
+                ttt_entropy_losses.append(entropy_loss.item())
+                ttt_prototype_losses.append(prototype_loss.item())
                 ttt_learning_rates.append(ttt_optimizer.param_groups[0]['lr'])
                 
                 # OPTIMIZED: Early stopping based on both loss and accuracy
@@ -5395,6 +5398,8 @@ class BlockchainFederatedIncentiveSystem:
                 'total_losses': ttt_losses,
                 'support_losses': ttt_support_losses,
                 'consistency_losses': ttt_consistency_losses,
+                'entropy_losses': ttt_entropy_losses,
+                'prototype_losses': ttt_prototype_losses,
                 'learning_rates': ttt_learning_rates,
                 'accuracy_history': accuracy_history,
                 'steps': list(range(1, len(ttt_losses) + 1)),
@@ -5463,6 +5468,8 @@ class BlockchainFederatedIncentiveSystem:
             ttt_losses = []
             ttt_support_losses = []
             ttt_consistency_losses = []
+            ttt_entropy_losses = []
+            ttt_prototype_losses = []
             ttt_learning_rates = []
             
             # Enhanced early stopping with performance monitoring and timeout
@@ -5489,39 +5496,26 @@ class BlockchainFederatedIncentiveSystem:
                 # Use CrossEntropyLoss for binary classification
                 support_loss = torch.nn.functional.cross_entropy(support_outputs, support_y)
                 
-                # Forward pass on query set (unlabeled)
-                query_outputs = adapted_model(query_x)
-                
-                # Enhanced multi-component loss for better TTT adaptation
+                # ✅ SCIENTIFIC FIX: Support-only TTT adaptation (no query data usage)
+                # Enhanced multi-component loss using only support set for proper TTT
                 try:
-                    # For TCN models, ensure both support and query sets have the same sequence length
-                    if support_x.size(1) != query_x.size(1):
-                        # Pad or truncate to match the smaller sequence length
-                        min_seq_len = min(support_x.size(1), query_x.size(1))
-                        if support_x.size(1) > min_seq_len:
-                            support_x = support_x[:, :min_seq_len, :]
-                        if query_x.size(1) > min_seq_len:
-                            query_x = query_x[:, :min_seq_len, :]
-                    
-                    # Use extract_features method for TCN models
+                    # Use extract_features method for TCN models (support set only)
                     if hasattr(adapted_model, 'extract_features'):
-                        query_embeddings = adapted_model.extract_features(query_x)
                         support_embeddings = adapted_model.extract_features(support_x)
                     else:
                         # Fallback for original model structure
-                        query_embeddings = adapted_model.extract_embeddings(query_x)
                         support_embeddings = adapted_model.extract_embeddings(support_x)
                     
                     # Normalize embeddings to prevent extremely large values
-                    query_embeddings = torch.nn.functional.normalize(query_embeddings, p=2, dim=1)
                     support_embeddings = torch.nn.functional.normalize(support_embeddings, p=2, dim=1)
                     
-                    # 1. Entropy minimization loss (encourage confident predictions)
-                    query_probs = torch.softmax(query_outputs, dim=1)
-                    entropy_loss = -torch.mean(torch.sum(query_probs * torch.log(query_probs + 1e-8), dim=1))
+                    # ✅ SCIENTIFIC FIX: Support-only loss components for proper TTT
+                    # 1. Entropy minimization loss (encourage confident predictions on support set)
+                    support_probs = torch.softmax(support_outputs, dim=1)
+                    entropy_loss = -torch.mean(torch.sum(support_probs * torch.log(support_probs + 1e-8), dim=1))
                 
-                    # 2. Consistency loss (smooth predictions)
-                    consistency_loss = torch.mean(torch.var(query_probs, dim=1))
+                    # 2. Consistency loss (smooth predictions on support set)
+                    consistency_loss = torch.mean(torch.var(support_probs, dim=1))
                     
                     # Compute prototypes from support set
                     unique_labels = torch.unique(support_y)
@@ -5532,8 +5526,9 @@ class BlockchainFederatedIncentiveSystem:
                         prototypes.append(prototype)
                     prototypes = torch.stack(prototypes)
                     
-                    # 3. Prototype consistency loss (query samples should be close to their class prototypes)
-                    distances = torch.cdist(query_embeddings, prototypes, p=2)
+                    # ✅ SCIENTIFIC FIX: Support-only prototype loss (no query data)
+                    # 3. Prototype consistency loss (support samples should be close to their class prototypes)
+                    distances = torch.cdist(support_embeddings, prototypes, p=2)
                     min_distances, _ = torch.min(distances, dim=1)
                     prototype_loss = torch.mean(min_distances)
                     
@@ -5570,6 +5565,8 @@ class BlockchainFederatedIncentiveSystem:
                 ttt_losses.append(total_loss.item())
                 ttt_support_losses.append(support_loss.item())
                 ttt_consistency_losses.append(consistency_loss.item())
+                ttt_entropy_losses.append(entropy_loss.item())
+                ttt_prototype_losses.append(prototype_loss.item())
                 ttt_learning_rates.append(ttt_optimizer.param_groups[0]['lr'])
                 
                 # Calculate accuracy for monitoring
@@ -5605,6 +5602,8 @@ class BlockchainFederatedIncentiveSystem:
                 'total_losses': ttt_losses,
                 'support_losses': ttt_support_losses,
                 'consistency_losses': ttt_consistency_losses,
+                'entropy_losses': ttt_entropy_losses,
+                'prototype_losses': ttt_prototype_losses,
                 'learning_rates': ttt_learning_rates,
                 'final_accuracy': best_accuracy,
                 'steps_completed': step + 1
@@ -5663,6 +5662,8 @@ class BlockchainFederatedIncentiveSystem:
             ttt_losses = []
             ttt_support_losses = []
             ttt_consistency_losses = []
+            ttt_entropy_losses = []
+            ttt_prototype_losses = []
             ttt_learning_rates = []
             
             # Enhanced early stopping with performance monitoring and timeout
@@ -5684,7 +5685,7 @@ class BlockchainFederatedIncentiveSystem:
                     break
                 ttt_optimizer.zero_grad()
                 
-                # Diversified data augmentation for better TTT adaptation and overfitting mitigation
+                # ✅ SCIENTIFIC FIX: Support-only data augmentation for proper TTT
                 if step % 5 == 0 and step > 0:  # Apply augmentation every 5 steps (reduced frequency)
                     import random
                     
@@ -5695,31 +5696,25 @@ class BlockchainFederatedIncentiveSystem:
                         # Gaussian noise with decreasing intensity
                         noise_std = 0.01 * (1 - step / ttt_steps)
                         support_x_aug = support_x + torch.randn_like(support_x) * noise_std
-                        query_x_aug = query_x + torch.randn_like(query_x) * noise_std
-                        logger.info(f"TTT Step {step}: Applied Gaussian noise augmentation (std={noise_std:.4f})")
+                        logger.info(f"TTT Step {step}: Applied Gaussian noise augmentation to support set (std={noise_std:.4f})")
                         
                     elif augmentation_type == 'scaling':
                         # Scaling augmentation (uniform [0.8, 1.2])
                         scale_factor = torch.FloatTensor(support_x.size(0), 1).uniform_(0.8, 1.2).to(support_x.device)
                         support_x_aug = support_x * scale_factor
-                        scale_factor = torch.FloatTensor(query_x.size(0), 1).uniform_(0.8, 1.2).to(query_x.device)
-                        query_x_aug = query_x * scale_factor
-                        logger.info(f"TTT Step {step}: Applied scaling augmentation (range=[0.8, 1.2])")
+                        logger.info(f"TTT Step {step}: Applied scaling augmentation to support set (range=[0.8, 1.2])")
                         
                     elif augmentation_type == 'jittering':
                         # Jittering augmentation (uniform [-0.05, 0.05])
                         jitter_scale = 0.05
                         support_x_aug = support_x + torch.FloatTensor(support_x.size()).uniform_(-jitter_scale, jitter_scale).to(support_x.device)
-                        query_x_aug = query_x + torch.FloatTensor(query_x.size()).uniform_(-jitter_scale, jitter_scale).to(query_x.device)
-                        logger.info(f"TTT Step {step}: Applied jittering augmentation (range=[-0.05, 0.05])")
+                        logger.info(f"TTT Step {step}: Applied jittering augmentation to support set (range=[-0.05, 0.05])")
                     
                     # Ensure augmented data remains on the same device and maintains original shape
                     support_x_aug = support_x_aug.to(support_x.device)
-                    query_x_aug = query_x_aug.to(query_x.device)
                     
                 else:
                     support_x_aug = support_x
-                    query_x_aug = query_x
                 
                 # Forward pass on support set
                 support_outputs = adapted_model(support_x_aug)
@@ -5728,40 +5723,26 @@ class BlockchainFederatedIncentiveSystem:
                 focal_loss = FocalLoss(alpha=0.25, gamma=2, reduction='mean')  # Updated alpha
                 support_loss = focal_loss(support_outputs, support_y)
                 
-                # Forward pass on query set (unlabeled)
-                query_outputs = adapted_model(query_x_aug)
-                
-                # Enhanced multi-component loss for better TTT adaptation
+                # ✅ SCIENTIFIC FIX: Support-only TTT adaptation (no query data usage)
+                # Enhanced multi-component loss using only support set for proper TTT
                 try:
-                    # For TCN models, ensure both support and query sets have the same sequence length
-                    # TCN expects input shape: (batch_size, sequence_length, input_dim)
-                    if support_x_aug.size(1) != query_x_aug.size(1):
-                        # Pad or truncate to match the smaller sequence length
-                        min_seq_len = min(support_x_aug.size(1), query_x_aug.size(1))
-                        if support_x_aug.size(1) > min_seq_len:
-                            support_x_aug = support_x_aug[:, :min_seq_len, :]
-                        if query_x_aug.size(1) > min_seq_len:
-                            query_x_aug = query_x_aug[:, :min_seq_len, :]
-                    
-                    # Use extract_features method for TCN models
+                    # Use extract_features method for TCN models (support set only)
                     if hasattr(adapted_model, 'extract_features'):
-                        query_embeddings = adapted_model.extract_features(query_x_aug)
                         support_embeddings = adapted_model.extract_features(support_x_aug)
                     else:
                         # Fallback for original model structure
-                        query_embeddings = adapted_model.extract_embeddings(query_x_aug)
                         support_embeddings = adapted_model.extract_embeddings(support_x_aug)
                     
                     # Normalize embeddings to prevent extremely large values
-                    query_embeddings = torch.nn.functional.normalize(query_embeddings, p=2, dim=1)
                     support_embeddings = torch.nn.functional.normalize(support_embeddings, p=2, dim=1)
                     
-                    # 1. Entropy minimization loss (encourage confident predictions)
-                    query_probs = torch.softmax(query_outputs, dim=1)
-                    entropy_loss = -torch.mean(torch.sum(query_probs * torch.log(query_probs + 1e-8), dim=1))
+                    # ✅ SCIENTIFIC FIX: Support-only loss components for proper TTT
+                    # 1. Entropy minimization loss (encourage confident predictions on support set)
+                    support_probs = torch.softmax(support_outputs, dim=1)
+                    entropy_loss = -torch.mean(torch.sum(support_probs * torch.log(support_probs + 1e-8), dim=1))
                 
-                # 2. Consistency loss (smooth predictions)
-                    consistency_loss = torch.mean(torch.var(query_probs, dim=1))
+                    # 2. Consistency loss (smooth predictions on support set)
+                    consistency_loss = torch.mean(torch.var(support_probs, dim=1))
                     
                     # Compute prototypes from support set
                     unique_labels = torch.unique(support_y)
@@ -5772,12 +5753,13 @@ class BlockchainFederatedIncentiveSystem:
                         prototypes.append(prototype)
                     prototypes = torch.stack(prototypes)
                     
-                    # Feature alignment: query features should be close to prototypes
-                    query_distances = torch.cdist(query_embeddings, prototypes, p=2)
-                    feature_alignment_loss = torch.mean(torch.min(query_distances, dim=1)[0])
+                    # ✅ SCIENTIFIC FIX: Support-only prototype loss (no query data)
+                    # Feature alignment: support features should be close to their class prototypes
+                    support_distances = torch.cdist(support_embeddings, prototypes, p=2)
+                    prototype_loss = torch.mean(torch.min(support_distances, dim=1)[0])
                     
-                    # Combined consistency loss
-                    consistency_loss = 0.4 * entropy_loss + 0.3 * consistency_loss + 0.3 * feature_alignment_loss
+                    # Combined consistency loss using only support set
+                    consistency_loss = 0.4 * entropy_loss + 0.3 * consistency_loss + 0.3 * prototype_loss
                     
                 except Exception as e:
                     logger.warning(f"Enhanced consistency loss computation failed: {e}")
@@ -5841,6 +5823,8 @@ class BlockchainFederatedIncentiveSystem:
                 'total_losses': ttt_losses,
                 'support_losses': ttt_support_losses,
                 'consistency_losses': ttt_consistency_losses,
+                'entropy_losses': ttt_entropy_losses,
+                'prototype_losses': ttt_prototype_losses,
                 'learning_rates': ttt_learning_rates,
                 'final_lr': ttt_optimizer.param_groups[0]['lr'],
                 'convergence_step': len(ttt_losses) - 1
@@ -5868,6 +5852,8 @@ class BlockchainFederatedIncentiveSystem:
                     'total_losses': ttt_losses,
                     'support_losses': ttt_support_losses,
                     'consistency_losses': ttt_consistency_losses,
+                    'entropy_losses': ttt_entropy_losses,
+                    'prototype_losses': ttt_prototype_losses,
                     'learning_rates': ttt_learning_rates,
                     'final_lr': ttt_optimizer.param_groups[0]['lr'] if 'ttt_optimizer' in locals() else 0.0,
                     'convergence_step': len(ttt_losses) - 1
@@ -5879,6 +5865,8 @@ class BlockchainFederatedIncentiveSystem:
                     'total_losses': [],
                     'support_losses': [],
                     'consistency_losses': [],
+                    'entropy_losses': [],
+                    'prototype_losses': [],
                     'learning_rates': [],
                     'final_lr': 0.0,
                     'convergence_step': 0

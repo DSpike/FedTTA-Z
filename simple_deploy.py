@@ -47,7 +47,7 @@ def main():
         # Deploy ERC20 Token contract
         print("🚀 Deploying ERC20 Token contract...")
         account = w3.eth.accounts[0]
-        initial_supply = 1000000  # 1 million tokens
+        initial_supply = 10000000  # 10 million tokens (increased for more clients)
         
         # Build contract
         contract = w3.eth.contract(

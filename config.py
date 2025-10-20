@@ -6,6 +6,7 @@ This module provides a single source of truth for all system configuration.
 from dataclasses import dataclass
 from typing import Optional
 import os
+import torch
 
 
 @dataclass
@@ -13,8 +14,8 @@ class SystemConfig:
     """Centralized system configuration - single source of truth"""
     
     # === FEDERATED LEARNING CONFIGURATION ===
-    num_clients: int = 6
-    num_rounds: int = 3  # Increased rounds for better federated learning convergence
+    num_clients: int = 3
+    num_rounds: int = 3 # Increased rounds for better federated learning convergence
     local_epochs: int = 50  # Balanced epochs per round for better federated learning
     learning_rate: float = 0.001
     batch_size: int = 32
@@ -22,7 +23,7 @@ class SystemConfig:
     # === DATA CONFIGURATION ===
     data_path: str = "UNSW_NB15_training-set.csv"
     test_path: str = "UNSW_NB15_testing-set.csv"
-    zero_day_attack: str = "Reconnaissance"  # Single place to control attack type
+    zero_day_attack: str = "Exploits"  # Single place to control attack type
     
     # === MODEL CONFIGURATION ===
     input_dim: int = 43  # Updated after IGRF-RFE feature selection (43 features selected)
@@ -43,20 +44,29 @@ class SystemConfig:
     transductive_lr: float = 0.0005
     
     # === TEST-TIME TRAINING (TTT) CONFIGURATION ===
-    ttt_base_steps: int = 50  # Base number of TTT adaptation steps
-    ttt_max_steps: int = 200  # Maximum TTT steps (safety limit)
-    ttt_lr: float = 0.001  # TTT learning rate
-    ttt_weight_decay: float = 1e-4  # TTT weight decay
-    ttt_patience: int = 15  # Early stopping patience
-    ttt_timeout: int = 30  # TTT timeout in seconds
-    ttt_improvement_threshold: float = 1e-4  # Minimum improvement threshold
+    ttt_base_steps: int = 100  # Base number of TTT adaptation steps
+    ttt_max_steps: int = 300  # Maximum TTT steps (safety limit)
+    ttt_lr: float = 0.0005  # TTT learning rate (optimized for stability)
+    ttt_lr_min: float = 1e-6  # Minimum learning rate
+    ttt_lr_decay: float = 0.8  # Learning rate decay factor
+    ttt_warmup_steps: int = 10  # Learning rate warmup steps
+    ttt_weight_decay: float = 1e-5  # TTT weight decay (reduced for stability)
+    ttt_patience: int = 20  # Early stopping patience (increased for better convergence)
+    ttt_timeout: int = 45  # TTT timeout in seconds (increased)
+    ttt_improvement_threshold: float = 1e-5  # Minimum improvement threshold (more sensitive)
     
     # === BLOCKCHAIN CONFIGURATION ===
     ethereum_rpc_url: str = "http://localhost:8545"
+    contract_address: str = "0x74f2D28CEC2c97186dE1A02C1Bae84D19A7E8BC8"
+    incentive_contract_address: str = "0x02090bbB57546b0bb224880a3b93D2Ffb0dde144"
+    private_key: str = "0x4f3edf983ac636a65a842ce7c78d9aa706d3b113bce9c46f30d7d21715b23b1d"
+    aggregator_address: str = "0x4565f36D8E3cBC1c7187ea39Eb613E484411e075"
+    ipfs_url: str = "http://localhost:5001"
     enable_incentives: bool = True
     base_reward: int = 100
     max_reward: int = 1000
     fully_decentralized: bool = False
+    min_reputation: int = 100
     
     # === TRAINING CONFIGURATION ===
     support_weight: float = 0.3
@@ -70,8 +80,47 @@ class SystemConfig:
     
     # === FEW-SHOT LEARNING CONFIGURATION ===
     n_way: int = 2  # Number of classes per task
-    k_shot: int = 50  # Number of support samples per class
+    k_shot: int = 50  # Number of support samples per class (increased for better performance)
     n_query: int = 100  # Number of query samples per class
+    
+    # === VALIDATION CONFIGURATION ===
+    max_val_samples: int = 1000  # Limit validation samples for memory efficiency
+    overfitting_threshold: float = 0.15  # Gap threshold between training and validation accuracy
+    max_overfitting_rounds: int = 5  # Stop if overfitting detected for N consecutive rounds
+    recent_rounds: int = 10  # Number of recent rounds to consider for analysis
+    
+    # === PERFORMANCE THRESHOLDS ===
+    default_threshold: float = 0.5  # Default classification threshold
+    participation_excellent: float = 0.95  # Excellent participation threshold
+    participation_good: float = 0.90  # Good participation threshold
+    participation_fair: float = 0.80  # Fair participation threshold
+    participation_poor: float = 0.70  # Poor participation threshold
+    recent_participation_bonus: float = 5.0  # Bonus points for perfect recent participation
+    retry_delay: float = 1.0  # Retry delay in seconds
+    max_retries: int = 3  # Maximum number of retries
+    
+    # === BLOCKCHAIN ADDRESSES ===
+    ganache_addresses: list = None  # Will be set to default addresses if None
+    
+    # === DEVICE CONFIGURATION ===
+    device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
+    
+    def get_default_ganache_addresses(self) -> list:
+        """Get default Ganache addresses for testing"""
+        if self.ganache_addresses is None:
+            return [
+                "0xCD3a95b26EA98a04934CCf6C766f9406496CA986",
+                "0x32cE285CF96cf83226552A9c3427Bd58c0A9AccD", 
+                "0x8EbA3b47c80a5E31b4Ea6fED4d5De8ebc93B8d6f",
+                "0x4565f36D8E3cBC1c7187ea39Eb613E484411e075",
+                "0x4f3edf983ac636a65a842ce7c78d9aa706d3b113bce9c46f30d7d21715b23b1d",
+                "0x74f2D28CEC2c97186dE1A02C1Bae84D19A7E8BC8",
+                "0x02090bbB57546b0bb224880a3b93D2Ffb0dde144",
+                "0x1234567890123456789012345678901234567890",
+                "0x2345678901234567890123456789012345678901",
+                "0x3456789012345678901234567890123456789012"
+            ]
+        return self.ganache_addresses
     
     @classmethod
     def from_env(cls) -> 'SystemConfig':

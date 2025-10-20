@@ -1,10 +1,10 @@
 {
   "network": "ganache",
   "chain_id": 1337,
-  "deployment_time": 1759220443.4864745,
+  "deployment_time": 1760970510.250862,
   "contracts": {
     "FederatedLearningToken": {
-      "address": "0x7B7fE2118B5756DA32a2ff7De5F611cF742B485d",
+      "address": "0xF66E424C993e4038842Eb74DFc69E941D3363367",
       "abi": [
         {
           "inputs": [
@@ -406,12 +406,12 @@
     }
   },
   "accounts": {
-    "deployer": "0x85850598e5D43E55CF1583811368828D08A493E0"
+    "deployer": "0xbE86DF16580a3DBE63A58b77b82E222726923025"
   },
   "token_info": {
     "name": "Federated Learning Token",
     "symbol": "FLT",
     "decimals": 18,
-    "initial_supply": 1000000
+    "initial_supply": 10000000
   }
 }

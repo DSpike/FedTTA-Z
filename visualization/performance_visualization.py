@@ -156,9 +156,17 @@ class PerformanceVisualizer:
         total_losses = ttt_adaptation_data['total_losses']
         support_losses = ttt_adaptation_data['support_losses']
         consistency_losses = ttt_adaptation_data['consistency_losses']
+        entropy_losses = ttt_adaptation_data.get('entropy_losses', [])
+        prototype_losses = ttt_adaptation_data.get('prototype_losses', [])
         
         # Fix dimension mismatch by ensuring all arrays have the same length
-        min_length = min(len(steps), len(total_losses), len(support_losses), len(consistency_losses))
+        loss_components = [total_losses, support_losses, consistency_losses]
+        if entropy_losses:
+            loss_components.append(entropy_losses)
+        if prototype_losses:
+            loss_components.append(prototype_losses)
+        
+        min_length = min(len(steps), *[len(comp) for comp in loss_components])
         if min_length == 0:
             logger.warning("No valid TTT adaptation data to plot - TTT training may have failed")
             # Create a minimal plot indicating TTT failure
@@ -199,6 +207,10 @@ class PerformanceVisualizer:
         total_losses = total_losses[:min_length]
         support_losses = support_losses[:min_length]
         consistency_losses = consistency_losses[:min_length]
+        if entropy_losses:
+            entropy_losses = entropy_losses[:min_length]
+        if prototype_losses:
+            prototype_losses = prototype_losses[:min_length]
         
         logger.info(f"TTT adaptation plot: Using {min_length} data points (steps: {len(ttt_adaptation_data['steps'])}, losses: {len(ttt_adaptation_data['total_losses'])})")
         
@@ -222,6 +234,10 @@ class PerformanceVisualizer:
         ax2.plot(steps, total_losses, 'b-', linewidth=2, marker='o', markersize=6, label='Total Loss')
         ax2.plot(steps, support_losses, 'g-', linewidth=2, marker='s', markersize=6, label='Support Loss')
         ax2.plot(steps, consistency_losses, 'r-', linewidth=2, marker='^', markersize=6, label='Consistency Loss')
+        if entropy_losses:
+            ax2.plot(steps, entropy_losses, 'm-', linewidth=2, marker='d', markersize=6, label='Entropy Loss')
+        if prototype_losses:
+            ax2.plot(steps, prototype_losses, 'c-', linewidth=2, marker='v', markersize=6, label='Prototype Loss')
         ax2.set_title('TTT Adaptation: All Loss Components', fontweight='bold', fontfamily='Times New Roman')
         ax2.set_xlabel('TTT Step', fontfamily='Times New Roman')
         ax2.set_ylabel('Loss Value', fontfamily='Times New Roman')
