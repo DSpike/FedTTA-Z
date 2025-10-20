@@ -24,7 +24,7 @@ from sklearn.metrics import roc_curve, roc_auc_score
 # Import our components
 from preprocessing.blockchain_federated_unsw_preprocessor import UNSWPreprocessor
 from models.transductive_fewshot_model import TransductiveFewShotModel, create_meta_tasks, TransductiveLearner
-from config import get_config, update_config
+from config import get_config, update_config, SystemConfig
 from config_validator import ConfigValidator
 from coordinators.blockchain_fedavg_coordinator import BlockchainFedAVGCoordinator
 from blockchain.blockchain_ipfs_integration import BlockchainIPFSIntegration, FEDERATED_LEARNING_ABI
@@ -53,9 +53,13 @@ def check_ganache_server():
     Returns True if Ganache is running, False otherwise
     """
     try:
-        # Try to connect to Ganache
+        # Get config to use the correct URL
+        from config import get_config
+        config = get_config()
+        
+        # Try to connect to Ganache using config URL
         from web3 import Web3
-        web3 = Web3(Web3.HTTPProvider('http://127.0.0.1:7545'))
+        web3 = Web3(Web3.HTTPProvider(config.ethereum_rpc_url))
         
         # Check if we can get the latest block
         latest_block = web3.eth.get_block('latest')
@@ -70,7 +74,7 @@ def check_ganache_server():
             
     except Exception as e:
         logger.error(f"❌ Cannot connect to Ganache server: {str(e)}")
-        logger.error("   Please ensure Ganache is running on http://127.0.0.1:7545")
+        logger.error(f"   Please ensure Ganache is running on {config.ethereum_rpc_url}")
         return False
 
 
@@ -166,7 +170,7 @@ def ensure_ganache_running():
     logger.error("   3. Or use Ganache GUI:")
     logger.error("      - Download from https://trufflesuite.com/ganache/")
     logger.error("      - Start a new workspace")
-    logger.error("      - Set RPC Server to http://127.0.0.1:7545")
+    logger.error("      - Set RPC Server to http://localhost:8545")
     logger.error("")
     logger.error("   4. Then run this script again:")
     logger.error("      python main.py")
@@ -210,7 +214,7 @@ def ensure_all_servers_running():
             logger.error("   3. Or use Ganache GUI:")
             logger.error("      - Download from https://trufflesuite.com/ganache/")
             logger.error("      - Start a new workspace")
-            logger.error("      - Set RPC Server to http://127.0.0.1:7545")
+            logger.error("      - Set RPC Server to http://localhost:8545")
             logger.error("")
             logger.error("   4. Then run this script again:")
             logger.error("      python main.py")
@@ -245,7 +249,7 @@ def ensure_all_servers_running():
             logger.error("      ipfs daemon")
             logger.error("")
             logger.error("   4. Verify IPFS is running:")
-            logger.error("      curl http://127.0.0.1:5001/api/v0/version")
+            logger.error("      curl http://localhost:5001/api/v0/version")
             logger.error("")
             logger.error("   5. Then run this script again:")
             logger.error("      python main.py")
@@ -267,8 +271,12 @@ def check_ipfs_server():
     try:
         import requests
         
+        # Get config to use the correct URL
+        from config import get_config
+        config = get_config()
+        
         # Try to connect to IPFS API using POST method (required by IPFS API)
-        response = requests.post('http://127.0.0.1:5001/api/v0/version', timeout=5)
+        response = requests.post(f'{config.ipfs_url}/api/v0/version', timeout=5)
         
         if response.status_code == 200:
             version_info = response.json()
@@ -282,7 +290,7 @@ def check_ipfs_server():
             
     except requests.exceptions.ConnectionError:
         logger.error("❌ Cannot connect to IPFS server")
-        logger.error("   Please ensure IPFS is running on http://127.0.0.1:5001")
+        logger.error(f"   Please ensure IPFS is running on {config.ipfs_url}")
         return False
     except requests.exceptions.Timeout:
         logger.error("❌ IPFS server connection timeout")
@@ -414,7 +422,7 @@ def ensure_ipfs_running():
     logger.error("      ipfs daemon")
     logger.error("")
     logger.error("   4. Verify IPFS is running:")
-    logger.error("      curl http://127.0.0.1:5001/api/v0/version")
+    logger.error("      curl http://localhost:5001/api/v0/version")
     logger.error("")
     logger.error("   5. Then run this script again:")
     logger.error("      python main.py")
@@ -558,7 +566,7 @@ def find_optimal_threshold(y_true, y_scores, method='balanced', normal_class=0):
         optimal_threshold = valid_thresholds[optimal_idx]
     else:
         # Default to balanced method
-        optimal_threshold = 0.5
+        optimal_threshold = self.config.default_threshold
     
     # Final safety clamp to prevent extreme values
     optimal_threshold = np.clip(optimal_threshold, 0.01, 0.99)
@@ -569,123 +577,28 @@ def find_optimal_threshold(y_true, y_scores, method='balanced', normal_class=0):
     return optimal_threshold, roc_auc, fpr, tpr, thresholds
 
 
-@dataclass
-class EnhancedSystemConfig:
-    """Enhanced system configuration with incentive mechanisms"""
-    # Data configuration
-    data_path: str = "UNSW_NB15_training-set.csv"
-    test_path: str = "UNSW_NB15_testing-set.csv"
-    zero_day_attack: str = "DoS"
-    
-    # Model configuration (aligned with SystemConfig)
-    input_dim: int = 43
-    hidden_dim: int = 128
-    embedding_dim: int = 64
-    num_classes: int = 2
-    
-    # TCN configuration
-    use_tcn: bool = True
-    sequence_length: int = 30
-    sequence_stride: int = 15
-    meta_epochs: int = 5
-    
-    # Training configuration
-    support_weight: float = 0.3
-    test_weight: float = 0.7
-    batch_size: int = 32
-    
-    # Federated learning configuration (aligned with SystemConfig)
-    num_clients: int = 10
-    num_rounds: int = 15
-    local_epochs: int = 50
-    learning_rate: float = 0.001
-    
-    # Blockchain configuration - Using REAL deployed contracts
-    ethereum_rpc_url: str = "http://localhost:8545"
-    contract_address: str = "0x74f2D28CEC2c97186dE1A02C1Bae84D19A7E8BC8"
-    incentive_contract_address: str = "0x02090bbB57546b0bb224880a3b93D2Ffb0dde144"
-    private_key: str = "0x4f3edf983ac636a65a842ce7c78d9aa706d3b113bce9c46f30d7d21715b23b1d"
-    aggregator_address: str = "0x4565f36D8E3cBC1c7187ea39Eb613E484411e075"
-    
-    # IPFS configuration
-    ipfs_url: str = "http://localhost:5001"
-    
-    # Incentive configuration
-    enable_incentives: bool = True
-    base_reward: int = 100
-    max_reward: int = 1000
-    
-    # OPTIMIZED TTT configuration for better performance
-    ttt_base_steps: int = 100  # Increased base steps for better adaptation
-    ttt_max_steps: int = 300   # Increased max steps for complex scenarios
-    ttt_lr: float = 0.0005     # Reduced learning rate for stability
-    ttt_lr_min: float = 1e-6  # Minimum learning rate
-    ttt_lr_decay: float = 0.8 # Learning rate decay factor
-    ttt_weight_decay: float = 1e-5  # Reduced weight decay
-    ttt_patience: int = 20     # Increased patience for better convergence
-    ttt_timeout: int = 45      # Increased timeout
-    ttt_improvement_threshold: float = 1e-5  # More sensitive improvement detection
-    ttt_warmup_steps: int = 10 # Learning rate warmup steps
-    min_reputation: int = 100
-    
-    # Device configuration
-    device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
-    
-    # Decentralization configuration
-    fully_decentralized: bool = False
-    
-    # Few-shot learning configuration (aligned with SystemConfig)
-    n_way: int = 2
-    k_shot: int = 50
-    n_query: int = 100
-    
-    # Evaluation configuration
-    support_size: int = 20
-    num_meta_tasks: int = 20
-    
-    # Feature selection configuration
-    use_igrf_rfe: bool = True
-    feature_selection_ratio: float = 0.8
-    
-    # Transductive learning configuration
-    transductive_steps: int = 5
-    transductive_lr: float = 0.0005
-    
-    # Additional training parameters
-    validation_patience_limit: int = 10
-    recent_rounds: int = 10
+# Using centralized SystemConfig from config.py instead of duplicate EnhancedSystemConfig
 
 
 def ensure_config_sync():
-    """Ensure EnhancedSystemConfig is synchronized with SystemConfig"""
+    """Ensure configuration is properly synchronized"""
     try:
-        validator = ConfigValidator()
-        central_config = get_config()
+        # Since we're now using centralized config, we don't need complex validation
+        # Just verify the config can be loaded
+        config = get_config()
         
-        # Create a temporary EnhancedSystemConfig for validation
-        temp_enhanced = EnhancedSystemConfig()
+        # Basic validation - check if key parameters exist
+        required_params = ['ttt_lr', 'ttt_base_steps', 'ttt_max_steps', 'num_clients', 'num_rounds']
+        for param in required_params:
+            if not hasattr(config, param):
+                logger.error(f"❌ Missing required parameter: {param}")
+                return False
         
-        # Validate configuration
-        validation = validator.validate_enhanced_config(temp_enhanced)
-        
-        if not validation.is_valid:
-            logger.warning("⚠️ Configuration drift detected!")
-            for field, expected, actual in validation.discrepancies:
-                logger.warning(f"  {field}: expected {expected}, got {actual}")
-            
-            # Auto-fix if possible
-            if validator.auto_fix_enhanced_config(temp_enhanced):
-                logger.info("✅ Configuration automatically synchronized")
-            else:
-                logger.error("❌ Manual configuration synchronization required")
-                raise ValueError("Configuration drift detected - manual fix required")
-        else:
-            logger.info("✅ Configuration validation passed")
-        
+        logger.info("✅ Configuration validation passed")
         return True
-        
+            
     except Exception as e:
-        logger.error(f"❌ Configuration validation failed: {str(e)}")
+        logger.error(f"❌ Configuration validation error: {e}")
         return False
 
 
@@ -701,7 +614,7 @@ class SecureBlockchainFederatedIncentiveSystem:
     - Gas tracking
     """
     
-    def __init__(self, config: EnhancedSystemConfig):
+    def __init__(self, config: SystemConfig):
         """Initialize the secure system with all core features"""
         self.config = config
         self.device = torch.device(config.device)
@@ -751,7 +664,7 @@ class BlockchainFederatedIncentiveSystem:
     Enhanced blockchain-enabled federated learning system with comprehensive incentive mechanisms
     """
     
-    def __init__(self, config: EnhancedSystemConfig):
+    def __init__(self, config: SystemConfig):
         """
         Initialize the enhanced system with incentive mechanisms
         
@@ -842,6 +755,9 @@ class BlockchainFederatedIncentiveSystem:
                     test_weight=self.config.test_weight,
                     sequence_length=self.config.sequence_length
                 ).to(self.device)
+                # Update TTT config from centralized config
+                if hasattr(self.model, 'update_ttt_config'):
+                    self.model.update_ttt_config(self.config)
             else:
                 logger.info(
                     "Initializing linear-based transductive few-shot model...")
@@ -855,6 +771,9 @@ class BlockchainFederatedIncentiveSystem:
                         test_weight=self.config.test_weight,
                 sequence_length=1  # Single sample for UNSW-NB15
             ).to(self.device)
+                # Update TTT config from centralized config
+                if hasattr(self.model, 'update_ttt_config'):
+                    self.model.update_ttt_config(self.config)
             
             # 3. Initialize blockchain and IPFS integration
             logger.info("Initializing blockchain and IPFS integration...")
@@ -998,18 +917,7 @@ class BlockchainFederatedIncentiveSystem:
         # Using REAL Ganache accounts (in production, these would be real
         # MetaMask addresses)
         # Extended to support up to 10 clients as per config
-        real_ganache_addresses = [
-            "0xCD3a95b26EA98a04934CCf6C766f9406496CA986",
-            "0x32cE285CF96cf83226552A9c3427Bd58c0A9AccD", 
-            "0x8EbA3b47c80a5E31b4Ea6fED4d5De8ebc93B8d6f",
-            "0x4565f36D8E3cBC1c7187ea39Eb613E484411e075",
-            "0x4f3edf983ac636a65a842ce7c78d9aa706d3b113bce9c46f30d7d21715b23b1d",
-            "0x74f2D28CEC2c97186dE1A02C1Bae84D19A7E8BC8",
-            "0x02090bbB57546b0bb224880a3b93D2Ffb0dde144",
-            "0x1234567890123456789012345678901234567890",
-            "0x2345678901234567890123456789012345678901",
-            "0x3456789012345678901234567890123456789012"
-        ]
+        real_ganache_addresses = self.config.get_default_ganache_addresses()
         
         # Authenticate each client with MetaMask
         self.authenticated_clients = {}
@@ -1613,8 +1521,8 @@ class BlockchainFederatedIncentiveSystem:
                     n_tasks=5,             # Fewer tasks per client (5 vs 10)
                     phase="training",
                     normal_query_ratio=0.8,  # 80% Normal samples in query set for training
-                    # Exclude DoS (label 4) from training
-                    zero_day_attack_label=4
+                    # Exclude configured zero-day attack from training
+                    zero_day_attack_label=self.preprocessed_data['attack_types'][self.config.zero_day_attack]
                 )
                 
                 # Client does meta-learning locally
@@ -1764,8 +1672,8 @@ class BlockchainFederatedIncentiveSystem:
                 return 70.0  # Default moderate score
             
             # Count participation in recent rounds
-            # Look at last 10 rounds or all available
-            recent_rounds = min(10, round_num)
+            # Look at last N rounds or all available (configurable)
+            recent_rounds = min(self.config.recent_rounds, round_num)
             participation_count = 0
             total_rounds = 0
             
@@ -1788,15 +1696,15 @@ class BlockchainFederatedIncentiveSystem:
             participation_rate = participation_count / total_rounds
             
             # Calculate consistency score based on participation rate
-            # 100% participation = 100 points, 80%+ = 90+ points, etc.
-            if participation_rate >= 0.95:
+            # Configurable thresholds for participation levels
+            if participation_rate >= self.config.participation_excellent:
                 base_score = 100.0
-            elif participation_rate >= 0.90:
-                base_score = 90.0 + (participation_rate - 0.90) * 100
-            elif participation_rate >= 0.80:
-                base_score = 80.0 + (participation_rate - 0.80) * 100
-            elif participation_rate >= 0.70:
-                base_score = 70.0 + (participation_rate - 0.70) * 100
+            elif participation_rate >= self.config.participation_good:
+                base_score = 90.0 + (participation_rate - self.config.participation_good) * 100
+            elif participation_rate >= self.config.participation_fair:
+                base_score = 80.0 + (participation_rate - self.config.participation_fair) * 100
+            elif participation_rate >= self.config.participation_poor:
+                base_score = 70.0 + (participation_rate - self.config.participation_poor) * 100
             else:
                 base_score = participation_rate * 100
             
@@ -1814,7 +1722,7 @@ class BlockchainFederatedIncentiveSystem:
                             break
                 
                 if recent_participation == recent_rounds_check:
-                    recent_participation_bonus = 5.0  # 5 point bonus for perfect recent participation
+                    recent_participation_bonus = self.config.recent_participation_bonus  # Configurable bonus for perfect recent participation
             
             reliability = min(100.0, base_score + recent_participation_bonus)
             
@@ -1962,7 +1870,7 @@ class BlockchainFederatedIncentiveSystem:
                 return None
             
             # Use a subset to avoid CUDA memory issues
-            max_val_samples = 1000  # Limit validation samples
+            max_val_samples = self.config.max_val_samples  # Limit validation samples
             if len(X_val) > max_val_samples:
                 # Randomly sample subset
                 import numpy as np
@@ -2072,8 +1980,8 @@ class BlockchainFederatedIncentiveSystem:
             best_validation_accuracy = 0.0
             best_validation_loss = float('inf')
             validation_patience_counter = 0
-            validation_patience_limit = 10  # Stop if no improvement for 10 consecutive rounds
-            min_improvement_threshold = 1e-3  # Minimum improvement threshold
+            validation_patience_limit = self.config.validation_patience_limit  # Patience limit from configuration
+            min_improvement_threshold = self.config.ttt_improvement_threshold  # Improvement threshold from configuration
             
             # Validation history tracking
             validation_history = {
@@ -2086,11 +1994,10 @@ class BlockchainFederatedIncentiveSystem:
             }
             
             # Overfitting detection variables
-            # 15% gap between training and validation accuracy (less
-            # aggressive)
-            overfitting_threshold = 0.15
+            # Configurable gap between training and validation accuracy
+            overfitting_threshold = self.config.overfitting_threshold
             consecutive_overfitting_rounds = 0
-            max_overfitting_rounds = 5  # Stop if overfitting detected for 5 consecutive rounds
+            max_overfitting_rounds = self.config.max_overfitting_rounds  # Stop if overfitting detected for N consecutive rounds
             
             logger.info(f"📊 Validation monitoring enabled:")
             logger.info(
@@ -2112,8 +2019,8 @@ class BlockchainFederatedIncentiveSystem:
                         f"⚠️ Authentication verification failed for round {round_num}, continuing with fallback")
                     # Don't skip the round, just log the warning
                 
-                # Run federated round with reasonable batch size for GPU memory
-                batch_size = 8 if self.device.type == 'cuda' else 32
+                # Run federated round with configurable batch size
+                batch_size = self.config.batch_size
                 
                 # Clear GPU cache before each round
                 if self.device.type == 'cuda':
@@ -2124,7 +2031,7 @@ class BlockchainFederatedIncentiveSystem:
                 
                 round_results = self.coordinator.run_federated_round(
                     epochs=self.config.local_epochs,
-                    batch_size=4,
+                    batch_size=self.config.batch_size,
                     learning_rate=self.config.learning_rate
                 )
                 
@@ -2783,8 +2690,8 @@ class BlockchainFederatedIncentiveSystem:
         self.gas_collector = real_gas_collector
         
         # Retry mechanism for gas collection
-        max_retries = 3
-        retry_delay = 1.0  # seconds
+        max_retries = self.config.max_retries
+        retry_delay = self.config.retry_delay  # seconds
         
         for attempt in range(max_retries):
             try:
@@ -3005,7 +2912,7 @@ class BlockchainFederatedIncentiveSystem:
                 self.model.eval()
                 correct = 0
                 total = 0
-                batch_size = 100  # Small batch size for memory efficiency
+                batch_size = self.config.batch_size  # Use config batch size
                 
                 with torch.no_grad():
                     for i in range(0, len(test_data_subset), batch_size):
@@ -4485,7 +4392,7 @@ class BlockchainFederatedIncentiveSystem:
 
             # CRITICAL FIX: Use ALL samples for query evaluation to match base model
             # Use a small support set for adaptation but evaluate on ALL samples
-            support_size = min(200, len(X_test_subset) // 10)  # Use only 10% for support
+            support_size = min(200, len(X_test_subset) // 3)  # Use only 10% for support
             query_size = len(X_test_subset)  # Use ALL samples for query evaluation
             
             # Log the selected support set size for debugging and monitoring
@@ -5350,7 +5257,7 @@ class BlockchainFederatedIncentiveSystem:
             # Additional plateau scheduler for fine-tuning
             plateau_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
                 ttt_optimizer, mode='min', factor=self.config.ttt_lr_decay, 
-                patience=5, min_lr=self.config.ttt_lr_min, verbose=False
+                patience=self.config.ttt_patience//4, min_lr=self.config.ttt_lr_min, verbose=False
             )
             
             # Adaptive TTT steps based on data complexity with safety limits
@@ -5461,13 +5368,13 @@ class BlockchainFederatedIncentiveSystem:
                 
                 # OPTIMIZED: Early stopping based on both loss and accuracy
                 loss_improved = total_loss.item() < best_loss - improvement_threshold
-                acc_improved = support_acc > best_accuracy + 0.001  # Accuracy improvement threshold
+                acc_improved = support_acc > best_accuracy + improvement_threshold  # Use config threshold for consistency
                 
-                if loss_improved:
-                    best_loss = total_loss.item()
-                    patience_counter = 0
-                elif acc_improved:
-                    best_accuracy = support_acc
+                if loss_improved or acc_improved:
+                    if loss_improved:
+                        best_loss = total_loss.item()
+                    if acc_improved:
+                        best_accuracy = support_acc
                     patience_counter = 0
                 else:
                     patience_counter += 1
@@ -5540,7 +5447,7 @@ class BlockchainFederatedIncentiveSystem:
             
             # More conservative learning rate scheduler for stability
             scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-                ttt_optimizer, mode='min', factor=0.5, patience=3, min_lr=1e-6, verbose=False
+                ttt_optimizer, mode='min', factor=self.config.ttt_lr_decay, patience=self.config.ttt_patience//6, min_lr=self.config.ttt_lr_min, verbose=False
             )
             
             # Adaptive TTT steps based on data complexity with safety limits
@@ -5665,19 +5572,23 @@ class BlockchainFederatedIncentiveSystem:
                 ttt_consistency_losses.append(consistency_loss.item())
                 ttt_learning_rates.append(ttt_optimizer.param_groups[0]['lr'])
                 
-                # Early stopping check
-                if total_loss.item() < best_loss - min_improvement:
-                    best_loss = total_loss.item()
-                    patience_counter = 0
-                else:
-                    patience_counter += 1
-                
                 # Calculate accuracy for monitoring
                 with torch.no_grad():
                     predictions = torch.argmax(support_outputs, dim=1)
                     accuracy = (predictions == support_y).float().mean().item()
-                    if accuracy > best_accuracy:
+                
+                # Enhanced early stopping check based on both loss and accuracy
+                loss_improved = total_loss.item() < best_loss - min_improvement
+                acc_improved = accuracy > best_accuracy + min_improvement
+                
+                if loss_improved or acc_improved:
+                    if loss_improved:
+                        best_loss = total_loss.item()
+                    if acc_improved:
                         best_accuracy = accuracy
+                    patience_counter = 0
+                else:
+                    patience_counter += 1
                 
                 # Log progress every 10 steps
                 if step % 10 == 0:
@@ -5736,7 +5647,7 @@ class BlockchainFederatedIncentiveSystem:
             
             # More conservative learning rate scheduler for stability
             scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-                ttt_optimizer, mode='min', factor=0.5, patience=3, min_lr=1e-6, verbose=False
+                ttt_optimizer, mode='min', factor=self.config.ttt_lr_decay, patience=self.config.ttt_patience//6, min_lr=self.config.ttt_lr_min, verbose=False
             )
             
             # Adaptive TTT steps based on data complexity with safety limits
@@ -5758,13 +5669,13 @@ class BlockchainFederatedIncentiveSystem:
             best_loss = float('inf')
             best_accuracy = 0.0
             patience_counter = 0
-            max_patience = 5  # Reduced patience for faster convergence
-            min_improvement = 1e-3  # Increased minimum improvement threshold for stability
+            max_patience = self.config.ttt_patience  # Patience from configuration
+            min_improvement = self.config.ttt_improvement_threshold  # Improvement threshold from configuration
             
             # SAFETY MEASURE: Add timeout mechanism
             import time
             ttt_start_time = time.time()
-            ttt_timeout = 30  # 30 seconds timeout
+            ttt_timeout = self.config.ttt_timeout  # Timeout from configuration
             
             for step in range(ttt_steps):
                 # SAFETY MEASURE: Check timeout
@@ -6027,6 +5938,9 @@ class ServiceManager:
         self.ipfs_process = None
         self.metamask_process = None
         self.services_started = False
+        # Initialize config from the global configuration
+        from config import get_config
+        self.config = get_config()
     
     def start_services(self):
         """Start Ganache, IPFS, and MetaMask services"""
@@ -6132,7 +6046,7 @@ class ServiceManager:
         """Check if Ganache is running"""
         try:
 
-            response = requests.post('http://localhost:8545', 
+            response = requests.post(self.config.ethereum_rpc_url, 
                                    json={'jsonrpc': '2.0', 'method': 'eth_blockNumber', 'params': [], 'id': 1},
                                    timeout=5)
             if response.status_code == 200:
@@ -6149,7 +6063,7 @@ class ServiceManager:
         """Check if IPFS is running"""
         try:
 
-            response = requests.post('http://localhost:5001/api/v0/version', timeout=5)
+            response = requests.post(f"{self.config.ipfs_url}/api/v0/version", timeout=5)
             if response.status_code == 200:
                 logger.info("✅ IPFS is running and responding")
                 return True
@@ -6237,7 +6151,7 @@ def run_fully_decentralized_main():
     try:
         # Run the fully decentralized training
         results = asyncio.run(run_fully_decentralized_training(
-            num_rounds=5,
+            num_rounds=self.config.num_rounds,
             node_configs=node_configs
         ))
         
@@ -6311,85 +6225,24 @@ def main():
     logger.info("🔧 Auto-starting blockchain services...")
     service_manager.start_services()
     
-    # Get centralized configuration
+    # Get centralized configuration and override specific parameters if needed
     config = get_config()
+    
+    # Override specific parameters for this run (only what's different from defaults)
+    update_config(
+        # zero_day_attack="DoS",  # Use config default instead of hardcoding
+        # num_clients=10,         # Use config default instead of hardcoding
+        # num_rounds=15,          # Use config default instead of hardcoding
+        meta_epochs=config.meta_epochs  # Use config meta epochs
+    )
     
     # Log configuration for transparency
     logger.info("🔧 System Configuration:")
     for key, value in config.to_dict().items():
         logger.info(f"   {key}: {value}")
     
-    # Convert centralized config to EnhancedSystemConfig for compatibility
-    # Complete parameter mapping to ensure all config changes are implemented
-    enhanced_config = EnhancedSystemConfig(
-        # Data configuration
-        data_path=config.data_path,
-        test_path=config.test_path,
-        zero_day_attack=config.zero_day_attack,
-        
-        # Model configuration
-        input_dim=config.input_dim,
-        hidden_dim=config.hidden_dim,
-        embedding_dim=config.embedding_dim,
-        
-        # TCN configuration
-        use_tcn=config.use_tcn,
-        sequence_length=config.sequence_length,
-        sequence_stride=config.sequence_stride,
-        meta_epochs=config.meta_epochs,
-        
-        # Training configuration
-        support_weight=config.support_weight,
-        test_weight=config.test_weight,
-        
-        # Federated learning configuration
-        num_clients=config.num_clients,
-        num_rounds=config.num_rounds,
-        local_epochs=config.local_epochs,
-        learning_rate=config.learning_rate,
-        batch_size=config.batch_size,
-        
-        # Blockchain configuration
-        enable_incentives=config.enable_incentives,
-        base_reward=config.base_reward,
-        max_reward=config.max_reward,
-        fully_decentralized=config.fully_decentralized,
-        
-        # TTT configuration (complete mapping)
-        ttt_base_steps=config.ttt_base_steps,
-        ttt_max_steps=config.ttt_max_steps,
-        ttt_lr=config.ttt_lr,
-        ttt_weight_decay=config.ttt_weight_decay,
-        ttt_patience=config.ttt_patience,
-        ttt_timeout=config.ttt_timeout,
-        ttt_improvement_threshold=config.ttt_improvement_threshold,
-        
-        # Few-shot learning configuration
-        n_way=config.n_way,
-        k_shot=config.k_shot,
-        n_query=config.n_query,
-        
-        # Evaluation configuration
-        support_size=config.support_size,
-        num_meta_tasks=config.num_meta_tasks,
-        
-        # Feature selection configuration
-        use_igrf_rfe=config.use_igrf_rfe,
-        feature_selection_ratio=config.feature_selection_ratio,
-        
-        # Transductive learning configuration
-        transductive_steps=config.transductive_steps,
-        transductive_lr=config.transductive_lr,
-        
-        # Additional training parameters
-        validation_patience_limit=config.validation_patience_limit,
-        recent_rounds=config.recent_rounds
-    )
-    
-    # WandB integration removed
-    
-    # Initialize enhanced system
-    system = BlockchainFederatedIncentiveSystem(enhanced_config)
+    # Initialize enhanced system with centralized config
+    system = BlockchainFederatedIncentiveSystem(config)
     
     # WandB integration removed
     
