@@ -53,13 +53,13 @@ class ThresholdAgent:
     Uses a simple neural network to map state to threshold value
     """
     
-    def __init__(self, state_dim=3, hidden_dim=32, learning_rate=0.001):
+    def __init__(self, state_dim=10, hidden_dim=64, learning_rate=3e-4):
         self.state_dim = state_dim
         self.hidden_dim = hidden_dim
         self.learning_rate = learning_rate
         
-        # Simple neural network for threshold prediction
-        self.network = nn.Sequential(
+        # Actor-Critic Architecture (PPO)
+        self.actor = nn.Sequential(
             nn.Linear(state_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
@@ -68,62 +68,251 @@ class ThresholdAgent:
             nn.Sigmoid()  # Output between 0 and 1
         )
         
-        self.optimizer = optim.Adam(self.network.parameters(), lr=learning_rate)
-        self.memory = []  # Store (state, action, reward) tuples
+        self.critic = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 1)
+        )
         
-        #Exploration paramters  
-        self.epsilon = 0.1  # Exploration rate
-        self.epsilon_decay = 0.995
-        self.epsilon_min = 0.01
+        # PPO optimizers
+        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=learning_rate)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=learning_rate)
         
-
-
-        #Convergence monitoring 
+        # PPO hyperparameters
+        self.clip_ratio = 0.2
+        self.value_loss_coef = 0.5
+        self.entropy_coef = 0.01
+        self.gamma = 0.99
+        self.lambda_gae = 0.95
+        
+        # Experience replay buffer
+        self.replay_buffer = []
+        self.buffer_size = 1000
+        
+        # Contextual bandit exploration
+        self.ucb_confidence = 2.0
+        self.action_counts = torch.zeros(1)
+        self.action_rewards = torch.zeros(1)
+        
+        # Multi-objective reward weights (learnable)
+        self.reward_weights = nn.Parameter(torch.tensor([0.3, 0.25, 0.25, 0.1, 0.1]))
+        
+        # Performance tracking
+        self.performance_history = []
         self.threshold_history = []
-        self.convergence_detected=False
+        self.convergence_detected = False
         self.consecutive_convergence_steps = 0
-        self.performance_safety_threshold = -5.0 # Reward below which to resume exploration
-
-      
-        # Track performance for reward calculation
-        self.adaptation_history = []
-        #configure loggin
+        
+        # Configure logging
         self.logger = logging.getLogger(__name__)
 
         
     def get_threshold(self, state):
         """
-        Get threshold based on current state using RL agent
+        Get threshold using Actor-Critic with Contextual Bandit Exploration
         
         Args:
-            state: torch.Tensor of shape [3] containing [mean_confidence, adaptation_success_rate, mean_entropy]
+            state: torch.Tensor of enhanced state representation
             
         Returns:
             threshold: float between 0 and 1
         """
         with torch.no_grad():
-            if random.random() < self.epsilon:
-                # Exploration: random threshold
-                threshold = random.uniform(0.1, 0.9)
+            # Get policy action from actor
+            policy_action = self.actor(state.unsqueeze(0))
+            
+            # Contextual bandit exploration with UCB
+            total_counts = torch.sum(self.action_counts)
+            if total_counts > 0:
+                ucb_bonus = self.ucb_confidence * torch.sqrt(
+                    torch.log(total_counts) / (self.action_counts + 1e-8)
+                )
+                # Add exploration noise
+                exploration_noise = torch.randn_like(policy_action) * 0.1
+                threshold = policy_action + exploration_noise + ucb_bonus
             else:
-                # Exploitation: use neural network
-                threshold = self.network(state.unsqueeze(0)).item()
-                # Ensure threshold is in reasonable range
-                threshold = max(0.1, min(0.9, threshold))
-
-            # Entropy regularization: if uncertainty is high (entropy close to 1 when normalized),
-            # lower the threshold slightly to select more samples for TTT adaptation
-            if state.shape[0] >= 3:
-                mean_entropy_norm = float(state[2].item())
-                # Adjust by a small factor to avoid instability
-                entropy_adjustment = 0.15 * mean_entropy_norm
-                threshold = max(0.1, min(0.9, threshold - entropy_adjustment))
+                threshold = policy_action
+            
+            # Ensure threshold is in reasonable range
+            threshold = torch.clamp(threshold, 0.1, 0.9).item()
         
-        #store threshold history and monitor convergence
+        # Store threshold history and monitor convergence
         self.threshold_history.append(threshold)
         self._monitor_rl_convergence()
 
         return threshold
+    
+    def get_enhanced_state(self, confidence_scores, probabilities, model_performance_history=None):
+        """
+        Enhanced state representation with more contextual information
+        
+        Args:
+            confidence_scores: torch.Tensor of confidence scores
+            probabilities: torch.Tensor of class probabilities
+            model_performance_history: List of recent performance metrics
+            
+        Returns:
+            state: torch.Tensor of enhanced state features
+        """
+        state_features = []
+        
+        # Basic confidence features
+        state_features.append(torch.mean(confidence_scores).item())
+        state_features.append(torch.std(confidence_scores).item())
+        state_features.append(torch.min(confidence_scores).item())
+        state_features.append(torch.max(confidence_scores).item())
+        
+        # Entropy features
+        if probabilities is not None:
+            entropy = -torch.sum(probabilities * torch.log(probabilities + 1e-8), dim=1)
+            state_features.append(torch.mean(entropy).item())
+            state_features.append(torch.std(entropy).item())
+        else:
+            state_features.extend([0.0, 0.0])
+        
+        # Performance history features
+        if model_performance_history and len(model_performance_history) > 0:
+            state_features.append(model_performance_history[-1])  # Latest accuracy
+            state_features.append(np.mean(model_performance_history[-5:]))  # Recent average
+            state_features.append(np.std(model_performance_history[-5:]))  # Recent variance
+        else:
+            state_features.extend([0.5, 0.5, 0.0])  # Default values
+        
+        # Data distribution features
+        state_features.append(len(confidence_scores))  # Batch size
+        state_features.append(torch.sum(confidence_scores > 0.5).item() / len(confidence_scores))  # High confidence ratio
+        
+        return torch.tensor(state_features, dtype=torch.float32)
+    
+    def calculate_multi_objective_reward(self, metrics_dict):
+        """
+        Multi-objective reward function with proper weighting
+        
+        Args:
+            metrics_dict: Dictionary containing performance metrics
+            
+        Returns:
+            reward: float total reward value
+        """
+        # Primary objectives
+        accuracy_reward = metrics_dict.get('accuracy_improvement', 0.0) * 10.0
+        precision_reward = metrics_dict.get('precision', 0.0) * 8.0
+        recall_reward = metrics_dict.get('recall', 0.0) * 8.0
+        
+        # Secondary objectives
+        efficiency_reward = self._calculate_efficiency_reward(metrics_dict)
+        stability_reward = self._calculate_stability_reward(metrics_dict)
+        
+        # Constraint penalties
+        fp_penalty = metrics_dict.get('false_positives', 0) * -2.0
+        fn_penalty = metrics_dict.get('false_negatives', 0) * -3.0
+        
+        # Multi-objective optimization using weighted sum
+        objectives = torch.tensor([accuracy_reward, precision_reward, recall_reward, 
+                                  efficiency_reward, stability_reward])
+        
+        # Use learnable weights
+        total_reward = torch.dot(self.reward_weights, objectives) + fp_penalty + fn_penalty
+        
+        return total_reward.item()
+    
+    def _calculate_efficiency_reward(self, metrics_dict):
+        """Calculate efficiency reward based on sample selection"""
+        samples_selected = metrics_dict.get('samples_selected', 0)
+        total_samples = metrics_dict.get('total_samples', 1)
+        
+        if total_samples > 0:
+            selection_ratio = samples_selected / total_samples
+            # Optimal selection ratio is between 0.1 and 0.4
+            if 0.1 <= selection_ratio <= 0.4:
+                return 5.0
+            elif selection_ratio < 0.05:
+                return -10.0
+            elif selection_ratio > 0.6:
+                return -5.0
+        return 0.0
+    
+    def train_with_ppo(self, experiences, epochs=4):
+        """
+        Proper PPO training loop for Actor-Critic architecture
+        
+        Args:
+            experiences: List of (state, action, reward, old_log_prob) tuples
+            epochs: Number of training epochs
+        """
+        if len(experiences) < 10:
+            return
+        
+        # Convert experiences to tensors
+        states = torch.stack([exp[0] for exp in experiences])
+        actions = torch.tensor([exp[1] for exp in experiences]).unsqueeze(1)
+        rewards = torch.tensor([exp[2] for exp in experiences]).unsqueeze(1)
+        old_log_probs = torch.tensor([exp[3] for exp in experiences]).unsqueeze(1)
+        
+        # Compute advantages using GAE
+        advantages = self.compute_gae_advantages(rewards)
+        returns = advantages + self.critic(states).detach()
+        
+        # Normalize advantages
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        
+        for epoch in range(epochs):
+            # Actor update
+            log_probs = self.get_log_prob(states, actions)
+            ratios = torch.exp(log_probs - old_log_probs)
+            
+            # PPO clipped objective
+            surr1 = ratios * advantages
+            surr2 = torch.clamp(ratios, 1 - self.clip_ratio, 1 + self.clip_ratio) * advantages
+            actor_loss = -torch.min(surr1, surr2).mean()
+            
+            # Critic update
+            values = self.critic(states)
+            value_loss = F.mse_loss(values, returns)
+            
+            # Entropy bonus
+            entropy_loss = -torch.mean(log_probs)
+            
+            # Total loss
+            total_loss = actor_loss + self.value_loss_coef * value_loss + self.entropy_coef * entropy_loss
+            
+            # Update networks
+            self.actor_optimizer.zero_grad()
+            self.critic_optimizer.zero_grad()
+            total_loss.backward()
+            self.actor_optimizer.step()
+            self.critic_optimizer.step()
+    
+    def get_log_prob(self, states, actions):
+        """Get log probability of actions given states"""
+        action_probs = self.actor(states)
+        # Use Beta distribution for continuous actions in [0,1]
+        from torch.distributions import Beta
+        # Convert to Beta distribution parameters
+        alpha = action_probs * 10 + 1  # Scale for Beta distribution
+        beta = (1 - action_probs) * 10 + 1
+        dist = Beta(alpha, beta)
+        return dist.log_prob(actions)
+    
+    def compute_gae_advantages(self, rewards):
+        """Compute Generalized Advantage Estimation (GAE)"""
+        advantages = []
+        advantage = 0
+        
+        # Reverse iteration for GAE
+        for i in reversed(range(len(rewards))):
+            if i == len(rewards) - 1:
+                next_value = 0
+            else:
+                next_value = self.critic(rewards[i+1:i+2]).item()
+            
+            delta = rewards[i] + self.gamma * next_value - self.critic(rewards[i:i+1]).item()
+            advantage = delta + self.gamma * self.lambda_gae * advantage
+            advantages.insert(0, advantage)
+        
+        return torch.tensor(advantages).unsqueeze(1)
     
     def _monitor_rl_convergence(self):
         """
@@ -170,39 +359,37 @@ class ThresholdAgent:
                     self.logger.warning(f"   🔄 Epsilon: {self.epsilon_min:.3f} → {self.epsilon:.3f}")
         
         # Calculate threshold stability (standard deviation)
-    def update(self, state, threshold, entropy_reduction, confidence_improvement, consistency_improvement,
-               samples_selected=0, total_samples=0):
+    def update(self, state, threshold, metrics_dict):
         """
-        ✅ UNSUPERVISED UPDATE: Update the agent based on unsupervised adaptation results
+        ✅ SCIENTIFIC RL UPDATE: Update the agent using proper RL methods
         
         Args:
             state: Current state vector
             threshold: Threshold value used
-            entropy_reduction: Reduction in entropy (unsupervised)
-            confidence_improvement: Improvement in confidence scores (unsupervised)
-            consistency_improvement: Improvement in consistency (unsupervised)
-            samples_selected: Number of samples selected for TTT
-            total_samples: Total number of samples available
+            metrics_dict: Dictionary containing performance metrics
         """
-        # Calculate reward based on unsupervised metrics only
-        reward = self._calculate_reward(
-            entropy_reduction, confidence_improvement, consistency_improvement,
-            samples_selected, total_samples, threshold
-        )
+        # Calculate multi-objective reward
+        reward = self.calculate_multi_objective_reward(metrics_dict)
         
-        # Store experience
-        self.memory.append((state, threshold, reward))
+        # Get log probability of the action taken
+        with torch.no_grad():
+            log_prob = self.get_log_prob(state.unsqueeze(0), torch.tensor([[threshold]]))
         
-        # Update adaptation history (use entropy reduction as success metric)
-        self.adaptation_history.append(entropy_reduction)
+        # Store experience in replay buffer
+        experience = (state, threshold, reward, log_prob.item())
+        self.replay_buffer.append(experience)
         
-        # Decay exploration rate
-        if self.epsilon > self.epsilon_min:
-            self.epsilon *= self.epsilon_decay
+        # Update action counts for UCB
+        self.action_counts[0] += 1
+        self.action_rewards[0] += reward
         
-        # Train the network if we have enough experiences
-        if len(self.memory) >= 10:
-            self._train_network()
+        # Train with PPO if we have enough experiences
+        if len(self.replay_buffer) >= 32:
+            self.train_with_ppo(self.replay_buffer[-32:])
+            
+            # Clear old experiences to prevent memory overflow
+            if len(self.replay_buffer) > self.buffer_size:
+                self.replay_buffer = self.replay_buffer[-self.buffer_size//2:]
     
     def _calculate_reward(self, entropy_reduction, confidence_improvement, consistency_improvement, 
                          samples_selected=0, total_samples=0, threshold=0.5):
@@ -767,6 +954,7 @@ class TransductiveLearner(nn.Module):
         self.threshold_agent = ThresholdAgent()
         self.ttt_threshold = 0.5  # Fallback threshold
         self.adaptation_success_history = []
+        self.performance_history = []  # Track performance for RL agent
         
         # TTT parameters (will be updated from config)
         self.ttt_lr = 0.0005
@@ -828,7 +1016,7 @@ class TransductiveLearner(nn.Module):
     
     def get_dynamic_threshold(self, confidence_scores, probabilities: Optional[torch.Tensor] = None, num_classes: Optional[int] = None):
         """
-        Get dynamic threshold using RL agent
+        Get dynamic threshold using enhanced RL agent
         
         Args:
             confidence_scores: torch.Tensor of confidence scores
@@ -838,28 +1026,12 @@ class TransductiveLearner(nn.Module):
         Returns:
             threshold: float threshold value
         """
-        # Calculate current state
-        mean_confidence = torch.mean(confidence_scores).item()
-        adaptation_success_rate = self.threshold_agent.get_adaptation_success_rate()
-        
-        # Compute mean entropy if probabilities are provided
-        if probabilities is not None:
-            # Shannon entropy
-            ent = -torch.sum(probabilities * torch.log(probabilities + 1e-8), dim=1)
-            mean_entropy = ent.mean().item()
-            # Normalize by log(num_classes) if available for calibration
-            if num_classes is None and hasattr(self, 'num_classes'):
-                num_classes = self.num_classes
-            if num_classes is not None and num_classes > 1:
-                mean_entropy = float(mean_entropy / math.log(num_classes + 1e-8))
-                # Clamp to [0,1]
-                mean_entropy = max(0.0, min(1.0, mean_entropy))
-        else:
-            # Fallback when probabilities are not available
-            mean_entropy = 0.0
-        
-        # Create state vector
-        state = torch.tensor([mean_confidence, adaptation_success_rate, mean_entropy], dtype=torch.float32)
+        # Use enhanced state representation
+        state = self.threshold_agent.get_enhanced_state(
+            confidence_scores, 
+            probabilities, 
+            self.performance_history
+        )
         
         # Get threshold from RL agent
         threshold = self.threshold_agent.get_threshold(state)
@@ -868,6 +1040,35 @@ class TransductiveLearner(nn.Module):
         self.ttt_threshold = threshold
         
         return threshold
+    
+    def update_rl_agent(self, metrics_dict, threshold_used):
+        """
+        Update RL agent with performance metrics
+        
+        Args:
+            metrics_dict: Dictionary containing performance metrics
+            threshold_used: Threshold value that was used
+        """
+        # Add threshold to metrics
+        metrics_dict['threshold'] = threshold_used
+        
+        # Get current state for update
+        if hasattr(self, 'last_confidence_scores') and hasattr(self, 'last_probabilities'):
+            state = self.threshold_agent.get_enhanced_state(
+                self.last_confidence_scores,
+                self.last_probabilities,
+                self.performance_history
+            )
+            
+            # Update RL agent
+            self.threshold_agent.update(state, threshold_used, metrics_dict)
+            
+            # Update performance history
+            if 'accuracy' in metrics_dict:
+                self.performance_history.append(metrics_dict['accuracy'])
+                # Keep only recent history
+                if len(self.performance_history) > 100:
+                    self.performance_history = self.performance_history[-50:]
     
     def select_ttt_samples(self, confidence_scores, threshold=None):
         """
