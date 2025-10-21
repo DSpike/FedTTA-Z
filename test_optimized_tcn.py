@@ -128,7 +128,7 @@ def test_optimized_transductive_learner():
     query_x = torch.randn(4, sequence_length, input_dim)
     query_y = torch.randint(0, num_classes, (4,))
     
-    adapted_logits, metrics = model.transductive_adaptation(support_x, support_y, query_x, query_y)
+    adapted_logits, metrics = model.transductive_adaptation(query_x)
     
     print(f"Adapted logits shape: {adapted_logits.shape}")
     print(f"Expected adapted logits shape: ({4}, {num_classes})")

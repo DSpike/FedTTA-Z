@@ -1,6 +1,6 @@
 """
 Configuration Validation and Synchronization System
-Prevents configuration drift between SystemConfig and EnhancedSystemConfig
+Prevents configuration drift between SystemConfig instances
 """
 
 import logging
@@ -30,10 +30,10 @@ class ConfigValidator:
     
     def validate_enhanced_config(self, enhanced_config) -> ConfigValidationResult:
         """
-        Validate EnhancedSystemConfig against centralized SystemConfig
+        Validate SystemConfig against centralized SystemConfig
         
         Args:
-            enhanced_config: EnhancedSystemConfig instance to validate
+            enhanced_config: SystemConfig instance to validate
             
         Returns:
             ConfigValidationResult with validation details
@@ -74,13 +74,13 @@ class ConfigValidator:
         missing_fields = central_fields - enhanced_fields
         
         if missing_fields:
-            warnings.append(f"EnhancedSystemConfig missing fields: {missing_fields}")
-            suggestions.append("Consider adding missing fields to EnhancedSystemConfig")
+            warnings.append(f"SystemConfig missing fields: {missing_fields}")
+            suggestions.append("Consider adding missing fields to SystemConfig")
         
         # Check for extra fields in enhanced config
         extra_fields = enhanced_fields - central_fields
         if extra_fields:
-            warnings.append(f"EnhancedSystemConfig has extra fields: {extra_fields}")
+            warnings.append(f"SystemConfig has extra fields: {extra_fields}")
             suggestions.append("Consider if extra fields should be in centralized config")
         
         is_valid = len(discrepancies) == 0
@@ -94,10 +94,10 @@ class ConfigValidator:
     
     def auto_fix_enhanced_config(self, enhanced_config) -> bool:
         """
-        Automatically fix EnhancedSystemConfig to match SystemConfig
+        Automatically fix SystemConfig to match SystemConfig
         
         Args:
-            enhanced_config: EnhancedSystemConfig instance to fix
+            enhanced_config: SystemConfig instance to fix
             
         Returns:
             bool: True if fixes were applied, False otherwise
@@ -128,10 +128,10 @@ class ConfigValidator:
     
     def generate_sync_code(self, enhanced_config) -> str:
         """
-        Generate code to synchronize EnhancedSystemConfig with SystemConfig
+        Generate code to synchronize SystemConfig with SystemConfig
         
         Args:
-            enhanced_config: EnhancedSystemConfig instance
+            enhanced_config: SystemConfig instance
             
         Returns:
             str: Python code to fix the configuration
@@ -145,7 +145,7 @@ class ConfigValidator:
         code_lines.append("from config import get_config")
         code_lines.append("")
         code_lines.append("def sync_enhanced_config(enhanced_config):")
-        code_lines.append("    \"\"\"Synchronize EnhancedSystemConfig with centralized config\"\"\"")
+        code_lines.append("    \"\"\"Synchronize SystemConfig with centralized config\"\"\"")
         code_lines.append("    central_config = get_config()")
         code_lines.append("")
         
@@ -166,15 +166,15 @@ class ConfigValidator:
         guard_code = '''
 # Configuration Guard - Add this to the top of main.py
 def ensure_config_sync():
-    """Ensure EnhancedSystemConfig is synchronized with SystemConfig"""
+    """Ensure SystemConfig is synchronized with SystemConfig"""
     from config_validator import ConfigValidator
     from config import get_config
     
     validator = ConfigValidator()
     central_config = get_config()
     
-    # Create a temporary EnhancedSystemConfig for validation
-    temp_enhanced = EnhancedSystemConfig()
+    # Create a temporary SystemConfig for validation
+    temp_enhanced = SystemConfig()
     
     # Validate configuration
     validation = validator.validate_enhanced_config(temp_enhanced)
@@ -200,10 +200,10 @@ ensure_config_sync()
 
 def validate_configurations():
     """Standalone function to validate all configurations"""
-    from main import EnhancedSystemConfig
+    from config import SystemConfig
     
     validator = ConfigValidator()
-    enhanced_config = EnhancedSystemConfig()
+    enhanced_config = SystemConfig()
     
     validation = validator.validate_enhanced_config(enhanced_config)
     

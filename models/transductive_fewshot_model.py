@@ -10,21 +10,21 @@ This module implements TRUE test-time training following TTT principles:
    The evaluation_mode parameter should be set to False for proper TTT evaluation.
 
 2. NO DATA LEAKAGE: TTT uses unsupervised objectives (consistency loss, smoothness regularization)
-   on test data, so no test label leakage occurs. Support set is validation data, not training data.
+   on test data, so no test label leakage occurs. UNSUPERVISED TTT: test data only, no labels.
 
 3. DATA SPLIT VALIDATION: The validate_data_splits() method checks for exact duplicates
    between train/val/test splits to ensure no data overlap.
 
-4. PROPER SUPPORT SET USAGE: During evaluation, validation data is used as support set:
-   - Computing initial class prototypes
-   - Providing labeled examples for transductive adaptation
-   - No training data leakage since support is from validation set
+4. UNSUPERVISED TTT: During evaluation, test data only is used:
+   - Computing initial class prototypes via k-means clustering
+   - No labeled examples needed for transductive adaptation
+   - No data leakage since only test data is used
 
 5. EVALUATION WORKFLOW:
    - Training: Use training data for meta-learning
-   - Validation: Use validation data for hyperparameter tuning and as support set
+   - Validation: Use validation data for hyperparameter tuning only
    - Testing: Use test data for final evaluation with TTT adaptation enabled
-   - TTT adaptation uses both support (validation) and test data for prototype refinement
+   - TTT adaptation uses only test data for prototype refinement via k-means clustering
 
 CRITICAL: TTT should NEVER be disabled during evaluation as this violates TTT principles
 and provides invalid performance metrics that don't reflect the model's true capability.
@@ -656,61 +656,49 @@ class PrototypeUtils:
         return torch.stack(prototypes), unique_labels
     
     @staticmethod
-    def update_prototypes(support_embeddings, support_y, test_embeddings, test_predictions, support_weight=0.7, test_weight=0.3):
+    def update_prototypes(test_embeddings, test_predictions, num_clusters=2, support_weight=0.0, test_weight=1.0):
         """
-        Update prototypes using both support and test set information
+        ✅ UNSUPERVISED PROTOTYPE UPDATE: Uses k-means clustering on test embeddings only
         
         Args:
-            support_embeddings: Support set embeddings
-            support_y: Support set labels
             test_embeddings: Test set embeddings
-            test_predictions: Test set predictions
-            support_weight: Weight for support set contribution (default: 0.7)
-            test_weight: Weight for test set contribution (default: 0.3)
+            test_predictions: Test set predictions (soft assignments)
+            num_clusters: Number of clusters for k-means (default: 2 for binary classification)
+            support_weight: Weight for support set contribution (default: 0.0 - no support data)
+            test_weight: Weight for test set contribution (default: 1.0 - only test data)
             
         Returns:
-            updated_prototypes: Updated class prototypes
-            unique_labels: Unique class labels
+            updated_prototypes: Updated class prototypes from k-means clustering
+            cluster_labels: Cluster labels from k-means
         """
-        unique_labels = torch.unique(support_y)
+        from sklearn.cluster import KMeans
+        import numpy as np
+        
+        # Convert to numpy for sklearn
+        test_embeddings_np = test_embeddings.detach().cpu().numpy()
+        
+        # Perform k-means clustering on test embeddings
+        kmeans = KMeans(n_clusters=num_clusters, random_state=42, n_init=10)
+        cluster_labels = kmeans.fit_predict(test_embeddings_np)
+        cluster_labels = torch.tensor(cluster_labels, device=test_embeddings.device)
+        
+        # Calculate prototypes from k-means clusters
         updated_prototypes = []
+        unique_clusters = torch.unique(cluster_labels)
         
-        for label in unique_labels:
-            # Support set contribution
-            support_mask = support_y == label
-            if support_mask.sum() > 0:
-                support_class_embeddings = support_embeddings[support_mask]
-                support_prototype = support_class_embeddings.mean(dim=0)
+        for cluster_id in unique_clusters:
+            # Get embeddings for this cluster
+            cluster_mask = cluster_labels == cluster_id
+            if cluster_mask.sum() > 0:
+                cluster_embeddings = test_embeddings[cluster_mask]
+                cluster_prototype = cluster_embeddings.mean(dim=0)
             else:
-                support_prototype = torch.zeros_like(support_embeddings[0])
+                # Fallback: use random prototype if cluster is empty
+                cluster_prototype = torch.randn_like(test_embeddings[0])
             
-            # SCIENTIFIC FIX: Consistent handling of test predictions for prototype updates
-            if test_predictions is not None and len(test_predictions) > 0:
-                # Ensure consistent format - always use soft assignments
-                if len(test_predictions.shape) == 1:
-                    # Convert hard assignments to soft one-hot encoding
-                    num_classes = len(unique_labels)
-                    test_predictions_soft = torch.zeros(len(test_predictions), num_classes)
-                    for i, pred in enumerate(test_predictions):
-                        if pred.item() < num_classes:
-                            test_predictions_soft[i, pred.item()] = 1.0
-                    test_weights = test_predictions_soft[:, label.item()]
-                else:
-                    # Already soft assignments
-                    test_weights = test_predictions[:, label.item()]
-                
-                if test_weights.sum() > 0:
-                    test_prototype = torch.sum(test_embeddings * test_weights.unsqueeze(1), dim=0) / test_weights.sum()
-                    # Combine support and test contributions with configurable weights
-                    updated_prototype = support_weight * support_prototype + test_weight * test_prototype
-                else:
-                    updated_prototype = support_prototype
-            else:
-                updated_prototype = support_prototype
-            
-            updated_prototypes.append(updated_prototype)
+            updated_prototypes.append(cluster_prototype)
         
-        return torch.stack(updated_prototypes), unique_labels
+        return torch.stack(updated_prototypes), unique_clusters
 
 class LossUtils:
     """
@@ -1235,10 +1223,58 @@ class TransductiveLearner(nn.Module):
             logger.info(f"✅ UNSUPERVISED RL Update - Entropy Reduction: {entropy_reduction:.3f}, "
                        f"Confidence Improvement: {confidence_improvement:.3f}")
             
-        else:  # DEBUG ONLY - Supervised metrics (NEVER during evaluation)
-            logger.warning("⚠️  DEBUG MODE: Supervised metrics detected - this should NOT happen during evaluation!")
-            # Do NOT update RL agent with supervised metrics
-            pass
+        else:  # UNSUPERVISED ONLY - No supervised metrics allowed
+            logger.info("✅ UNSUPERVISED MODE: Using only unsupervised metrics for RL agent")
+            # Calculate unsupervised metrics only
+            try:
+                # Calculate entropy reduction (unsupervised)
+                if initial_predictions is not None and adapted_predictions is not None:
+                    initial_probs = torch.softmax(initial_predictions, dim=1)
+                    adapted_probs = torch.softmax(adapted_predictions, dim=1)
+                    
+                    initial_entropy = -torch.sum(initial_probs * torch.log(initial_probs + 1e-8), dim=1).mean()
+                    adapted_entropy = -torch.sum(adapted_probs * torch.log(adapted_probs + 1e-8), dim=1).mean()
+                    entropy_reduction = float(initial_entropy - adapted_entropy)
+                else:
+                    entropy_reduction = 0.0
+                
+                # Calculate confidence improvement (unsupervised)
+                if initial_predictions is not None and adapted_predictions is not None:
+                    initial_confidence = torch.max(initial_probs, dim=1)[0].mean()
+                    adapted_confidence = torch.max(adapted_probs, dim=1)[0].mean()
+                    confidence_improvement = float(adapted_confidence - initial_confidence)
+                else:
+                    confidence_improvement = 0.0
+                
+                # Calculate consistency improvement (unsupervised)
+                consistency_improvement = 0.0
+                if initial_predictions is not None and adapted_predictions is not None:
+                    try:
+                        kl_div = F.kl_div(
+                            F.log_softmax(adapted_predictions, dim=1),
+                            torch.softmax(initial_predictions, dim=1),
+                            reduction='batchmean'
+                        )
+                        consistency_improvement = float(-kl_div.item())
+                    except Exception as e:
+                        logger.warning(f"Consistency calculation failed: {e}")
+                
+                # Create state vector (unsupervised)
+                adaptation_success_rate = self.threshold_agent.get_adaptation_success_rate()
+                state = torch.tensor([entropy_reduction, confidence_improvement, adaptation_success_rate], 
+                                   dtype=torch.float32, device=device)
+                
+                # Update RL agent with UNSUPERVISED metrics only
+                self.threshold_agent.update(
+                    state, self.ttt_threshold, entropy_reduction, confidence_improvement, 
+                    consistency_improvement, samples_selected, total_samples
+                )
+                
+                logger.info(f"✅ UNSUPERVISED RL Update - Entropy Reduction: {entropy_reduction:.3f}, "
+                           f"Confidence Improvement: {confidence_improvement:.3f}")
+                
+            except Exception as e:
+                logger.warning(f"Unsupervised metric calculation failed: {e}")
         
         # Store for tracking (always)
         self.adaptation_success_history.append(success_rate)
@@ -1373,13 +1409,12 @@ class TransductiveLearner(nn.Module):
         
         return test_predictions, prototypes, unique_labels
     
-    def transductive_adaptation(self, query_x: torch.Tensor, query_y: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, Dict]:
+    def transductive_adaptation(self, query_x: torch.Tensor) -> Tuple[torch.Tensor, Dict]:
         """
         ✅ UNSUPERVISED TRANSDUCTIVE ADAPTATION: Uses ONLY query data, no support/validation leakage
         
         Args:
             query_x: Query set features (unlabeled test data)
-            query_y: Optional query set labels for evaluation only (not used in adaptation)
             
         Returns:
             adapted_logits: Logits for the query set after adaptation
@@ -1422,7 +1457,6 @@ class TransductiveLearner(nn.Module):
                 return initial_logits, adaptation_metrics
             
             ttt_query_x = query_x[selected_indices]
-            ttt_query_y = query_y[selected_indices] if query_y is not None else None
             
             logger.info(f"Selected {len(selected_indices)} samples out of {len(query_x)} for TTT adaptation (threshold: {self.ttt_threshold:.4f})")
         
@@ -1561,14 +1595,14 @@ class TransductiveLearner(nn.Module):
         
         return final_logits, metrics    
     
-    def update_prototypes(self, support_embeddings, support_y, test_embeddings, test_predictions):
+    def update_prototypes(self, test_embeddings, test_predictions, num_clusters=2):
         """
-        Unified prototype update method handling both support and test contributions
-        Now uses centralized utility for consistency with configurable weights
+        ✅ UNSUPERVISED prototype update method using k-means clustering
+        Now uses centralized utility for consistency with unsupervised approach
         """
         return PrototypeUtils.update_prototypes(
-            support_embeddings, support_y, test_embeddings, test_predictions,
-            support_weight=self.support_weight, test_weight=self.test_weight
+            test_embeddings, test_predictions, num_clusters=num_clusters,
+            support_weight=0.0, test_weight=1.0
         )
     
     def compute_loss(self, support_embeddings, support_y, test_embeddings, test_predictions, prototypes):
@@ -2571,8 +2605,8 @@ def main():
     # Meta-train the model
     training_history = model.meta_train(meta_tasks, meta_epochs=20)
     
-    # Evaluate zero-day detection (using validation data as support set to prevent data leakage)
-    metrics = model.evaluate_zero_day_detection(X_test, y_test, X_val, y_val)
+    # Evaluate zero-day detection (UNSUPERVISED TTT: test data only, no labels)
+    metrics = model.evaluate_zero_day_detection(X_test, y_test)
     
     logger.info("✅ Transductive few-shot model test completed!")
     logger.info(f"Final metrics: {metrics}")

@@ -9,7 +9,7 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from config_validator import validate_configurations, ConfigValidator
-from main import EnhancedSystemConfig
+from config import SystemConfig
 from config import get_config
 
 def main():
@@ -28,13 +28,13 @@ def main():
         
         # Show how to fix
         validator = ConfigValidator()
-        enhanced_config = EnhancedSystemConfig()
+        enhanced_config = SystemConfig()
         sync_code = validator.generate_sync_code(enhanced_config)
         
         print("\n💡 To fix automatically, run:")
-        print("python -c \"from config_validator import ConfigValidator; from main import EnhancedSystemConfig; v = ConfigValidator(); e = EnhancedSystemConfig(); v.auto_fix_enhanced_config(e); print('Fixed!')\"")
+        print("python -c \"from config_validator import ConfigValidator; from config import SystemConfig; v = ConfigValidator(); e = SystemConfig(); v.auto_fix_enhanced_config(e); print('Fixed!')\"")
         
-        print("\n📝 Or manually update the EnhancedSystemConfig class with:")
+        print("\n📝 Or manually update the SystemConfig class with:")
         print(sync_code)
     
     return validation.is_valid

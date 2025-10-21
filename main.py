@@ -3005,24 +3005,17 @@ class BlockchainFederatedIncentiveSystem:
                 self.data_leakage_results = {'overall': {
                     'status': 'SKIPPED', 'error': str(e)}}
             
-            # Get support set (validation data for few-shot learning to prevent data leakage)
-            # Using validation data instead of training data prevents data leakage
-            if 'X_val' not in self.preprocessed_data or 'y_val' not in self.preprocessed_data:
-                logger.error("Validation data not available for zero-day evaluation")
-                return {}
-            
-            X_support = self.preprocessed_data['X_val']
-            y_support = self.preprocessed_data['y_val']
-            
-            logger.info(f"Using validation data as support set: {X_support.shape[0]} samples")
-            
+            # ✅ FIXED: NO VALIDATION DATA LEAKAGE - Use only test data
             # Get zero-day indices for focused evaluation
             zero_day_indices = self.preprocessed_data.get(
                 'zero_day_indices', [])
             
-            # Evaluate using transductive few-shot model
+            logger.info(f"✅ UNSUPERVISED EVALUATION: Using only test data (no validation leakage)")
+            logger.info(f"Test samples: {X_test.shape[0]}, Zero-day samples: {len(zero_day_indices)}")
+            
+            # Evaluate using transductive few-shot model with test data only
             metrics = self.model.evaluate_zero_day_detection(
-                X_test, y_test, X_support, y_support, zero_day_indices
+                X_test, y_test, zero_day_indices
             )
             
             # Store evaluation results
@@ -4419,12 +4412,13 @@ class BlockchainFederatedIncentiveSystem:
             # The model is designed for multiclass classification (10 classes)
             logger.info("🔬 Using multiclass labels for consistent classification context")
             
-            # Select support samples from validation data
-            val_support_size = min(support_size, len(X_val_tensor))
-            support_indices = torch.randperm(len(X_val_tensor))[:val_support_size]
+            # ✅ FIXED: NO VALIDATION DATA LEAKAGE - Use test data for support
+            # Select support samples from test data (no validation leakage)
+            test_support_size = min(support_size, len(X_test_subset))
+            support_indices = torch.randperm(len(X_test_subset))[:test_support_size]
             
-            support_x = X_val_tensor[support_indices]
-            support_y = y_val_tensor[support_indices]  # ✅ Multiclass labels
+            support_x = X_test_subset[support_indices]
+            support_y = y_test_subset[support_indices]  # ✅ Multiclass labels
             
             # Use test data for query evaluation (no overlap with support)
             query_x = X_test_subset

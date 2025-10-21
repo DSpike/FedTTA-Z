@@ -23,7 +23,7 @@ class SystemConfig:
     # === DATA CONFIGURATION ===
     data_path: str = "UNSW_NB15_training-set.csv"
     test_path: str = "UNSW_NB15_testing-set.csv"
-    zero_day_attack: str = "Analysis"  # Single place to control attack type
+    zero_day_attack: str = "Generic"  # Single place to control attack type
     
     # === MODEL CONFIGURATION ===
     input_dim: int = 43  # Updated after IGRF-RFE feature selection (43 features selected)
