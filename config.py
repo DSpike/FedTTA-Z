@@ -98,28 +98,6 @@ class SystemConfig:
     # Adaptive threshold settings
     use_adaptive_threshold: bool = True  # Use data-adaptive thresholds
     threshold_adaptation_mode: str = 'combined'  # 'scheduled', 'adaptive', or 'combined'
-
-
-
-
-    
-    # === BLOCKCHAIN CONFIGURATION (OPTIONAL) ===
-    # Set enable_incentives=True to activate blockchain features
-    enable_incentives: bool = False  # Set to True to enable blockchain features
-    enable_ipfs: bool = False  # Set to True to enable IPFS storage
-    enable_blockchain_recording: bool = False  # Set to True to enable blockchain recording
-    
-    # Blockchain settings (only used when enable_incentives=True)
-    ethereum_rpc_url: str = "http://localhost:8545"
-    contract_address: str = "0x74f2D28CEC2c97186dE1A02C1Bae84D19A7E8BC8"
-    incentive_contract_address: str = "0x02090bbB57546b0bb224880a3b93D2Ffb0dde144"
-    private_key: str = "0x4f3edf983ac636a65a842ce7c78d9aa706d3b113bce9c46f30d7d21715b23b1d"
-    aggregator_address: str = "0x4565f36D8E3cBC1c7187ea39Eb613E484411e075"
-    ipfs_url: str = "http://localhost:5001"
-    base_reward: int = 100
-    max_reward: int = 1000
-    fully_decentralized: bool = False
-    min_reputation: int = 100
     
     # === TRAINING CONFIGURATION ===
     support_weight: float = 0.5
@@ -152,28 +130,8 @@ class SystemConfig:
     retry_delay: float = 1.0  # Retry delay in seconds
     max_retries: int = 3  # Maximum number of retries
     
-    # === BLOCKCHAIN ADDRESSES ===
-    ganache_addresses: list = None  # Will be set to default addresses if None
-    
     # === DEVICE CONFIGURATION ===
     device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
-    
-    def get_default_ganache_addresses(self) -> list:
-        """Get default Ganache addresses for testing"""
-        if self.ganache_addresses is None:
-            return [
-                "0xCD3a95b26EA98a04934CCf6C766f9406496CA986",
-                "0x32cE285CF96cf83226552A9c3427Bd58c0A9AccD", 
-                "0x8EbA3b47c80a5E31b4Ea6fED4d5De8ebc93B8d6f",
-                "0x4565f36D8E3cBC1c7187ea39Eb613E484411e075",
-                "0x4f3edf983ac636a65a842ce7c78d9aa706d3b113bce9c46f30d7d21715b23b1d",
-                "0x74f2D28CEC2c97186dE1A02C1Bae84D19A7E8BC8",
-                "0x02090bbB57546b0bb224880a3b93D2Ffb0dde144",
-                "0x1234567890123456789012345678901234567890",
-                "0x2345678901234567890123456789012345678901",
-                "0x3456789012345678901234567890123456789012"
-            ]
-        return self.ganache_addresses
     
     @classmethod
     def from_env(cls) -> 'SystemConfig':
