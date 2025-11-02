@@ -158,6 +158,7 @@ class PerformanceVisualizer:
         consistency_losses = ttt_adaptation_data['consistency_losses']
         entropy_losses = ttt_adaptation_data.get('entropy_losses', [])
         prototype_losses = ttt_adaptation_data.get('prototype_losses', [])
+        gradient_norms = ttt_adaptation_data.get('gradient_norms', [])  # Gradient norm for convergence proof
         
         # Fix dimension mismatch by ensuring all arrays have the same length
         loss_components = [total_losses, support_losses, consistency_losses]
@@ -165,6 +166,8 @@ class PerformanceVisualizer:
             loss_components.append(entropy_losses)
         if prototype_losses:
             loss_components.append(prototype_losses)
+        if gradient_norms:
+            loss_components.append(gradient_norms)
         
         min_length = min(len(steps), *[len(comp) for comp in loss_components])
         if min_length == 0:
@@ -211,39 +214,140 @@ class PerformanceVisualizer:
             entropy_losses = entropy_losses[:min_length]
         if prototype_losses:
             prototype_losses = prototype_losses[:min_length]
+        if gradient_norms:
+            gradient_norms = gradient_norms[:min_length]
         
         logger.info(f"TTT adaptation plot: Using {min_length} data points (steps: {len(ttt_adaptation_data['steps'])}, losses: {len(ttt_adaptation_data['total_losses'])})")
         
+        # Adaptive scale selection: Use log scale only if loss range spans >2 orders of magnitude (100x)
+        # Collect all positive loss values for range calculation
+        all_positive_losses = []
+        for loss_list in [total_losses, support_losses, consistency_losses]:
+            all_positive_losses.extend([v for v in loss_list if v > 0])
+        if entropy_losses:
+            all_positive_losses.extend([v for v in entropy_losses if v > 0])
+        if prototype_losses:
+            all_positive_losses.extend([v for v in prototype_losses if v > 0])
+        
+        if len(all_positive_losses) > 0:
+            min_loss = min(all_positive_losses)
+            max_loss = max(all_positive_losses)
+            loss_ratio = max_loss / min_loss if min_loss > 0 else float('inf')
+            use_log_scale = loss_ratio > 100  # >2 orders of magnitude
+            logger.info(f"Loss range: [{min_loss:.4f}, {max_loss:.4f}], ratio: {loss_ratio:.2f}x - Using {'log' if use_log_scale else 'linear'} scale")
+        else:
+            use_log_scale = False  # Default to linear if no positive losses
+            logger.warning("No positive losses found - defaulting to linear scale")
+        
         # Plot 1: Total Loss Evolution
-        ax1.plot(steps, total_losses, 'b-', linewidth=2, marker='o', markersize=6, label='Total Loss')
+        # Use consistent styling with Plot 2 for same visual pattern
+        ax1.plot(steps, total_losses, 'b-', linewidth=2, marker='o', markersize=6, label='Total Loss', alpha=0.9)
         ax1.set_title('TTT Adaptation: Total Loss Evolution', fontweight='bold', fontfamily='Times New Roman')
         ax1.set_xlabel('TTT Step', fontfamily='Times New Roman')
-        ax1.set_ylabel('Loss Value', fontfamily='Times New Roman')
+        ax1.set_ylabel(f'Loss Value ({"log" if use_log_scale else "linear"} scale)', fontfamily='Times New Roman')
         ax1.grid(True, alpha=0.3)
-        ax1.set_yscale('log')
+        if use_log_scale:
+            ax1.set_yscale('log')
         ax1.legend(prop={'family': 'Times New Roman'})
         
-        # Add value labels for key points
+        # Add value labels for key points (less frequent to avoid clutter)
+        # Format depends on scale: scientific notation for log, decimal for linear
         for i, loss in enumerate(total_losses):
-            if i % 2 == 0:  # Show every other point to avoid clutter
-                ax1.annotate(f'{loss:.2e}', (steps[i], loss), 
+            if i % 10 == 0 and i < len(total_losses):  # Show every 10th point to avoid clutter
+                if use_log_scale:
+                    label_text = f'{loss:.2e}'
+                else:
+                    label_text = f'{loss:.4f}'
+                ax1.annotate(label_text, (steps[i], loss), 
                             textcoords="offset points", xytext=(0,10), ha='center',
-                            fontsize=8, fontfamily='Times New Roman')
+                            fontsize=7, fontfamily='Times New Roman', alpha=0.7)
         
         # Plot 2: Loss Components (including Total Loss for comparison)
-        ax2.plot(steps, total_losses, 'b-', linewidth=2, marker='o', markersize=6, label='Total Loss')
-        ax2.plot(steps, support_losses, 'g-', linewidth=2, marker='s', markersize=6, label='Support Loss')
-        ax2.plot(steps, consistency_losses, 'r-', linewidth=2, marker='^', markersize=6, label='Consistency Loss')
-        if entropy_losses:
-            ax2.plot(steps, entropy_losses, 'm-', linewidth=2, marker='d', markersize=6, label='Entropy Loss')
+        # Use EXACT same styling as Plot 1 for consistency
+        ax2.plot(steps, total_losses, 'b-', linewidth=2, marker='o', markersize=6, label='Total Loss', alpha=0.9)
+        # Use entropy_losses and diversity_losses if available (preferred), otherwise use mapped values
+        if entropy_losses and len(entropy_losses) == min_length:
+            # Use actual entropy loss with correct label
+            ax2.plot(steps, entropy_losses[:min_length], 'm-', linewidth=2, marker='d', markersize=6, label='Entropy Loss (Query Only)')
+        else:
+            # Fallback to mapped support_losses (which is actually entropy loss)
+            ax2.plot(steps, support_losses, 'g-', linewidth=2, marker='s', markersize=6, label='Entropy Loss (Query Only - from support_losses key)')
+        
+        # For diversity/consistency, prefer diversity_losses if available
+        diversity_to_plot = None
+        ax2_twin = None  # Track if we created a twin axis
+        ax2_grad_norm = None  # Track if we created a gradient norm axis
+        if 'diversity_losses' in ttt_adaptation_data and len(ttt_adaptation_data['diversity_losses']) == min_length:
+            diversity_to_plot = ttt_adaptation_data['diversity_losses'][:min_length]
+            # Diversity loss can be negative, so use linear scale or abs() for log scale
+            # Use separate axis or transform for negative values
+            ax2_twin = ax2.twinx() if any(v < 0 for v in diversity_to_plot) else ax2
+            ax2_twin.plot(steps, diversity_to_plot, 'c-', linewidth=2, marker='^', markersize=6, label='Diversity Loss (Query Only)')
+            if ax2_twin != ax2:
+                ax2_twin.set_ylabel('Diversity Loss (can be negative)', fontfamily='Times New Roman')
+                ax2_twin.grid(True, alpha=0.3)
+        elif len(consistency_losses) == min_length:
+            # Fallback to consistency_losses (which is actually diversity loss)
+            diversity_to_plot = consistency_losses[:min_length]
+            ax2_twin = ax2.twinx() if any(v < 0 for v in diversity_to_plot) else ax2
+            ax2_twin.plot(steps, diversity_to_plot, 'r-', linewidth=2, marker='^', markersize=6, label='Diversity Loss (Query Only - from consistency_losses key)')
+            if ax2_twin != ax2:
+                ax2_twin.set_ylabel('Diversity Loss (can be negative)', fontfamily='Times New Roman')
+                ax2_twin.grid(True, alpha=0.3)
         if prototype_losses:
             ax2.plot(steps, prototype_losses, 'c-', linewidth=2, marker='v', markersize=6, label='Prototype Loss')
+        
+        # Add gradient norm plot (for convergence proof) - use a third axis if needed
+        if gradient_norms and len(gradient_norms) == min_length:
+            # Use the same axis as diversity if twin exists, otherwise create new twin
+            if ax2_twin and ax2_twin != ax2:
+                # Use a third axis for gradient norm to avoid scale conflicts
+                ax2_grad_norm = ax2.twinx()
+                ax2_grad_norm.spines['right'].set_position(('outward', 60))  # Offset third axis
+                ax2_grad_norm.plot(steps, gradient_norms, 'orange', linewidth=2, marker='x', markersize=5, label='Gradient Norm ||∇L||', linestyle='--')
+                ax2_grad_norm.set_ylabel('Gradient Norm ||∇L|| (convergence proof)', fontfamily='Times New Roman', color='orange')
+                ax2_grad_norm.tick_params(axis='y', labelcolor='orange')
+                ax2_grad_norm.set_yscale('log')  # Gradient norm typically uses log scale
+                ax2_grad_norm.grid(True, alpha=0.2, linestyle=':')
+            else:
+                # No twin axis yet - create one for gradient norm
+                ax2_grad_norm = ax2.twinx()
+                ax2_grad_norm.plot(steps, gradient_norms, 'orange', linewidth=2, marker='x', markersize=5, label='Gradient Norm ||∇L||', linestyle='--')
+                ax2_grad_norm.set_ylabel('Gradient Norm ||∇L|| (convergence proof)', fontfamily='Times New Roman', color='orange')
+                ax2_grad_norm.tick_params(axis='y', labelcolor='orange')
+                ax2_grad_norm.set_yscale('log')  # Gradient norm typically uses log scale
+                ax2_grad_norm.grid(True, alpha=0.2, linestyle=':')
         ax2.set_title('TTT Adaptation: All Loss Components', fontweight='bold', fontfamily='Times New Roman')
         ax2.set_xlabel('TTT Step', fontfamily='Times New Roman')
-        ax2.set_ylabel('Loss Value', fontfamily='Times New Roman')
+        ax2.set_ylabel(f'Loss Value ({"log" if use_log_scale else "linear"} scale)', fontfamily='Times New Roman')
         ax2.grid(True, alpha=0.3)
-        ax2.set_yscale('log')
-        ax2.legend(prop={'family': 'Times New Roman'})
+        # Use same adaptive scale as Plot 1 for consistency
+        # If diversity loss has negative values, we'll use twin axis but keep main axis scale (log or linear) consistent
+        if use_log_scale:
+            ax2.set_yscale('log')
+        
+        # FIX 1: Combine legends from all axes if twin axes were created (includes diversity loss and gradient norm)
+        # FIX 2: Ensure total loss appears with same styling in both plots
+        lines = []
+        labels = []
+        lines1, labels1 = ax2.get_legend_handles_labels()
+        lines.extend(lines1)
+        labels.extend(labels1)
+        
+        if ax2_twin and ax2_twin != ax2:
+            lines2, labels2 = ax2_twin.get_legend_handles_labels()
+            lines.extend(lines2)
+            labels.extend(labels2)
+        
+        if ax2_grad_norm:
+            lines3, labels3 = ax2_grad_norm.get_legend_handles_labels()
+            lines.extend(lines3)
+            labels.extend(labels3)
+        
+        if lines:
+            ax2.legend(lines, labels, prop={'family': 'Times New Roman'}, loc='best', framealpha=0.9)
+        else:
+            ax2.legend(prop={'family': 'Times New Roman'}, loc='best', framealpha=0.9)
         
         # Add improvement annotations
         if len(total_losses) > 1:
@@ -955,7 +1059,7 @@ class PerformanceVisualizer:
                 model_data = evaluation_results[model_key]
                 confusion_data = model_data['confusion_matrix']
                 
-                # Handle both dictionary and list formats for confusion matrix
+                # Handle multiple formats for confusion matrix
                 if isinstance(confusion_data, dict):
                     # Dictionary format: {'tn': x, 'fp': y, 'fn': z, 'tp': w}
                     tn = confusion_data.get('tn', 0)
@@ -966,6 +1070,9 @@ class PerformanceVisualizer:
                 elif isinstance(confusion_data, list) and len(confusion_data) == 2:
                     # List format: [[tn, fp], [fn, tp]]
                     cm = np.array(confusion_data)
+                elif isinstance(confusion_data, np.ndarray):
+                    # Numpy array format: already in correct shape
+                    cm = confusion_data
                 else:
                     logger.warning(f"Unsupported confusion matrix format for {model_key}: {type(confusion_data)}")
                     continue
@@ -1083,36 +1190,6 @@ class PerformanceVisualizer:
         else:
             plt.close()  # Close figure instead of showing it
             return ""
-        
-        # Set tick labels
-        ax.set_xticks([0, 1])
-        ax.set_yticks([0, 1])
-        ax.set_xticklabels(['Normal', 'Attack'], fontsize=11)
-        ax.set_yticklabels(['Normal', 'Attack'], fontsize=11)
-        
-        # Add performance metrics as text
-        accuracy = (tp + tn) / (tp + tn + fp + fn) if (tp + tn + fp + fn) > 0 else 0
-        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
-        recall = tp / (tp + fn) if (tp + fn) > 0 else 0
-        f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
-        
-        metrics_text = f'Accuracy: {accuracy:.3f}\nPrecision: {precision:.3f}\nRecall: {recall:.3f}\nF1-Score: {f1_score:.3f}'
-        ax.text(0.02, 0.98, metrics_text, transform=ax.transAxes, 
-                fontsize=10, fontweight='bold', fontfamily='Times New Roman',
-                verticalalignment='top', bbox=dict(boxstyle='round,pad=0.3', 
-                facecolor='lightblue', alpha=0.8, edgecolor='black', linewidth=0.5))
-        
-        plt.tight_layout()
-        
-        if save:
-            plot_path = os.path.join(self.output_dir, f"confusion_matrices_{self.timestamp}.png")
-            plt.savefig(plot_path, dpi=300, bbox_inches='tight', facecolor='white')
-            logger.info(f"Confusion matrices plot saved: {plot_path}")
-            plt.close()
-            return plot_path
-        else:
-            plt.close()  # Close figure instead of showing it
-            return ""
     
     def plot_performance_comparison_with_annotations(self, base_results: Dict, ttt_results: Dict, 
                                                    scenario_names: List[str] = None, save: bool = True) -> str:
@@ -1137,8 +1214,9 @@ class PerformanceVisualizer:
             scenario_names = ['Scenario 1', 'Scenario 2', 'Scenario 3', 'Scenario 4', 'Scenario 5']
         
         # Extract metrics for comparison - handle both direct evaluation and k-fold formats
-        base_metrics = ['accuracy', 'precision', 'recall', 'f1_score', 'mcc']
-        ttt_metrics = ['accuracy', 'precision', 'recall', 'f1_score', 'mcc']
+        # Include AUC-PR as PRIMARY metric for imbalanced zero-day detection
+        base_metrics = ['accuracy', 'precision', 'recall', 'f1_score', 'auc_pr', 'mcc']
+        ttt_metrics = ['accuracy', 'precision', 'recall', 'f1_score', 'auc_pr', 'mcc']
         
         # Calculate metrics from available data
         base_values = []
@@ -1181,6 +1259,10 @@ class PerformanceVisualizer:
                 # Try both formats: direct and k-fold
                 base_val = base_results.get('f1_score', base_results.get('macro_f1_mean', 0))
                 ttt_val = ttt_results.get('f1_score', ttt_results.get('macro_f1_mean', 0))
+            elif metric == 'auc_pr':
+                # AUC-PR (Precision-Recall AUC) - PRIMARY metric for imbalanced zero-day detection
+                base_val = base_results.get('auc_pr', 0)
+                ttt_val = ttt_results.get('auc_pr', 0)
             elif metric == 'mcc':
                 # Try both formats: direct and k-fold (note: mccc vs mcc)
                 base_val = base_results.get('mcc', base_results.get('mccc', base_results.get('mcc_mean', 0)))
@@ -1226,16 +1308,25 @@ class PerformanceVisualizer:
         for i, (base_val, ttt_val) in enumerate(zip(base_values, ttt_values)):
             if base_val > 0:
                 improvement = ((ttt_val - base_val) / base_val) * 100
-                if abs(improvement) > 1:  # Only show significant improvements
+                # Show annotations for all improvements/decreases (not just >1%)
+                # This ensures precision and all other metrics show their changes
+                if abs(improvement) >= 0.01:  # Show if change is at least 0.01%
                     # Position annotation at the middle of the TTT bar
                     ttt_bar_center = x[i] + width/2
                     color = 'green' if improvement > 0 else 'red'
-                    ax1.annotate(f'{improvement:+.1f}%', 
+                    # Special highlighting for AUC-PR (PRIMARY metric)
+                    if base_metrics[i] == 'auc_pr':
+                        annotation_text = f'{improvement:+.2f}% ⭐'
+                        facecolor = 'lightgreen' if improvement > 0 else 'lightcoral'
+                    else:
+                        annotation_text = f'{improvement:+.2f}%'
+                        facecolor = color
+                    ax1.annotate(annotation_text, 
                                xy=(ttt_bar_center, ttt_val + 0.05), 
                                xytext=(ttt_bar_center, ttt_val + 0.1),
                                ha='center', va='bottom',
                                fontsize=8, fontweight='bold', fontfamily='Times New Roman',
-                               bbox=dict(boxstyle='round,pad=0.2', facecolor=color, alpha=0.8, 
+                               bbox=dict(boxstyle='round,pad=0.2', facecolor=facecolor, alpha=0.8, 
                                         edgecolor='black', linewidth=0.5),
                                arrowprops=dict(arrowstyle='->', lw=1, color='black'))
         
@@ -1249,16 +1340,18 @@ class PerformanceVisualizer:
         # Fix metric labels for display
         metric_labels = []
         for m in base_metrics:
-            if m == 'mcc_mean':
+            if m == 'mcc_mean' or m == 'mcc':
                 metric_labels.append('MCC')
-            elif m == 'macro_f1_mean':
+            elif m == 'macro_f1_mean' or m == 'f1_score':
                 metric_labels.append('F1 Score')
-            elif m == 'precision_mean':
+            elif m == 'precision_mean' or m == 'precision':
                 metric_labels.append('Precision')
-            elif m == 'recall_mean':
+            elif m == 'recall_mean' or m == 'recall':
                 metric_labels.append('Recall')
-            elif m == 'accuracy_mean':
+            elif m == 'accuracy_mean' or m == 'accuracy':
                 metric_labels.append('Accuracy')
+            elif m == 'auc_pr':
+                metric_labels.append('AUC-PR ⭐')  # Mark as PRIMARY metric
             else:
                 metric_labels.append(m.replace('_', ' ').title())
         
@@ -1471,6 +1564,94 @@ class PerformanceVisualizer:
             plot_path = os.path.join(self.output_dir, f"roc_curves_{self.timestamp}.png")
             plt.savefig(plot_path, dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
             logger.info(f"ROC curves plot saved: {plot_path}")
+        
+        plt.close()  # Close figure instead of showing it
+        return plot_path if save else ""
+
+    def plot_pr_curves(self, base_results: Dict, ttt_results: Dict, save: bool = True) -> str:
+        """
+        Plot Precision-Recall curves for both base and TTT models
+        (PRIMARY metric for imbalanced zero-day detection)
+        
+        Args:
+            base_results: Base model evaluation results
+            ttt_results: TTT model evaluation results
+            save: Whether to save the plot
+            
+        Returns:
+            plot_path: Path to saved plot
+        """
+        fig, ax = plt.subplots(1, 1, figsize=(10, 8))
+        
+        # Calculate baseline (prevalence - ratio of positive class)
+        # This is the horizontal line representing a random classifier on PR curve
+        baseline_precision = None
+        if 'pr_curve' in base_results or 'pr_curve' in ttt_results:
+            # Get positive class ratio from results (estimate from labels)
+            # For binary classification, we can estimate from precision at low recall
+            try:
+                # Use first precision value (which is precision at high threshold, approximates prevalence)
+                if 'pr_curve' in base_results and len(base_results['pr_curve'].get('precision', [])) > 0:
+                    baseline_precision = base_results['pr_curve']['precision'][0]
+                elif 'pr_curve' in ttt_results and len(ttt_results['pr_curve'].get('precision', [])) > 0:
+                    baseline_precision = ttt_results['pr_curve']['precision'][0]
+            except:
+                baseline_precision = None
+        
+        # Plot base model PR curve
+        if 'pr_curve' in base_results:
+            base_precision = base_results['pr_curve']['precision']
+            base_recall = base_results['pr_curve']['recall']
+            base_auc_pr = base_results.get('auc_pr', 0)
+            base_threshold = base_results.get('optimal_threshold', 0.5)
+            
+            ax.plot(base_recall, base_precision, color="brown", marker='o', linewidth=3, 
+                   label=f'Base Model (AUC-PR = {base_auc_pr:.3f}, Threshold = {base_threshold:.3f})')
+        
+        # Plot TTT model PR curve
+        if 'pr_curve' in ttt_results:
+            ttt_precision = ttt_results['pr_curve']['precision']
+            ttt_recall = ttt_results['pr_curve']['recall']
+            ttt_auc_pr = ttt_results.get('auc_pr', 0)
+            ttt_threshold = ttt_results.get('optimal_threshold', 0.5)
+            
+            ax.plot(ttt_recall, ttt_precision, color="blue", marker='D', linestyle='--', linewidth=2,
+                   label=f'TTT Model (AUC-PR = {ttt_auc_pr:.3f}, Threshold = {ttt_threshold:.3f})')
+        
+        # Plot baseline (random classifier) - horizontal line at positive class prevalence
+        if baseline_precision is not None:
+            ax.axhline(y=baseline_precision, color='k', linestyle='--', linewidth=1, alpha=0.5, 
+                      label=f'Random Classifier (Precision = {baseline_precision:.3f})')
+        
+        # Customize plot (matching ROC curve style)
+        ax.set_xlabel('Recall', fontfamily='Times New Roman', fontsize=14, fontweight='bold')
+        ax.set_ylabel('Precision', fontfamily='Times New Roman', fontsize=14, fontweight='bold')
+        ax.set_title('Precision-Recall Curves Comparison: Base vs TTT Models ⭐ (PRIMARY Metric)', 
+                    fontweight='bold', fontfamily='Times New Roman', fontsize=14)
+        ax.legend(prop={'family': 'Times New Roman', 'size': 11}, loc='best')
+        ax.grid(False)
+        ax.set_xlim([0, 1])
+        ax.set_ylim([0, 1])
+        
+        # Add performance annotations (matching ROC curve style)
+        if 'pr_curve' in base_results and 'pr_curve' in ttt_results:
+            base_auc_pr = base_results.get('auc_pr', 0)
+            ttt_auc_pr = ttt_results.get('auc_pr', 0)
+            improvement = ttt_auc_pr - base_auc_pr
+            
+            ax.text(0.05, 0.15, f'AUC-PR Improvement: {improvement:+.3f} ⭐', 
+                   fontsize=11, fontweight='bold', fontfamily='Times New Roman',
+                   bbox=dict(boxstyle='round,pad=0.4', facecolor='lightgreen', alpha=0.8, edgecolor='black'))
+        
+        ax.spines['top'].set_visible(True)
+        ax.spines['right'].set_visible(True)
+     
+        plt.tight_layout()
+        
+        if save:
+            plot_path = os.path.join(self.output_dir, f"pr_curves_{self.timestamp}.png")
+            plt.savefig(plot_path, dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
+            logger.info(f"PR curves plot saved: {plot_path}")
         
         plt.close()  # Close figure instead of showing it
         return plot_path if save else ""

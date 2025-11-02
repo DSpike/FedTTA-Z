@@ -463,7 +463,7 @@ class BlockchainFederatedClient:
     Blockchain-enabled federated learning client
     """
     
-    def __init__(self, client_id: str, model: nn.Module, device: str = 'cuda' if torch.cuda.is_available() else 'cpu'):
+    def __init__(self, client_id: str, model: nn.Module, device: str = 'cuda' if torch.cuda.is_available() else 'cpu', zero_day_attack_label: int = 4):
         """
         Initialize federated client
         
@@ -471,12 +471,14 @@ class BlockchainFederatedClient:
             client_id: Unique client identifier
             model: Local model instance
             device: Device to run on
+            zero_day_attack_label: Label of attack type to exclude from training
         """
         import copy
         self.client_id = client_id
         self.model = copy.deepcopy(model)  # FIXED: Each client gets independent model copy
         self.device = device
         self.model.to(device)
+        self.zero_day_attack_label = zero_day_attack_label
         
         # Training data
         self.train_data = None
@@ -565,7 +567,7 @@ class BlockchainFederatedClient:
                 n_tasks=5,  # 5 tasks per epoch
                 phase="training",
                 normal_query_ratio=0.8,  # 80% Normal samples in query set for training
-                zero_day_attack_label=4  # Exclude DoS (label 4) from training
+                zero_day_attack_label=self.zero_day_attack_label  # Use config-based zero-day attack
             )
             
             # Phase 2: Meta-learning training
@@ -900,7 +902,7 @@ class BlockchainFedAVGCoordinator:
     Main coordinator for blockchain-enabled federated learning
     """
     
-    def __init__(self, model: nn.Module, num_clients: int = 3, device: str = 'cuda' if torch.cuda.is_available() else 'cpu'):
+    def __init__(self, model: nn.Module, num_clients: int = 3, device: str = 'cuda' if torch.cuda.is_available() else 'cpu', zero_day_attack_label: int = 4):
         """
         Initialize coordinator
         
@@ -908,10 +910,12 @@ class BlockchainFedAVGCoordinator:
             model: Global model architecture
             num_clients: Number of federated clients
             device: Device to run on
+            zero_day_attack_label: Label of attack type to exclude from training
         """
         self.model = model
         self.num_clients = num_clients
         self.device = device
+        self.zero_day_attack_label = zero_day_attack_label
         
         # Initialize aggregator
         self.aggregator = FedAVGAggregator(model, device)
@@ -920,7 +924,7 @@ class BlockchainFedAVGCoordinator:
         self.clients = []
         for i in range(num_clients):
             client_model = copy.deepcopy(model)
-            client = BlockchainFederatedClient(f"client_{i+1}", client_model, device)
+            client = BlockchainFederatedClient(f"client_{i+1}", client_model, device, zero_day_attack_label)
             self.clients.append(client)
         
         # Coordination state

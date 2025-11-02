@@ -111,6 +111,7 @@ class TCN(nn.Module):
         
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
+        self.num_layers = num_layers
         self.sequence_length = sequence_length
         
         # Define dilations for multi-scale feature extraction

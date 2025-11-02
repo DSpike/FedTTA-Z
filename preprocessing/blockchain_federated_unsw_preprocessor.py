@@ -11,13 +11,11 @@ from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.feature_selection import mutual_info_classif, SelectKBest, f_classif
+from sklearn.feature_selection import mutual_info_classif, SelectKBest
 from sklearn.feature_selection import RFE
-from sklearn.linear_model import LogisticRegression
 from sklearn.svm import LinearSVC
 from imblearn.over_sampling import SMOTE, ADASYN
 from imblearn.under_sampling import RandomUnderSampler
-from imblearn.pipeline import Pipeline as ImbPipeline
 import psutil
 import logging
 import os
@@ -778,8 +776,9 @@ class UNSWPreprocessor:
             raise ValueError("No normal samples available in test_df for test set. Cannot use training data to prevent data leakage.")
         
         # Sample attack types for test data (including zero-day)
-        # IMPORTANT: Sample "other attacks" from test data only to prevent leakage
-        zero_day_sample = zero_day_test.sample(n=min(target_attack_samples // 2, len(zero_day_test)), random_state=42)
+        # IMPORTANT: For zero-day detection evaluation, use ALL available zero-day samples
+        # This ensures we test on the maximum number of unseen attack samples
+        zero_day_sample = zero_day_test.copy()  # Use ALL zero-day samples for evaluation
         
         # Get other attack types from test data only (excluding zero-day attack)
         test_other_attacks = test_attacks[test_attacks['attack_cat'] != zero_day_attack].copy()
@@ -1011,13 +1010,19 @@ class UNSWPreprocessor:
         logger.info(f"Test samples: {len(X_test)}")
         logger.info(f"Zero-day samples ({zero_day_attack}, label={zero_day_attack_label}): {len(zero_day_indices)}")
         
+        # Store multiclass labels and attack_cat for zero-day identification after sequence creation
+        y_test_multiclass = torch.LongTensor(test_scaled['label'].values)  # Multiclass labels (0-9)
+        test_attack_cat = test_scaled['attack_cat'].values.tolist()  # Attack category names
+        
         return {
             'X_train': X_train,
             'y_train': y_train,
             'X_val': X_val,
             'y_val': y_val,
             'X_test': X_test,
-            'y_test': y_test,
+            'y_test': y_test,  # Binary labels for training
+            'y_test_multiclass': y_test_multiclass,  # Multiclass labels for zero-day identification
+            'test_attack_cat': test_attack_cat,  # Attack category names for zero-day identification
             'zero_day_indices': zero_day_indices,
             'feature_names': feature_cols,
             'scaler': self.scaler,

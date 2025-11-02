@@ -1,35 +1,4 @@
 #!/usr/bin/env python3
-"""
-Transductive Few-Shot Model with Test-Time Training for Zero-Day Detection
-Implements meta-learning approach for rapid adaptation to new attack patterns
-
-PROPER TTT EVALUATION:
-This module implements TRUE test-time training following TTT principles:
-
-1. TTT SHOULD ALWAYS RUN: Test-time training is designed to run at test time on unlabeled data.
-   The evaluation_mode parameter should be set to False for proper TTT evaluation.
-
-2. NO DATA LEAKAGE: TTT uses unsupervised objectives (consistency loss, smoothness regularization)
-   on test data, so no test label leakage occurs. UNSUPERVISED TTT: test data only, no labels.
-
-3. DATA SPLIT VALIDATION: The validate_data_splits() method checks for exact duplicates
-   between train/val/test splits to ensure no data overlap.
-
-4. UNSUPERVISED TTT: During evaluation, test data only is used:
-   - Computing initial class prototypes via k-means clustering
-   - No labeled examples needed for transductive adaptation
-   - No data leakage since only test data is used
-
-5. EVALUATION WORKFLOW:
-   - Training: Use training data for meta-learning
-   - Validation: Use validation data for hyperparameter tuning only
-   - Testing: Use test data for final evaluation with TTT adaptation enabled
-   - TTT adaptation uses only test data for prototype refinement via k-means clustering
-
-CRITICAL: TTT should NEVER be disabled during evaluation as this violates TTT principles
-and provides invalid performance metrics that don't reflect the model's true capability.
-"""
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -47,545 +16,6 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
-class ThresholdAgent:
-    """
-    Reinforcement Learning agent for learning optimal TTT threshold
-    Uses a simple neural network to map state to threshold value
-    """
-    
-    def __init__(self, state_dim=10, hidden_dim=64, learning_rate=3e-4):
-        self.state_dim = state_dim
-        self.hidden_dim = hidden_dim
-        self.learning_rate = learning_rate
-        
-        # Actor-Critic Architecture (PPO)
-        self.actor = nn.Sequential(
-            nn.Linear(state_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, 1),
-            nn.Sigmoid()  # Output between 0 and 1
-        )
-        
-        self.critic = nn.Sequential(
-            nn.Linear(state_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, 1)
-        )
-        
-        # PPO optimizers
-        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=learning_rate)
-        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=learning_rate)
-        
-        # PPO hyperparameters
-        self.clip_ratio = 0.2
-        self.value_loss_coef = 0.5
-        self.entropy_coef = 0.01
-        self.gamma = 0.99
-        self.lambda_gae = 0.95
-        
-        # Experience replay buffer
-        self.replay_buffer = []
-        self.buffer_size = 1000
-        
-        # Contextual bandit exploration
-        self.ucb_confidence = 2.0
-        self.action_counts = torch.zeros(1)
-        self.action_rewards = torch.zeros(1)
-        
-        # Multi-objective reward weights (learnable)
-        self.reward_weights = nn.Parameter(torch.tensor([0.3, 0.25, 0.25, 0.1, 0.1]))
-        
-        # Performance tracking
-        self.performance_history = []
-        self.threshold_history = []
-        self.convergence_detected = False
-        self.consecutive_convergence_steps = 0
-        
-        # Configure logging
-        self.logger = logging.getLogger(__name__)
-
-        
-    def get_threshold(self, state):
-        """
-        Get threshold using Actor-Critic with Contextual Bandit Exploration
-        
-        Args:
-            state: torch.Tensor of enhanced state representation
-            
-        Returns:
-            threshold: float between 0 and 1
-        """
-        with torch.no_grad():
-            # Get policy action from actor
-            policy_action = self.actor(state.unsqueeze(0))
-            
-            # Contextual bandit exploration with UCB
-            total_counts = torch.sum(self.action_counts)
-            if total_counts > 0:
-                ucb_bonus = self.ucb_confidence * torch.sqrt(
-                    torch.log(total_counts) / (self.action_counts + 1e-8)
-                )
-                # Add exploration noise
-                exploration_noise = torch.randn_like(policy_action) * 0.1
-                threshold = policy_action + exploration_noise + ucb_bonus
-            else:
-                threshold = policy_action
-            
-            # Ensure threshold is in reasonable range
-            threshold = torch.clamp(threshold, 0.1, 0.9).item()
-        
-        # Store threshold history and monitor convergence
-        self.threshold_history.append(threshold)
-        self._monitor_rl_convergence()
-
-        return threshold
-    
-    def get_enhanced_state(self, confidence_scores, probabilities, model_performance_history=None):
-        """
-        Enhanced state representation with more contextual information
-        
-        Args:
-            confidence_scores: torch.Tensor of confidence scores
-            probabilities: torch.Tensor of class probabilities
-            model_performance_history: List of recent performance metrics
-            
-        Returns:
-            state: torch.Tensor of enhanced state features
-        """
-        state_features = []
-        
-        # Basic confidence features
-        state_features.append(torch.mean(confidence_scores).item())
-        state_features.append(torch.std(confidence_scores).item())
-        state_features.append(torch.min(confidence_scores).item())
-        state_features.append(torch.max(confidence_scores).item())
-        
-        # Entropy features
-        if probabilities is not None:
-            entropy = -torch.sum(probabilities * torch.log(probabilities + 1e-8), dim=1)
-            state_features.append(torch.mean(entropy).item())
-            state_features.append(torch.std(entropy).item())
-        else:
-            state_features.extend([0.0, 0.0])
-        
-        # Performance history features
-        if model_performance_history and len(model_performance_history) > 0:
-            state_features.append(model_performance_history[-1])  # Latest accuracy
-            state_features.append(np.mean(model_performance_history[-5:]))  # Recent average
-            state_features.append(np.std(model_performance_history[-5:]))  # Recent variance
-        else:
-            state_features.extend([0.5, 0.5, 0.0])  # Default values
-        
-        # Data distribution features
-        state_features.append(len(confidence_scores))  # Batch size
-        state_features.append(torch.sum(confidence_scores > 0.5).item() / len(confidence_scores))  # High confidence ratio
-        
-        return torch.tensor(state_features, dtype=torch.float32)
-    
-    def calculate_multi_objective_reward(self, metrics_dict):
-        """
-        Multi-objective reward function with proper weighting
-        
-        Args:
-            metrics_dict: Dictionary containing performance metrics
-            
-        Returns:
-            reward: float total reward value
-        """
-        # Primary objectives
-        accuracy_reward = metrics_dict.get('accuracy_improvement', 0.0) * 10.0
-        precision_reward = metrics_dict.get('precision', 0.0) * 8.0
-        recall_reward = metrics_dict.get('recall', 0.0) * 8.0
-        
-        # Secondary objectives
-        efficiency_reward = self._calculate_efficiency_reward(metrics_dict)
-        stability_reward = self._calculate_stability_reward(metrics_dict)
-        
-        # Constraint penalties
-        fp_penalty = metrics_dict.get('false_positives', 0) * -2.0
-        fn_penalty = metrics_dict.get('false_negatives', 0) * -3.0
-        
-        # Multi-objective optimization using weighted sum
-        objectives = torch.tensor([accuracy_reward, precision_reward, recall_reward, 
-                                  efficiency_reward, stability_reward])
-        
-        # Use learnable weights
-        total_reward = torch.dot(self.reward_weights, objectives) + fp_penalty + fn_penalty
-        
-        return total_reward.item()
-    
-    def _calculate_efficiency_reward(self, metrics_dict):
-        """Calculate efficiency reward based on sample selection"""
-        samples_selected = metrics_dict.get('samples_selected', 0)
-        total_samples = metrics_dict.get('total_samples', 1)
-        
-        if total_samples > 0:
-            selection_ratio = samples_selected / total_samples
-            # Optimal selection ratio is between 0.1 and 0.4
-            if 0.1 <= selection_ratio <= 0.4:
-                return 5.0
-            elif selection_ratio < 0.05:
-                return -10.0
-            elif selection_ratio > 0.6:
-                return -5.0
-        return 0.0
-    
-    def train_with_ppo(self, experiences, epochs=4):
-        """
-        Proper PPO training loop for Actor-Critic architecture
-        
-        Args:
-            experiences: List of (state, action, reward, old_log_prob) tuples
-            epochs: Number of training epochs
-        """
-        if len(experiences) < 10:
-            return
-        
-        # Convert experiences to tensors
-        states = torch.stack([exp[0] for exp in experiences])
-        actions = torch.tensor([exp[1] for exp in experiences]).unsqueeze(1)
-        rewards = torch.tensor([exp[2] for exp in experiences]).unsqueeze(1)
-        old_log_probs = torch.tensor([exp[3] for exp in experiences]).unsqueeze(1)
-        
-        # Compute advantages using GAE
-        advantages = self.compute_gae_advantages(rewards)
-        returns = advantages + self.critic(states).detach()
-        
-        # Normalize advantages
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-        
-        for epoch in range(epochs):
-            # Actor update
-            log_probs = self.get_log_prob(states, actions)
-            ratios = torch.exp(log_probs - old_log_probs)
-            
-            # PPO clipped objective
-            surr1 = ratios * advantages
-            surr2 = torch.clamp(ratios, 1 - self.clip_ratio, 1 + self.clip_ratio) * advantages
-            actor_loss = -torch.min(surr1, surr2).mean()
-            
-            # Critic update
-            values = self.critic(states)
-            value_loss = F.mse_loss(values, returns)
-            
-            # Entropy bonus
-            entropy_loss = -torch.mean(log_probs)
-            
-            # Total loss
-            total_loss = actor_loss + self.value_loss_coef * value_loss + self.entropy_coef * entropy_loss
-            
-            # Update networks
-            self.actor_optimizer.zero_grad()
-            self.critic_optimizer.zero_grad()
-            total_loss.backward()
-            self.actor_optimizer.step()
-            self.critic_optimizer.step()
-    
-    def get_log_prob(self, states, actions):
-        """Get log probability of actions given states"""
-        action_probs = self.actor(states)
-        # Use Beta distribution for continuous actions in [0,1]
-        from torch.distributions import Beta
-        # Convert to Beta distribution parameters
-        alpha = action_probs * 10 + 1  # Scale for Beta distribution
-        beta = (1 - action_probs) * 10 + 1
-        dist = Beta(alpha, beta)
-        return dist.log_prob(actions)
-    
-    def compute_gae_advantages(self, rewards):
-        """Compute Generalized Advantage Estimation (GAE)"""
-        advantages = []
-        advantage = 0
-        
-        # Reverse iteration for GAE
-        for i in reversed(range(len(rewards))):
-            if i == len(rewards) - 1:
-                next_value = 0
-            else:
-                next_value = self.critic(rewards[i+1:i+2]).item()
-            
-            delta = rewards[i] + self.gamma * next_value - self.critic(rewards[i:i+1]).item()
-            advantage = delta + self.gamma * self.lambda_gae * advantage
-            advantages.insert(0, advantage)
-        
-        return torch.tensor(advantages).unsqueeze(1)
-    
-    def _monitor_rl_convergence(self):
-        """
-        Monitor RL convergence and automatically adjust exploration.
-        Detects stable policies and switches to exploitation-only mode.
-        Includes safety mechanism to resume exploration if performance degrades.
-        """
-        # Check convergence only after sufficient history
-        if len(self.threshold_history) <= 50:
-            return
-        
-        # CONVERGENCE DETECTION
-        if not self.convergence_detected:
-            recent_thresholds = self.threshold_history[-50:]
-            std = np.std(recent_thresholds)
-            
-            # Check if policy has converged (low variance in thresholds)
-            if std < 0.01:  # Threshold for convergence detection
-                self.consecutive_convergence_steps += 1
-                if self.consecutive_convergence_steps >= 5:  # Confirm over 5 steps
-                    old_epsilon = self.epsilon
-                    self.epsilon = self.epsilon_min  # Switch to exploitation-only
-                    self.convergence_detected = True
-                    
-                    self.logger.info(f"🎯 RL CONVERGENCE DETECTED!")
-                    self.logger.info(f"   📊 Threshold std: {std:.4f} (over 50 steps)")
-                    self.logger.info(f"   🔄 Epsilon: {old_epsilon:.3f} → {self.epsilon:.3f}")
-                    self.logger.info(f"   ✅ Switching to exploitation-only policy")
-                    self.logger.info(f"   🚀 Optimal zero-day threshold policy learned!")
-        else:
-            # PERFORMANCE SAFETY: Resume exploration if recent rewards are poor
-            if len(self.memory) >= 20:
-                recent_rewards = [mem[2] for mem in self.memory[-20:]]
-                avg_recent_reward = np.mean(recent_rewards)
-                
-                if avg_recent_reward < self.performance_safety_threshold:
-                    self.convergence_detected = False
-                    self.epsilon = 0.05  # Moderate exploration
-                    self.consecutive_convergence_steps = 0
-                    
-                    self.logger.warning(f"🔄 RL RESUMING EXPLORATION!")
-                    self.logger.warning(f"   📉 Performance degradation detected")
-                    self.logger.warning(f"   📊 Recent reward avg: {avg_recent_reward:.2f}")
-                    self.logger.warning(f"   🔄 Epsilon: {self.epsilon_min:.3f} → {self.epsilon:.3f}")
-        
-        # Calculate threshold stability (standard deviation)
-    def update(self, state, threshold, metrics_dict):
-        """
-        ✅ SCIENTIFIC RL UPDATE: Update the agent using proper RL methods
-        
-        Args:
-            state: Current state vector
-            threshold: Threshold value used
-            metrics_dict: Dictionary containing performance metrics
-        """
-        # Calculate multi-objective reward
-        reward = self.calculate_multi_objective_reward(metrics_dict)
-        
-        # Get log probability of the action taken
-        with torch.no_grad():
-            log_prob = self.get_log_prob(state.unsqueeze(0), torch.tensor([[threshold]]))
-        
-        # Store experience in replay buffer
-        experience = (state, threshold, reward, log_prob.item())
-        self.replay_buffer.append(experience)
-        
-        # Update action counts for UCB
-        self.action_counts[0] += 1
-        self.action_rewards[0] += reward
-        
-        # Train with PPO if we have enough experiences
-        if len(self.replay_buffer) >= 32:
-            self.train_with_ppo(self.replay_buffer[-32:])
-            
-            # Clear old experiences to prevent memory overflow
-            if len(self.replay_buffer) > self.buffer_size:
-                self.replay_buffer = self.replay_buffer[-self.buffer_size//2:]
-    
-    def _calculate_reward(self, entropy_reduction, confidence_improvement, consistency_improvement, 
-                         samples_selected=0, total_samples=0, threshold=0.5):
-        """
-        ✅ UNSUPERVISED REWARD: Calculate reward based ONLY on unsupervised metrics
-        
-        Args:
-            entropy_reduction: Reduction in entropy (unsupervised)
-            confidence_improvement: Improvement in confidence scores (unsupervised)
-            consistency_improvement: Improvement in consistency (unsupervised)
-            samples_selected: Number of samples selected for TTT
-            total_samples: Total number of samples available
-            threshold: Threshold value used
-            
-        Returns:
-            reward: float reward value (purely unsupervised)
-        """
-        # Base reward from entropy reduction (core TTT objective)
-        entropy_reward = entropy_reduction * 20.0
-        
-        # Confidence improvement bonus (unsupervised)
-        confidence_reward = confidence_improvement * 15.0
-        
-        # Consistency improvement bonus (unsupervised)
-        consistency_reward = consistency_improvement * 10.0
-        
-        # Sample selection efficiency reward/penalty (unsupervised)
-        if total_samples > 0:
-            selection_ratio = samples_selected / total_samples
-            # Optimal selection ratio is between 0.1 and 0.4
-            if 0.1 <= selection_ratio <= 0.4:
-                selection_efficiency = 5.0  # Bonus for good selection ratio
-            elif selection_ratio < 0.05:  # Too few samples selected
-                selection_efficiency = -10.0  # Penalty for under-selection
-            elif selection_ratio > 0.6:  # Too many samples selected
-                selection_efficiency = -5.0  # Penalty for over-selection
-            else:
-                selection_efficiency = 0.0  # Neutral for moderate ratios
-        else:
-            selection_efficiency = 0.0
-        
-        # Threshold stability reward (prefer thresholds in reasonable range)
-        if 0.2 <= threshold <= 0.8:
-            threshold_stability = 2.0
-        else:
-            threshold_stability = -1.0
-        
-        # Calculate total reward (purely unsupervised)
-        total_reward = (entropy_reward + confidence_reward + consistency_reward + 
-                       selection_efficiency + threshold_stability)
-        
-        # Normalize reward to prevent extreme values
-        total_reward = max(-50.0, min(50.0, total_reward))
-        
-        return total_reward
-    
-    def get_reward_breakdown(self, adaptation_success_rate, accuracy_improvement, 
-                            false_positives=0, false_negatives=0, true_positives=0, true_negatives=0,
-                            precision=0.0, recall=0.0, f1_score=0.0, samples_selected=0, total_samples=0, threshold=0.5):
-        """
-        Get detailed breakdown of reward components for debugging
-        
-        Returns:
-            dict: Detailed breakdown of all reward components
-        """
-        # Calculate all components
-        base_reward = adaptation_success_rate * 10.0
-        accuracy_bonus = accuracy_improvement * 20.0
-        precision_reward = precision * 15.0
-        recall_reward = recall * 15.0
-        f1_reward = f1_score * 25.0
-        fp_penalty = false_positives * 2.0
-        fn_penalty = false_negatives * 3.0
-        tp_bonus = true_positives * 0.5
-        tn_bonus = true_negatives * 0.3
-        
-        # Sample selection efficiency
-        if total_samples > 0:
-            selection_ratio = samples_selected / total_samples
-            if 0.1 <= selection_ratio <= 0.4:
-                selection_efficiency = 5.0
-            elif selection_ratio < 0.05:
-                selection_efficiency = -10.0
-            elif selection_ratio > 0.6:
-                selection_efficiency = -5.0
-            else:
-                selection_efficiency = 0.0
-        else:
-            selection_efficiency = 0.0
-        
-        # Threshold stability
-        if 0.2 <= threshold <= 0.8:
-            threshold_stability = 2.0
-        else:
-            threshold_stability = -1.0
-        
-        # Balance reward
-        if precision > 0 and recall > 0:
-            balance_ratio = min(precision, recall) / max(precision, recall)
-            balance_reward = balance_ratio * 10.0
-        else:
-            balance_reward = 0.0
-        
-        total_reward = (base_reward + accuracy_bonus + precision_reward + recall_reward + 
-                       f1_reward + tp_bonus + tn_bonus + selection_efficiency + 
-                       threshold_stability + balance_reward - fp_penalty - fn_penalty)
-        
-        return {
-            'base_reward': base_reward,
-            'accuracy_bonus': accuracy_bonus,
-            'precision_reward': precision_reward,
-            'recall_reward': recall_reward,
-            'f1_reward': f1_reward,
-            'tp_bonus': tp_bonus,
-            'tn_bonus': tn_bonus,
-            'fp_penalty': -fp_penalty,
-            'fn_penalty': -fn_penalty,
-            'selection_efficiency': selection_efficiency,
-            'threshold_stability': threshold_stability,
-            'balance_reward': balance_reward,
-            'total_reward': total_reward,
-            'selection_ratio': samples_selected / total_samples if total_samples > 0 else 0.0
-        }
-    
-    def _train_network(self):
-        """
-        Train the neural network using stored experiences
-        """
-        if len(self.memory) < 10:
-            return
-        
-        # Sample recent experiences
-        recent_memories = self.memory[-10:]
-        
-        states = torch.stack([mem[0] for mem in recent_memories])
-        thresholds = torch.tensor([mem[1] for mem in recent_memories]).unsqueeze(1)
-        rewards = torch.tensor([mem[2] for mem in recent_memories]).unsqueeze(1)
-        
-        # Normalize rewards
-        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
-        
-        # Predict thresholds
-        predicted_thresholds = self.network(states)
-        
-        # Calculate loss (MSE between predicted and actual thresholds, weighted by rewards)
-        loss = F.mse_loss(predicted_thresholds, thresholds, reduction='none')
-        weighted_loss = (loss * (1 + rewards)).mean()
-        
-        # Update network
-        self.optimizer.zero_grad()
-        weighted_loss.backward()
-        self.optimizer.step()
-        
-        # Clear old memories to prevent memory overflow
-        if len(self.memory) > 100:
-            self.memory = self.memory[-50:]
-    
-    def get_adaptation_success_rate(self):
-        """Get current adaptation success rate"""
-        if not self.adaptation_history:
-            return 0.5  # Default value
-        return np.mean(self.adaptation_history[-10:])  # Average of last 10 adaptations
-    
-    def reset(self):
-        """Reset the agent for new training session"""
-        self.memory = []
-        self.adaptation_history = []
-        self.threshold_history = []
-        self.epsilon = 0.1
-        self.convergence_detected = False
-        self.consecutive_convergence_steps = 0
-        self.logger.info("RL agent reset-  Ready for new session")
-    
-
-    def get_rl_stats(self):
-        """
-        Get current RL agent statistics
-        """
-        if not self.threshold_history:
-            return{}
-
-
-        stats ={
-            'epsilon': self.epsilon,
-            'converged': self.convergence_detected,
-            'threshold_mean': np.mean(self.threshold_history[-20:]),
-            'threshold_std': np.std(self.threshold_history[-20:]),
-            'history_length': len(self.threshold_history),
-            'memory_size': len(self.memory)
-        }
-    
-        if self.memory:
-            recent_rewards = [mem[2] for mem in self.memory[-10:]]
-            stats['recent_avg_reward'] = np.mean(recent_rewards)
-            stats['recent_reward_std'] = np.std(recent_rewards)
-        return stats
         
 
 class EmbeddingUtils:
@@ -693,8 +123,7 @@ class PrototypeUtils:
                 cluster_embeddings = test_embeddings[cluster_mask]
                 cluster_prototype = cluster_embeddings.mean(dim=0)
             else:
-                # Fallback: use random prototype if cluster is empty
-                cluster_prototype = torch.randn_like(test_embeddings[0])
+                raise ValueError("Empty cluster found during prototype computation")
             
             updated_prototypes.append(cluster_prototype)
         
@@ -897,7 +326,7 @@ class FocalLoss(nn.Module):
         self.gamma = gamma
         self.reduction = reduction
     
-    def forward(self, inputs, targets):
+    def forward(self, inputs, targets, weight=None):
         """
         Forward pass of Focal Loss
         
@@ -909,7 +338,7 @@ class FocalLoss(nn.Module):
             Focal loss value
         """
         # Compute cross entropy loss
-        ce_loss = F.cross_entropy(inputs, targets, reduction='none')
+        ce_loss = F.cross_entropy(inputs, targets, weight=weight, reduction='none')
         
         # Compute probability of true class
         pt = torch.exp(-ce_loss)
@@ -938,11 +367,8 @@ class TransductiveLearner(nn.Module):
         self.support_weight = support_weight
         self.test_weight = test_weight
         
-        # RL-based threshold agent for dynamic TTT sample selection
-        self.threshold_agent = ThresholdAgent()
-        self.ttt_threshold = 0.5  # Fallback threshold
-        self.adaptation_success_history = []
-        self.performance_history = []  # Track performance for RL agent
+        # TTT parameters (will be updated from config)
+        self.ttt_threshold = 0.5
         
         # TTT parameters (will be updated from config)
         self.ttt_lr = 0.0005
@@ -962,6 +388,7 @@ class TransductiveLearner(nn.Module):
         tcn_output_dim = hidden_dim + (hidden_dim // 2) + (hidden_dim * 2)
         self.feature_projection = nn.Sequential(
             nn.Linear(tcn_output_dim, embedding_dim),
+            nn.BatchNorm1d(embedding_dim),  # Added for TENT compatibility
             nn.ReLU(),
             nn.Dropout(0.5)
         )
@@ -1002,76 +429,7 @@ class TransductiveLearner(nn.Module):
         """Meta-learner compatibility property"""
         return self
     
-    def get_dynamic_threshold(self, confidence_scores, probabilities: Optional[torch.Tensor] = None, num_classes: Optional[int] = None):
-        """
-        Get dynamic threshold using enhanced RL agent
-        
-        Args:
-            confidence_scores: torch.Tensor of confidence scores
-            probabilities: Optional torch.Tensor of class probabilities (batch_size, num_classes)
-            num_classes: Optional number of classes for entropy normalization
-            
-        Returns:
-            threshold: float threshold value
-        """
-        # Use enhanced state representation
-        state = self.threshold_agent.get_enhanced_state(
-            confidence_scores, 
-            probabilities, 
-            self.performance_history
-        )
-        
-        # Get threshold from RL agent
-        threshold = self.threshold_agent.get_threshold(state)
-        
-        # Update fallback threshold
-        self.ttt_threshold = threshold
-        
-        return threshold
     
-    def update_rl_agent(self, metrics_dict, threshold_used):
-        """
-        Update RL agent with performance metrics
-        
-        Args:
-            metrics_dict: Dictionary containing performance metrics
-            threshold_used: Threshold value that was used
-        """
-        # Add threshold to metrics
-        metrics_dict['threshold'] = threshold_used
-        
-        # Get current state for update
-        if hasattr(self, 'last_confidence_scores') and hasattr(self, 'last_probabilities'):
-            state = self.threshold_agent.get_enhanced_state(
-                self.last_confidence_scores,
-                self.last_probabilities,
-                self.performance_history
-            )
-            
-            # Update RL agent
-            self.threshold_agent.update(state, threshold_used, metrics_dict)
-            
-            # Update performance history
-            if 'accuracy' in metrics_dict:
-                self.performance_history.append(metrics_dict['accuracy'])
-                # Keep only recent history
-                if len(self.performance_history) > 100:
-                    self.performance_history = self.performance_history[-50:]
-    
-    def select_ttt_samples(self, confidence_scores, threshold=None):
-        """
-        Select samples for TTT based on confidence scores
-        Args:
-            confidence_scores: torch.Tensor of confidence scores
-            threshold: Optional threshold value
-        Returns:
-            selected_indices: Indices of samples selected for TTT
-        """
-        if threshold is None:
-            threshold = self.get_dynamic_threshold(confidence_scores)
-        
-        selected_indices = torch.where(confidence_scores < threshold)[0]
-        return selected_indices
     
     def get_confidence_scores(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -1123,24 +481,6 @@ class TransductiveLearner(nn.Module):
         """
         return self.extract_embeddings(x)
     
-    def set_ttt_mode(self, training=True):
-        """
-        Set the model to training or evaluation mode for TTT
-        Args:
-            training: If True, set to training mode; if False, set to evaluation mode
-        """
-        if training:
-            self.train()
-            # Enable dropout for TTT training
-            for module in self.modules():
-                if isinstance(module, nn.Dropout):
-                    module.p = 0.2  # Lower dropout for TTT
-        else:
-            self.eval()
-            # Disable dropout for evaluation
-            for module in self.modules():
-                if isinstance(module, nn.Dropout):
-                    module.p = 0.0
     
     def get_dropout_status(self):
         """
@@ -1154,130 +494,6 @@ class TransductiveLearner(nn.Module):
                 dropout_layers.append(f"{name}: p={module.p}")
         return dropout_layers
     
-    def update_adaptation_success(self, success_rate, accuracy_improvement, 
-                                 initial_predictions=None, adapted_predictions=None, 
-                                 true_labels=None, samples_selected=0, total_samples=0):
-        """
-        ✅ FIXED: Update RL agent with adaptation results - TRUE UNSUPERVISED OPERATION
-        
-        Args:
-            success_rate: float, success rate of the adaptation
-            accuracy_improvement: float, improvement in accuracy
-            initial_predictions: Initial predictions before TTT
-            adapted_predictions: Predictions after TTT adaptation
-            true_labels: True labels for the samples (OPTIONAL - for debug only)
-            samples_selected: Number of samples selected for TTT
-            total_samples: Total number of samples available
-        """
-        if true_labels is None:  # ✅ TRUE UNSUPERVISED MODE
-            # Calculate UNSUPERVISED metrics only
-            device = next(self.parameters()).device
-            
-            # Calculate entropy reduction (unsupervised)
-            entropy_reduction = 0.0
-            confidence_improvement = 0.0
-            consistency_improvement = 0.0
-            
-            if initial_predictions is not None and adapted_predictions is not None:
-                try:
-                    # Convert to probabilities for entropy calculation
-                    if torch.is_tensor(adapted_predictions):
-                        adapted_probs = F.softmax(adapted_predictions, dim=1)
-                        initial_probs = F.softmax(initial_predictions, dim=1)
-                    else:
-                        adapted_probs = torch.softmax(torch.tensor(adapted_predictions), dim=1)
-                        initial_probs = torch.softmax(torch.tensor(initial_predictions), dim=1)
-                    
-                    # Calculate entropy reduction (unsupervised)
-                    initial_entropy = -(initial_probs * torch.clamp(initial_probs, min=1e-12).log()).sum(dim=1).mean()
-                    adapted_entropy = -(adapted_probs * torch.clamp(adapted_probs, min=1e-12).log()).sum(dim=1).mean()
-                    entropy_reduction = float(initial_entropy - adapted_entropy)
-                    
-                    # Calculate confidence improvement (unsupervised)
-                    initial_confidence = initial_probs.max(dim=1).values.mean()
-                    adapted_confidence = adapted_probs.max(dim=1).values.mean()
-                    confidence_improvement = float(adapted_confidence - initial_confidence)
-                    
-                    # Calculate consistency improvement (unsupervised)
-                    kl_div = F.kl_div(
-                        F.log_softmax(adapted_predictions, dim=1), 
-                        initial_probs.detach(),
-                        reduction='batchmean'
-                    )
-                    consistency_improvement = float(-kl_div.item())
-                    
-                except Exception as e:
-                    logger.warning(f"Unsupervised metric calculation failed: {e}")
-            
-            # Create state vector (unsupervised)
-            adaptation_success_rate = self.threshold_agent.get_adaptation_success_rate()
-            state = torch.tensor([entropy_reduction, confidence_improvement, adaptation_success_rate], 
-                               dtype=torch.float32, device=device)
-            
-            # Update RL agent with UNSUPERVISED metrics only
-            self.threshold_agent.update(
-                state, self.ttt_threshold, entropy_reduction, confidence_improvement, 
-                consistency_improvement, samples_selected, total_samples
-            )
-            
-            logger.info(f"✅ UNSUPERVISED RL Update - Entropy Reduction: {entropy_reduction:.3f}, "
-                       f"Confidence Improvement: {confidence_improvement:.3f}")
-            
-        else:  # UNSUPERVISED ONLY - No supervised metrics allowed
-            logger.info("✅ UNSUPERVISED MODE: Using only unsupervised metrics for RL agent")
-            # Calculate unsupervised metrics only
-            try:
-                # Calculate entropy reduction (unsupervised)
-                if initial_predictions is not None and adapted_predictions is not None:
-                    initial_probs = torch.softmax(initial_predictions, dim=1)
-                    adapted_probs = torch.softmax(adapted_predictions, dim=1)
-                    
-                    initial_entropy = -torch.sum(initial_probs * torch.log(initial_probs + 1e-8), dim=1).mean()
-                    adapted_entropy = -torch.sum(adapted_probs * torch.log(adapted_probs + 1e-8), dim=1).mean()
-                    entropy_reduction = float(initial_entropy - adapted_entropy)
-                else:
-                    entropy_reduction = 0.0
-                
-                # Calculate confidence improvement (unsupervised)
-                if initial_predictions is not None and adapted_predictions is not None:
-                    initial_confidence = torch.max(initial_probs, dim=1)[0].mean()
-                    adapted_confidence = torch.max(adapted_probs, dim=1)[0].mean()
-                    confidence_improvement = float(adapted_confidence - initial_confidence)
-                else:
-                    confidence_improvement = 0.0
-                
-                # Calculate consistency improvement (unsupervised)
-                consistency_improvement = 0.0
-                if initial_predictions is not None and adapted_predictions is not None:
-                    try:
-                        kl_div = F.kl_div(
-                            F.log_softmax(adapted_predictions, dim=1),
-                            torch.softmax(initial_predictions, dim=1),
-                            reduction='batchmean'
-                        )
-                        consistency_improvement = float(-kl_div.item())
-                    except Exception as e:
-                        logger.warning(f"Consistency calculation failed: {e}")
-                
-                # Create state vector (unsupervised)
-                adaptation_success_rate = self.threshold_agent.get_adaptation_success_rate()
-                state = torch.tensor([entropy_reduction, confidence_improvement, adaptation_success_rate], 
-                                   dtype=torch.float32, device=device)
-                
-                # Update RL agent with UNSUPERVISED metrics only
-                self.threshold_agent.update(
-                    state, self.ttt_threshold, entropy_reduction, confidence_improvement, 
-                    consistency_improvement, samples_selected, total_samples
-                )
-                
-                logger.info(f"✅ UNSUPERVISED RL Update - Entropy Reduction: {entropy_reduction:.3f}, "
-                           f"Confidence Improvement: {confidence_improvement:.3f}")
-                
-            except Exception as e:
-                logger.warning(f"Unsupervised metric calculation failed: {e}")
-        
-        # Store for tracking (always)
-        self.adaptation_success_history.append(success_rate)
         
     def forward(self, x):
         """
@@ -1299,30 +515,7 @@ class TransductiveLearner(nn.Module):
             x
         )
     
-    def _apply_self_attention(self, embeddings):
-        """
-        Apply self-attention with residual connection
-        """
-        embeddings_reshaped = embeddings.unsqueeze(1)  # (batch_size, 1, embedding_dim)
-        attended_embeddings, _ = self.self_attention(
-            embeddings_reshaped, embeddings_reshaped, embeddings_reshaped
-        )
-        return attended_embeddings.squeeze(1) + embeddings  # Residual connection
-    
-    def _focal_loss(self, logits, targets, class_weights, alpha=0.25, gamma=2.0):
-        """
-        Focal loss implementation for handling class imbalance
-        """
-        # Compute cross entropy loss
-        ce_loss = F.cross_entropy(logits, targets, weight=class_weights, reduction='none')
-        
-        # Compute probabilities
-        pt = torch.exp(-ce_loss)
-        
-        # Compute focal loss
-        focal_loss = alpha * (1 - pt) ** gamma * ce_loss
-        
-        return focal_loss.mean()
+
     
     def _initialize_weights(self):
         """
@@ -1401,7 +594,7 @@ class TransductiveLearner(nn.Module):
                 patience_counter += 1
                 
             if patience_counter >= 8:
-                LoggingUtils.log_early_stopping(step, 8, best_loss, best_acc)
+                logger.info(f"Early stopping at step {step} (patience: 8, best_loss: {best_loss:.4f})")
                 break
             
             if step % 5 == 0:
@@ -1409,193 +602,12 @@ class TransductiveLearner(nn.Module):
         
         return test_predictions, prototypes, unique_labels
     
-    def transductive_adaptation(self, query_x: torch.Tensor) -> Tuple[torch.Tensor, Dict]:
-        """
-        ✅ UNSUPERVISED TRANSDUCTIVE ADAPTATION: Uses ONLY query data, no support/validation leakage
-        
-        Args:
-            query_x: Query set features (unlabeled test data)
-            
-        Returns:
-            adapted_logits: Logits for the query set after adaptation
-            adaptation_metrics: Dictionary of metrics from the adaptation process
-        """
-        import copy
-        
-        self_copy = copy.deepcopy(self)
-        self_copy.train()
-        
-        # Use a separate optimizer for TTT
-        ttt_optimizer = optim.Adam(self_copy.parameters(), lr=0.0005)
-        
-        # Store initial predictions for comparison
-        with torch.no_grad():
-            initial_logits = self_copy(query_x)
-            initial_predictions = torch.argmax(initial_logits, dim=1)
-        
-        losses = []
-        accuracies = []
-        support_losses = []
-        consistency_losses = []
-        
-        # Select samples for TTT based on confidence
-        with torch.no_grad():
-            confidence_scores, probabilities = self_copy.get_confidence_and_probabilities(query_x)
-            self.ttt_threshold = self_copy.get_dynamic_threshold(
-                confidence_scores, probabilities=probabilities, num_classes=self.num_classes
-            )
-            
-            selected_indices = torch.where(confidence_scores < self.ttt_threshold)[0]
-            
-            if len(selected_indices) == 0:
-                logger.info(f"No samples selected for TTT (all above threshold {self.ttt_threshold:.4f}). Skipping adaptation.")
-                adaptation_metrics = {
-                    'losses': [], 'accuracies': [], 'support_losses': [], 'consistency_losses': [],
-                    'accuracy_improvement': 0.0, 'success_rate': 0.0,
-                    'initial_predictions': initial_logits, 'adapted_predictions': initial_logits
-                }
-                return initial_logits, adaptation_metrics
-            
-            ttt_query_x = query_x[selected_indices]
-            
-            logger.info(f"Selected {len(selected_indices)} samples out of {len(query_x)} for TTT adaptation (threshold: {self.ttt_threshold:.4f})")
-        
-        # TTT adaptation loop - use configurable steps
-        for step in range(self.ttt_steps):  # Use configurable steps instead of hardcoded 5
-            ttt_optimizer.zero_grad()
-            
-            # Forward pass on support and selected query samples
-            # ✅ TRUE TTT (QUERY ONLY!)
-            query_logits = self_copy(ttt_query_x)
-            query_probs = F.softmax(query_logits, dim=1)
-
-            # Unsupervised entropy loss
-            entropy_loss = -torch.sum(query_probs * torch.log(query_probs + 1e-8), dim=1).mean()
-            total_loss = entropy_loss
-                        
-            # Backward pass
-            total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(self_copy.parameters(), max_norm=1.0)
-            ttt_optimizer.step()
-            
-            # Store metrics
-            losses.append(total_loss.item())
-            support_losses.append(0.0)  # No support loss in TRUE TTT
-            consistency_losses.append(0.0)  # No consistency loss in TRUE TTT
-            
-            # Calculate accuracy if labels available
-            if ttt_query_y is not None:
-                with torch.no_grad():
-                    query_preds = torch.argmax(query_logits, dim=1)
-                    accuracy = (query_preds == ttt_query_y).float().mean().item()
-                    accuracies.append(accuracy)
-        
-        # Get final predictions
-        with torch.no_grad():
-            adapted_logits = self_copy(query_x)
-            adapted_predictions = torch.argmax(adapted_logits, dim=1)
-        
-        # Calculate improvement metrics
-        accuracy_improvement = 0.0
-        if query_y is not None:
-            initial_acc = (initial_predictions == query_y).float().mean().item()
-            final_acc = (adapted_predictions == query_y).float().mean().item()
-            accuracy_improvement = final_acc - initial_acc
-        
-        # Update adaptation success - TRUE UNSUPERVISED MODE
-        success_rate = 1.0 if accuracy_improvement > 0 else 0.0
-        self.update_adaptation_success(
-            success_rate, accuracy_improvement,
-            initial_predictions, adapted_predictions,
-            None,  # ✅ NO TRUE LABELS - TRUE UNSUPERVISED!
-            len(selected_indices), len(query_x)
-        )
-        
-        # Prepare metrics
-        adaptation_metrics = {
-            'losses': losses,
-            'accuracies': accuracies,
-            'support_losses': support_losses,
-            'consistency_losses': consistency_losses,
-            'accuracy_improvement': accuracy_improvement,
-            'success_rate': success_rate,
-            'samples_selected': len(selected_indices),
-            'total_samples': len(query_x),
-            'threshold_used': self.ttt_threshold,
-            'initial_predictions': initial_logits,
-            'adapted_predictions': adapted_logits
-        }
-        
-        return adapted_logits, adaptation_metrics
 
 
 
-    def true_ttt_adaptation(self, query_x: torch.Tensor, ttt_steps: int = 50) -> Tuple[torch.Tensor, Dict]:
-        """
-        ✅ TRUE TTT: UNsupervised adaptation on TEST DATA ONLY
-        - Entropy minimization (no labels!)
-        - No support/validation leakage
-        """
-        import copy
-        logger.info(f"🔄 TRUE TTT: Adapting {len(query_x)} samples ({ttt_steps} steps)")
-        
-        # Copy model (don't modify original)
-        model_copy = copy.deepcopy(self)
-        model_copy.train()  # Enable dropout for regularization
-        
-        # TTT optimizer (low LR for stability)
-        optimizer = torch.optim.Adam(model_copy.parameters(), lr=1e-4, weight_decay=1e-5)
-        
-        losses = []
-        
-        # TRUE TTT LOOP: NO LABELS!
-        for step in range(ttt_steps):
-            optimizer.zero_grad()
-            
-            # Forward pass
-            logits = model_copy(query_x)
-            probs = F.softmax(logits, dim=1)
-            
-            # ✅ CORE TTT LOSS: Entropy Minimization
-            entropy_loss = -torch.sum(probs * torch.log(probs + 1e-8), dim=1).mean()
-            
-            # Optional: Add consistency (augment input)
-            noise = torch.randn_like(query_x) * 0.05
-            noisy_logits = model_copy(query_x + noise)
-            noisy_probs = F.softmax(noisy_logits, dim=1)
-            consistency_loss = F.kl_div(
-                F.log_softmax(noisy_logits, dim=1), probs.detach(),
-                reduction='batchmean'
-            )
-            
-            # Total unsupervised loss
-            total_loss = entropy_loss + 0.1 * consistency_loss
-            
-            total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(model_copy.parameters(), max_norm=1.0)
-            optimizer.step()
-            
-            losses.append(total_loss.item())
-            
-            if step % 10 == 0:
-                logger.info(f"TTT Step {step}: Loss={total_loss.item():.4f}")
-        
-        # Final predictions
-        model_copy.eval()
-        with torch.no_grad():
-            final_logits = model_copy(query_x)
-        
-        logger.info("✅ TRUE TTT completed (no leakage!)")
-        
-        metrics = {
-            'losses': losses,
-            'final_loss': losses[-1] if losses else 0.0,
-            'steps': ttt_steps
-        }
-        
-        return final_logits, metrics    
+    # true_ttt_adaptation method removed - now handled by FedAVG coordinator    
     
-    def update_prototypes(self, test_embeddings, test_predictions, num_clusters=2):
+    def update_prototypes(self, support_embeddings, support_y, test_embeddings, test_predictions=None, num_clusters=2):
         """
         ✅ UNSUPERVISED prototype update method using k-means clustering
         Now uses centralized utility for consistency with unsupervised approach
@@ -1643,6 +655,9 @@ class TransductiveLearner(nn.Module):
         # Enhanced optimizer for better convergence on imbalanced data
         meta_optimizer = optim.AdamW(self.parameters(), lr=0.01, weight_decay=1e-4)
         
+        
+        # Initialize focal loss function
+        focal_loss_fn = FocalLoss(alpha=0.25, gamma=2.0)
         for epoch in range(meta_epochs):
             epoch_losses = []
             epoch_accuracies = []
@@ -1680,7 +695,7 @@ class TransductiveLearner(nn.Module):
                 support_class_weights = support_class_weights / support_class_weights.sum() * num_classes * 2.0
                 
                 # Use focal loss for better handling of hard examples
-                support_loss = self._focal_loss(support_logits, support_y, support_class_weights, alpha=0.25, gamma=2.0)
+                support_loss = focal_loss_fn(support_logits, support_y, weight=support_class_weights)
                 
                 # Forward pass on query set
                 query_logits = self(query_x)
@@ -1701,7 +716,7 @@ class TransductiveLearner(nn.Module):
                 query_class_weights = query_class_weights / query_class_weights.sum() * num_classes * 2.0
                 
                 # Use focal loss for better handling of hard examples
-                query_loss = self._focal_loss(query_logits, query_y, query_class_weights, alpha=0.25, gamma=2.0)
+                query_loss = focal_loss_fn(query_logits, query_y, weight=query_class_weights)
                 
                 # Total loss
                 total_loss = support_loss + query_loss
@@ -1730,52 +745,7 @@ class TransductiveLearner(nn.Module):
         
         logger.info("Transductive meta-training completed")
         return training_history
-    
-    def adapt_to_task(self, support_x, support_y, adaptation_steps: int = None):
-        """
-        Adapt the model to a specific task using transductive learning
-        Args:
-            support_x: Support set features
-            support_y: Support set labels
-            adaptation_steps: Number of adaptation steps (default: self.transductive_steps)
-        Returns:
-            adapted_model: Adapted model
-        """
-        if adaptation_steps is None:
-            adaptation_steps = self.transductive_steps
-        
-        # Create a copy for adaptation
-        adapted_model = copy.deepcopy(self)
-        adapted_model.train()
-        
-        # Use transductive optimization
-        optimizer = optim.Adam(adapted_model.parameters(), lr=self.transductive_lr)
-        
-        for step in range(adaptation_steps):
-            optimizer.zero_grad()
-            
-            # TRUE TTT: Use ONLY support data for entropy minimization (NO LABELS!)
-            support_logits = adapted_model(support_x)
-            support_probs = F.softmax(support_logits, dim=1)
-            
-            # Entropy minimization loss (unsupervised)
-            entropy_loss = -torch.sum(support_probs * torch.log(support_probs + 1e-8), dim=1).mean()
-            
-            # Backward pass
-            entropy_loss.backward()
-            optimizer.step()
-        
-        return adapted_model
-    
-    def update_ttt_config(self, config):
-        """Update TTT parameters from centralized config"""
-        self.ttt_lr = config.ttt_lr
-        self.ttt_steps = config.ttt_base_steps
-        self.ttt_threshold = 0.1  # Keep threshold as is for now
-        # Note: TransductiveLearner uses different adaptation mechanism
-        # The actual TTT parameters are handled in the main.py TTT methods
-
-
+   # TTT methods removed - now handled by FedAVG coordinator
 class MetaLearner(nn.Module):
     """
     Meta-Learning model for few-shot adaptation with transductive learning
@@ -1835,71 +805,6 @@ class MetaLearner(nn.Module):
         
         return loss, predictions
     
-    def adapt_to_task(self, support_x, support_y, adaptation_steps: int = None):
-        """
-        Adapt the model to a specific task using TRUE transductive learning
-        
-        Args:
-            support_x: Support set features
-            support_y: Support set labels
-            adaptation_steps: Number of adaptation steps
-            
-        Returns:
-            adapted_model: Model adapted to the task using transductive learning
-        """
-        if adaptation_steps is None:
-            adaptation_steps = self.inner_steps
-        
-        # Create a copy of the model for adaptation
-        adapted_model = copy.deepcopy(self)
-        adapted_optimizer = optim.SGD(adapted_model.parameters(), lr=self.inner_lr)
-        
-        # Perform TRUE transductive adaptation steps
-        for step in range(adaptation_steps):
-            adapted_optimizer.zero_grad()
-            
-            # Get embeddings
-            support_embeddings = adapted_model.transductive_net.extract_embeddings(support_x)
-            
-            # For transductive learning, we need test data to contribute to prototypes
-            # Since we don't have test data in this method, we'll use support data as both
-            # support and "test" for prototype refinement (this is a limitation of this method)
-            
-            # Compute prototypes using support data only (fallback for this method)
-            prototypes, prototype_labels = adapted_model.transductive_net.update_prototypes(
-                support_embeddings, support_y, support_embeddings, None
-            )
-            
-            # Compute transductive-style loss with consistency regularization
-            loss = 0
-            
-            # 1. Support set loss (supervised)
-            for i, label in enumerate(prototype_labels):
-                mask = support_y == label
-                if mask.sum() > 0:
-                    class_embeddings = support_embeddings[mask]
-                    prototype = prototypes[i]
-                    loss += F.mse_loss(class_embeddings.mean(dim=0), prototype)
-            
-            # 2. Consistency regularization within support set
-            # Encourage embeddings of the same class to be similar
-            consistency_loss = 0
-            for i, label in enumerate(prototype_labels):
-                mask = support_y == label
-                if mask.sum() > 1:  # Need at least 2 samples for consistency
-                    class_embeddings = support_embeddings[mask]
-                    # Compute pairwise distances within class
-                    pairwise_distances = torch.cdist(class_embeddings, class_embeddings, p=2)
-                    # Minimize intra-class distances
-                    consistency_loss += torch.mean(pairwise_distances)
-            
-            # Total loss with consistency regularization
-            total_loss = loss + 0.1 * consistency_loss
-            
-            total_loss.backward()
-            adapted_optimizer.step()
-        
-        return adapted_model
 
 class TransductiveFewShotModel(nn.Module):
     """
@@ -1914,23 +819,8 @@ class TransductiveFewShotModel(nn.Module):
         self.embedding_dim = embedding_dim
         self.num_classes = num_classes
         
-        # OPTIMIZED Test-time training parameters from centralized config
-        self.ttt_lr = 0.0005      # Will be overridden by config
-        self.ttt_steps = 100      # Will be overridden by config
-        self.ttt_threshold = 0.1  # Confidence threshold for test-time training
-        
         # Zero-day detection parameters
         self.anomaly_threshold = 0.5
-        self.adaptation_threshold = 0.3
-        
-        # Dropout regularization for TTT overfitting prevention
-        self.dropout_prob = 0.5
-    
-    def update_ttt_config(self, config):
-        """Update TTT parameters from centralized config"""
-        self.ttt_lr = config.ttt_lr
-        self.ttt_steps = config.ttt_base_steps
-        self.ttt_threshold = 0.1  # Keep threshold as is for now
         
     def forward(self, x):
         return self.meta_learner(x)
@@ -1942,20 +832,6 @@ class TransductiveFewShotModel(nn.Module):
         """
         return self.meta_learner.get_embeddings(x)
     
-    def set_ttt_mode(self, training=True):
-        """
-        Set model mode for Test-Time Training
-        
-        Args:
-            training: If True, set to training mode (dropout active)
-                     If False, set to evaluation mode (dropout disabled)
-        """
-        if training:
-            self.train()  # Enable dropout during TTT adaptation
-            LoggingUtils.log_model_mode("training", 3)  # 3 dropout layers
-        else:
-            self.eval()   # Disable dropout during evaluation
-            LoggingUtils.log_model_mode("evaluation", 3)  # 3 dropout layers
     
     def get_dropout_status(self):
         """
@@ -1993,377 +869,13 @@ class TransductiveFewShotModel(nn.Module):
         confidence = 1.0 - (min_distances / (max_distances + 1e-8))
         return confidence
     
-    def detect_zero_day(self, x, adaptation_steps: int = None):
-        """
-        ✅ UNSUPERVISED ZERO-DAY DETECTION: Uses ONLY test data, no support/validation leakage
-        
-        Args:
-            x: Test samples (unlabeled)
-            adaptation_steps: Number of adaptation steps
-            
-        Returns:
-            predictions: Multiclass predictions (0-9)
-            confidence: Confidence scores
-            is_zero_day: Zero-day detection flags
-        """
-        if adaptation_steps is None:
-            adaptation_steps = self.ttt_steps
-        
-        logger.info("🔄 Starting UNSUPERVISED zero-day detection (no support data)")
-        
-        # Move tensors to the same device as the model
-        device = next(self.parameters()).device
-        x = x.to(device)
-        
-        # Get initial embeddings
-        test_embeddings = self.meta_learner.get_embeddings(x)
-        
-        # Initial classification using model's learned features
-        with torch.no_grad():
-            initial_logits = self(x)
-            initial_predictions = torch.argmax(initial_logits, dim=1)
-            initial_probs = torch.softmax(initial_logits, dim=1)
-        
-        # Compute initial confidence scores (entropy-based)
-        initial_entropy = -torch.sum(initial_probs * torch.log(initial_probs + 1e-8), dim=1)
-        initial_confidence = 1.0 - (initial_entropy / torch.log(torch.tensor(self.num_classes, dtype=torch.float)))
-        
-        # Get dynamic threshold using RL agent (unsupervised)
-        dynamic_threshold = self.get_dynamic_threshold(
-            initial_confidence, probabilities=initial_probs, num_classes=self.num_classes
-        )
-        
-        # Identify low-confidence samples for test-time training
-        low_confidence_mask = initial_confidence < dynamic_threshold
-        low_confidence_indices = torch.where(low_confidence_mask)[0]
-        
-        logger.info(f"Dynamic TTT threshold: {dynamic_threshold:.4f}, Selected {len(low_confidence_indices)} samples for adaptation")
-        
-        if len(low_confidence_indices) > 0:
-            logger.info(f"Performing UNSUPERVISED adaptation on {len(low_confidence_indices)} low-confidence samples")
-            
-            # UNSUPERVISED TTT adaptation using only test data
-            adapted_model, final_entropy = self._perform_unsupervised_adaptation(
-                x, adaptation_steps, low_confidence_mask
-            )
-            
-            # Re-classify with adapted model
-            with torch.no_grad():
-                adapted_logits = adapted_model(x)
-                adapted_predictions = torch.argmax(adapted_logits, dim=1)
-                adapted_probs = torch.softmax(adapted_logits, dim=1)
-            
-            # Update predictions for low-confidence samples
-            final_predictions = initial_predictions.clone()
-            final_predictions[low_confidence_mask] = adapted_predictions[low_confidence_mask]
-            
-            # Update confidence scores
-            adapted_entropy = -torch.sum(adapted_probs * torch.log(adapted_probs + 1e-8), dim=1)
-            adapted_confidence = 1.0 - (adapted_entropy / torch.log(torch.tensor(self.num_classes, dtype=torch.float)))
-            final_confidence = initial_confidence.clone()
-            final_confidence[low_confidence_mask] = adapted_confidence[low_confidence_mask]
-            
-            # Calculate unsupervised adaptation metrics for RL agent
-            if len(low_confidence_indices) > 0:
-                # Calculate entropy reduction (unsupervised)
-                entropy_reduction = (initial_entropy[low_confidence_mask] - adapted_entropy[low_confidence_mask]).mean().item()
-                
-                # Calculate confidence improvement (unsupervised)
-                confidence_improvement = (adapted_confidence[low_confidence_mask] - initial_confidence[low_confidence_mask]).mean().item()
-                
-                # Calculate consistency improvement (unsupervised)
-                consistency_improvement = self._calculate_consistency_improvement(
-                    initial_probs[low_confidence_mask], adapted_probs[low_confidence_mask]
-                )
-                
-                # Update RL agent with unsupervised metrics
-                state = torch.tensor([initial_confidence.mean().item(), entropy_reduction])
-                self.update_adaptation_success(
-                    entropy_reduction, confidence_improvement, consistency_improvement,
-                    len(low_confidence_indices), len(x), state, dynamic_threshold
-                )
-                
-                logger.info(f"UNSUPERVISED Adaptation - Entropy Reduction: {entropy_reduction:.3f}, Confidence Improvement: {confidence_improvement:.3f}")
-        else:
-            final_predictions = initial_predictions
-            final_confidence = initial_confidence
-        
-        # Zero-day detection: samples with low confidence regardless of predicted class
-        low_confidence_attacks = final_confidence < self.adaptation_threshold
-        
-        logger.info(f"UNSUPERVISED zero-day detection completed")
-        logger.info(f"Zero-day samples detected: {low_confidence_attacks.sum().item()}")
-        logger.info(f"Predicted classes distribution: {torch.bincount(final_predictions, minlength=10).tolist()}")
-        
-        return final_predictions, final_confidence, low_confidence_attacks
+
     
-    def _perform_unsupervised_adaptation(self, x, adaptation_steps, low_confidence_mask):
-        """
-        ✅ UNSUPERVISED ADAPTATION: Uses ONLY test data, no support/validation leakage
-        
-        Args:
-            x: Test samples (unlabeled)
-            adaptation_steps: Number of adaptation steps
-            low_confidence_mask: Mask for low-confidence samples
-            
-        Returns:
-            adapted_model: Model adapted through unsupervised TTT
-            final_entropy: Final entropy values
-        """
-        logger.info("🔄 Starting UNSUPERVISED adaptation (no support data)")
-        
-        # Create a copy of the model for adaptation
-        adapted_model = copy.deepcopy(self)
-        adapted_model.train()
-        
-        # Setup optimizer for unsupervised adaptation
-        optimizer = torch.optim.AdamW(adapted_model.parameters(), lr=self.ttt_lr, weight_decay=1e-4)
-        
-        # Get low-confidence samples for adaptation
-        low_confidence_x = x[low_confidence_mask]
-        
-        losses = []
-        entropies = []
-        
-        # UNSUPERVISED TTT LOOP: NO LABELS!
-        for step in range(adaptation_steps):
-            optimizer.zero_grad()
-            
-            # Forward pass on low-confidence samples
-            logits = adapted_model(low_confidence_x)
-            probs = F.softmax(logits, dim=1)
-            
-            # ✅ CORE TTT LOSS: Entropy Minimization (unsupervised)
-            entropy_loss = -torch.sum(probs * torch.log(probs + 1e-8), dim=1).mean()
-            
-            # Optional: Add consistency loss (augment input)
-            noise = torch.randn_like(low_confidence_x) * 0.05
-            noisy_logits = adapted_model(low_confidence_x + noise)
-            noisy_probs = F.softmax(noisy_logits, dim=1)
-            consistency_loss = F.kl_div(
-                F.log_softmax(noisy_logits, dim=1), probs.detach(),
-                reduction='batchmean'
-            )
-            
-            # Total unsupervised loss
-            total_loss = entropy_loss + 0.1 * consistency_loss
-            
-            total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(adapted_model.parameters(), max_norm=1.0)
-            optimizer.step()
-            
-            losses.append(total_loss.item())
-            entropies.append(entropy_loss.item())
-            
-            if step % 10 == 0:
-                logger.info(f"UNSUPERVISED Step {step}: Loss={total_loss.item():.4f}, Entropy={entropy_loss.item():.4f}")
-        
-        # Get final entropy for all samples
-        with torch.no_grad():
-            final_logits = adapted_model(x)
-            final_probs = F.softmax(final_logits, dim=1)
-            final_entropy = -torch.sum(final_probs * torch.log(final_probs + 1e-8), dim=1)
-        
-        logger.info("✅ UNSUPERVISED adaptation completed (no leakage!)")
-        return adapted_model, final_entropy
+    # Removed duplicate private loss helpers; active path uses LossUtils
     
-    def _calculate_consistency_improvement(self, initial_probs, adapted_probs):
-        """
-        Calculate consistency improvement between initial and adapted predictions
-        
-        Args:
-            initial_probs: Initial probability distributions
-            adapted_probs: Adapted probability distributions
-            
-        Returns:
-            consistency_improvement: Improvement in consistency (unsupervised)
-        """
-        # Calculate KL divergence between initial and adapted distributions
-        kl_div = F.kl_div(
-            F.log_softmax(adapted_probs, dim=1), 
-            initial_probs.detach(),
-            reduction='batchmean'
-        )
-        
-        # Consistency improvement is negative KL divergence (we want distributions to be similar)
-        consistency_improvement = -kl_div.item()
-        
-        return consistency_improvement
+    # Removed wrapper meta_train; use TransductiveLearner.meta_train instead
     
-    def update_adaptation_success(self, entropy_reduction, confidence_improvement, consistency_improvement,
-                                 samples_selected, total_samples, state, threshold):
-        """
-        ✅ UNSUPERVISED SUCCESS UPDATE: Update RL agent with unsupervised metrics
-        
-        Args:
-            entropy_reduction: Reduction in entropy (unsupervised)
-            confidence_improvement: Improvement in confidence scores (unsupervised)
-            consistency_improvement: Improvement in consistency (unsupervised)
-            samples_selected: Number of samples selected for TTT
-            total_samples: Total number of samples available
-            state: Current state vector
-            threshold: Threshold value used
-        """
-        # Update RL agent with unsupervised metrics
-        if hasattr(self, 'rl_agent'):
-            self.rl_agent.update(
-                state, threshold, entropy_reduction, confidence_improvement, consistency_improvement,
-                samples_selected, total_samples
-            )
-    
-    def _compute_support_loss(self, support_embeddings, support_y, prototypes, prototype_labels):
-        """Compute supervised loss on support set"""
-        loss = 0
-        for i, label in enumerate(prototype_labels):
-            mask = support_y == label
-            if mask.sum() > 0:
-                class_embeddings = support_embeddings[mask]
-                prototype = prototypes[i]
-                # MSE loss between class mean and prototype
-                loss += F.mse_loss(class_embeddings.mean(dim=0), prototype)
-        return loss
-    
-    def _compute_consistency_loss(self, test_embeddings, test_predictions, prototypes, prototype_labels):
-        """Compute consistency loss on test set using soft assignments"""
-        # Compute distances to prototypes
-        distances = torch.cdist(test_embeddings, prototypes, p=2)
-        
-        # Compute soft assignments
-        soft_assignments = torch.softmax(-distances, dim=1)
-        
-        # Consistency loss: encourage test embeddings to be close to their assigned prototypes
-        consistency_loss = 0
-        for i, prototype in enumerate(prototypes):
-            # Weight by soft assignment probability
-            weights = soft_assignments[:, i]
-            if weights.sum() > 0:
-                # Weighted MSE between test embeddings and prototype
-                weighted_distances = weights.unsqueeze(1) * torch.norm(test_embeddings - prototype, dim=1, keepdim=True)
-                consistency_loss += weighted_distances.mean()
-        
-        return consistency_loss
-    
-    def _compute_smoothness_loss(self, test_embeddings, low_confidence_mask):
-        """Compute smoothness regularization for low-confidence samples"""
-        if low_confidence_mask.sum() == 0:
-            return torch.tensor(0.0, device=test_embeddings.device)
-        
-        low_conf_embeddings = test_embeddings[low_confidence_mask]
-        
-        # Compute pairwise distances
-        pairwise_distances = torch.cdist(low_conf_embeddings, low_conf_embeddings, p=2)
-        
-        # Smoothness loss: encourage similar embeddings to be close
-        # Use inverse distance weighting
-        smoothness_loss = torch.mean(pairwise_distances)
-        
-        return smoothness_loss
-    
-    def meta_train(self, meta_tasks: List[Dict], meta_epochs: int = 100):
-        """
-        Meta-train the model on multiple tasks
-        
-        Args:
-            meta_tasks: List of meta-learning tasks
-            meta_epochs: Number of meta-training epochs
-            
-        Returns:
-            training_history: Training metrics
-        """
-        logger.info(f"Starting transductive meta-training for {meta_epochs} epochs")
-        
-        training_history = {
-            'epoch_losses': [],
-            'epoch_accuracies': []
-        }
-        
-        for epoch in range(meta_epochs):
-            epoch_losses = []
-            epoch_accuracies = []
-            
-            # Sample tasks for this epoch
-            np.random.shuffle(meta_tasks)
-            
-            for task in meta_tasks:
-                # Move tensors to the same device as the model
-                device = next(self.parameters()).device
-                support_x = task['support_x'].to(device)
-                support_y = task['support_y'].to(device)
-                query_x = task['query_x'].to(device)
-                query_y = task['query_y'].to(device)
-                
-                # Meta-update
-                loss, predictions = self.meta_learner.meta_update(
-                    support_x, support_y, query_x, query_y
-                )
-                
-                # Compute accuracy
-                accuracy = (predictions == query_y).float().mean().item()
-                
-                # Backward pass
-                self.meta_learner.meta_optimizer.zero_grad()
-                loss.backward()
-                self.meta_learner.meta_optimizer.step()
-                
-                epoch_losses.append(loss.item())
-                epoch_accuracies.append(accuracy)
-            
-            # Record epoch metrics
-            avg_loss = np.mean(epoch_losses)
-            avg_accuracy = np.mean(epoch_accuracies)
-            
-            training_history['epoch_losses'].append(avg_loss)
-            training_history['epoch_accuracies'].append(avg_accuracy)
-            
-            if epoch % 10 == 0:
-                logger.info(f"Epoch {epoch}: Loss={avg_loss:.4f}, Accuracy={avg_accuracy:.4f}")
-        
-        logger.info("Transductive meta-training completed")
-        return training_history
-    
-    def evaluate_zero_day_detection(self, test_x, test_y):
-        """✅ VALID EVALUATION: Base vs TRUE TTT (NO leakage!)"""
-        device = next(self.parameters()).device
-        test_x, test_y = test_x.to(device), test_y.to(device)
-        
-        # BASE MODEL
-        with torch.no_grad():
-            base_logits = self(test_x)
-            base_preds = torch.argmax(base_logits, dim=1)
-            base_acc = (base_preds == test_y).float().mean().item()
-        
-        # TRUE TTT 
-        ttt_logits, _ = self.true_ttt_adaptation(test_x)
-        ttt_preds = torch.argmax(ttt_logits, dim=1)
-        ttt_acc = (ttt_preds == test_y).float().mean().item()
-        
-        improvement = ttt_acc - base_acc
-        
-        # 🔥 FLAW #3 FIX: McNEMAR'S TEST (5 LINES!)
-        from scipy.stats import mcnemar
-        disagreement = (base_preds != ttt_preds).cpu().numpy()  # Where they differ
-        correct_base = (base_preds == test_y).cpu().numpy()     # Base correct?
-        cm = [[sum((~disagreement) & (~correct_base)), sum(disagreement & correct_base)],  # Base wins
-            [sum(disagreement & (~correct_base)), sum((~disagreement) & correct_base)]] # TTT wins
-        statistic, p_value = mcnemar(cm, exact=True)
-        
-        # 🔥 95% CONFIDENCE INTERVAL (3 LINES!)
-        from statsmodels.stats.proportion import proportion_confint
-        ci_low, ci_high = proportion_confint(
-            int(ttt_acc * len(test_y)), len(test_y), alpha=0.05, method='wilson'
-        )
-        
-        # PUBLISHABLE OUTPUT!
-        logger.info(f"✅ Base: {base_acc:.4f}, TTT: {ttt_acc:.4f}, Δ: {improvement:+.4f}")
-        logger.info(f"📊 p-value: {p_value:.4f} {'***' if p_value<0.001 else '**' if p_value<0.01 else '*' if p_value<0.05 else ''}")
-        logger.info(f"🔬 95% CI: [{ci_low:.3f}, {ci_high:.3f}]")
-        logger.info(f"🎯 SIGNIFICANT: {'✅ YES' if p_value<0.05 else '❌ NO'}")
-        
-        return {
-            'base_accuracy': base_acc, 'ttt_accuracy': ttt_acc, 'improvement': improvement,
-            'p_value': p_value, 'significant': p_value < 0.05,
-            'ci_95': (ci_low, ci_high), 'valid': True
-        }
+    # Removed evaluate_zero_day_detection: adaptation is handled by the coordinator
 
     def validate_data_splits(self, train_x, train_y, val_x, val_y, test_x, test_y):
         """
@@ -2532,8 +1044,7 @@ def create_meta_tasks(data_x, data_y, n_way: int = 2, k_shot: int = 5, n_query: 
         elif len(attack_query_indices) > 0:
             query_indices = attack_query_indices
         else:
-            # Fallback: use all available samples
-            query_indices = torch.cat([normal_indices, attack_indices])
+            raise ValueError("Insufficient samples for query set creation")
         
         # Shuffle query indices
         query_indices = query_indices[torch.randperm(len(query_indices))]
@@ -2602,14 +1113,16 @@ def main():
     # Create meta-tasks
     meta_tasks = create_meta_tasks(X_train, y_train, n_tasks=50)
     
-    # Meta-train the model
-    training_history = model.meta_train(meta_tasks, meta_epochs=20)
+    # Meta-train the underlying transductive learner
+    training_history = model.meta_learner.transductive_net.meta_train(meta_tasks, meta_epochs=20)
     
-    # Evaluate zero-day detection (UNSUPERVISED TTT: test data only, no labels)
-    metrics = model.evaluate_zero_day_detection(X_test, y_test)
-    
+    # Simple base evaluation (no TTT here; adaptation is coordinator-side)
+    with torch.no_grad():
+        logits = model(X_test)
+        preds = torch.argmax(logits, dim=1)
+        acc = (preds == y_test).float().mean().item()
     logger.info("✅ Transductive few-shot model test completed!")
-    logger.info(f"Final metrics: {metrics}")
+    logger.info(f"Final base accuracy: {acc:.4f}")
 
 if __name__ == "__main__":
     main()
