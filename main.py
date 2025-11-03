@@ -26,7 +26,6 @@ from sklearn.metrics import roc_curve, roc_auc_score, precision_recall_curve, av
 from preprocessing.blockchain_federated_unsw_preprocessor import UNSWPreprocessor
 from models.transductive_fewshot_model import TransductiveFewShotModel, create_meta_tasks, TransductiveLearner
 from config import get_config, update_config, SystemConfig
-from config_validator import ConfigValidator
 from coordinators.simple_fedavg_coordinator import SimpleFedAVGCoordinator
 from visualization.performance_visualization import PerformanceVisualizer
 # Blockchain features removed for pure federated learning
@@ -356,7 +355,6 @@ class SecureBlockchainFederatedIncentiveSystem:
         logger.info(f"Device: {self.device}")
         logger.info(f"Number of clients: {config.num_clients}")
         logger.info(f"Number of rounds: {config.num_rounds}")
-        logger.info(f"Incentives enabled: {config.enable_incentives}")
         
         # Initialize core components
         self.preprocessor = None
@@ -412,7 +410,6 @@ class BlockchainFederatedIncentiveSystem:
         logger.info(f"Device: {self.device}")
         logger.info(f"Number of clients: {config.num_clients}")
         logger.info(f"Number of rounds: {config.num_rounds}")
-        logger.info(f"Incentives enabled: {config.enable_incentives}")
         
         # Initialize components
         self.preprocessor = None
@@ -1770,7 +1767,7 @@ class BlockchainFederatedIncentiveSystem:
             'config': self.config.__dict__,
             'training_rounds': len(self.training_history),
             'evaluation_completed': bool(self.evaluation_results),
-            'incentives_enabled': self.config.enable_incentives,
+            'incentives_enabled': False,  # Blockchain features removed
             'timestamp': time.time()
         }
         
@@ -3343,7 +3340,7 @@ class BlockchainFederatedIncentiveSystem:
             
             # Initialize default results
             base_kfold_results = {'accuracy_mean': 0.0, 'accuracy_std': 0.0, 'macro_f1_mean': 0.0, 'macro_f1_std': 0.0}
-            ttt_metatasks_results = {'accuracy_mean': 0.0, 'accuracy_std': 0.0, 'macro_f1_mean': 0.0, 'macro_f1_std': 0.0}
+            ttt_kfold_results = {'accuracy_mean': 0.0, 'accuracy_std': 0.0, 'macro_f1_mean': 0.0, 'macro_f1_std': 0.0}
             
             try:
                 base_kfold_results = self._evaluate_base_model_kfold(
@@ -3352,21 +3349,27 @@ class BlockchainFederatedIncentiveSystem:
                 logger.warning(f"Base model k-fold evaluation failed: {e}")
             
             try:
-                # Use the same TTT model from above instead of training again
-                ttt_metatasks_results = self._evaluate_ttt_model_metatasks_no_training(
-                    X_test_tensor, y_test_tensor, ttt_results.get('adapted_model'))
+                # Use k-fold CV for TTT model (same splits as base model for fair comparison)
+                # The function uses coordinator.model internally, so we just need to ensure coordinator exists
+                if not hasattr(self, 'coordinator') or not self.coordinator or not self.coordinator.model:
+                    logger.warning("No coordinator model available for TTT k-fold - skipping")
+                    ttt_kfold_results = {'accuracy_mean': 0.0, 'accuracy_std': 0.0, 'macro_f1_mean': 0.0, 'macro_f1_std': 0.0}
+                else:
+                    # Function uses coordinator.model internally (no need to pass it)
+                    ttt_kfold_results = self._evaluate_ttt_model_kfold(
+                        X_test_tensor, y_test_tensor)
             except Exception as e:
-                logger.warning(f"TTT model meta-tasks evaluation failed: {e}")
+                logger.warning(f"TTT model k-fold evaluation failed: {e}")
             
             # Combine results with both original and statistical robustness
             # metrics
             evaluation_results = {
                 # Original zero-day detection results (primary)
                 'base_model': base_results,
-                'ttt_model': ttt_results,
+                'adapted_model': ttt_results,  # Changed from 'ttt_model' to 'adapted_model' for consistency
                 # Statistical robustness results (additional)
                 'base_model_kfold': base_kfold_results,
-                'ttt_model_metatasks': ttt_metatasks_results,
+                'ttt_model_kfold': ttt_kfold_results,  # Changed from 'ttt_model_metatasks' to 'ttt_model_kfold'
                 'improvement': {
                     'accuracy_improvement': ttt_results.get('accuracy', 0) - base_results.get('accuracy', 0),
                     'precision_macro_improvement': ttt_results.get('precision_macro', 0) - base_results.get('precision_macro', 0),
@@ -3795,15 +3798,16 @@ class BlockchainFederatedIncentiveSystem:
             X_np = X_subset.cpu().numpy()
             y_np = y_subset.cpu().numpy()
             
-            # 3-fold cross-validation (reduced for testing)
-            kfold = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
+            # 5-fold cross-validation (increased for better statistical robustness)
+            # Using k=5 so TTT gets 80% of data for adaptation (minimal performance loss)
+            kfold = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
             fold_accuracies = []
             fold_f1_scores = []
             fold_mcc_scores = []
             
             for fold_idx, (train_idx, val_idx) in enumerate(
                 kfold.split(X_np, y_np)):
-                logger.info(f"  📊 Processing fold {fold_idx + 1}/3...")
+                logger.info(f"  📊 Processing fold {fold_idx + 1}/5...")
                 
                 # Get fold data
                 X_fold = torch.FloatTensor(X_np[val_idx]).to(self.device)
@@ -3891,6 +3895,10 @@ class BlockchainFederatedIncentiveSystem:
                 'macro_f1_std': np.std(fold_f1_scores),
                 'mcc_mean': np.mean(fold_mcc_scores),
                 'mcc_std': np.std(fold_mcc_scores),
+                # Store individual fold results for visualization
+                'fold_accuracies': fold_accuracies,
+                'fold_f1_scores': fold_f1_scores,
+                'fold_mcc_scores': fold_mcc_scores,
                 'confusion_matrix': None,  # Will be calculated properly below
                 'roc_curve': None,  # Will be calculated properly below
                 'roc_auc': None,  # Will be calculated properly below
@@ -4768,6 +4776,159 @@ class BlockchainFederatedIncentiveSystem:
                 'optimal_threshold': 0.5
             }
     
+    def _evaluate_ttt_model_kfold(
+        self,
+        X_test: torch.Tensor,
+        y_test: torch.Tensor,
+        base_model: nn.Module = None) -> Dict:
+        """
+        Evaluate TTT model with k-fold cross-validation using SAME splits as base model
+        For fair comparison: both models use identical k-fold splits
+        
+        Args:
+            X_test: Test features (unseen, unlabeled during prediction)
+            y_test: Test labels (used only for metric calculation, not during adaptation)
+            base_model: Base trained model (optional, uses coordinator.model if not provided)
+            
+        Returns:
+            results: Evaluation metrics with mean and standard deviation across folds
+        """
+        logger.info(
+            "📊 Starting TTT Model k-fold cross-validation evaluation (using same splits as base model)...")
+        
+        try:
+            from sklearn.model_selection import StratifiedKFold
+            from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef, precision_score, recall_score
+            
+            # CRITICAL: Use SAME subset and splits as base model for fair comparison
+            X_subset, y_subset = self.preprocessor.sample_stratified_subset(
+                X_test, y_test, n_samples=min(10000, len(X_test))
+            )
+            
+            # Convert to numpy for sklearn (SAME as base model)
+            X_np = X_subset.cpu().numpy()
+            y_np = y_subset.cpu().numpy()
+            
+            # CRITICAL: Use SAME k-fold configuration as base model (k=5, same random_state=42)
+            kfold = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+            
+            fold_accuracies = []
+            fold_precisions = []
+            fold_recalls = []
+            fold_f1_scores = []
+            fold_mcc_scores = []
+            
+            for fold_idx, (train_idx, val_idx) in enumerate(kfold.split(X_np, y_np)):
+                logger.info(f"  📊 Processing TTT fold {fold_idx + 1}/5...")
+                
+                try:
+                    # Get fold data
+                    X_eval_fold = torch.FloatTensor(X_np[val_idx]).to(self.device)
+                    y_eval_fold = torch.LongTensor(y_np[val_idx]).to(self.device)
+                    
+                    # CRITICAL: For TTT adaptation, use OTHER folds (train_idx) as unlabeled adaptation data
+                    # This ensures: (1) Unseen data (all from test set)
+                    #               (2) Unlabeled during adaptation (unsupervised TTT)
+                    #               (3) Fair comparison (same splits as base model)
+                    X_adapt_fold = torch.FloatTensor(X_np[train_idx]).to(self.device)
+                    
+                    logger.info(
+                        f"    TTT Fold {fold_idx + 1}: Adapting on {len(X_adapt_fold)} unlabeled samples, "
+                        f"evaluating on {len(X_eval_fold)} samples")
+                    
+                    # Perform unsupervised TTT adaptation on unlabeled data from other folds
+                    # Use coordinator's advanced TTT method (entropy minimization, no labels)
+                    adapted_model = self.coordinator._perform_advanced_ttt_adaptation(
+                        X_adapt_fold, self.config
+                    )
+                    
+                    # Evaluate adapted model on current fold (unlabeled query set)
+                    adapted_model.eval()
+                    with torch.no_grad():
+                        outputs = adapted_model(X_eval_fold)
+                        probabilities = torch.softmax(outputs, dim=1)
+                        attack_probabilities = probabilities[:, 1]  # P(Attack)
+                        predictions = (attack_probabilities >= 0.5).long()
+                        predictions_np = predictions.cpu().numpy()
+                        y_eval_np = y_eval_fold.cpu().numpy()
+                        
+                        # Convert to binary for metrics (Normal=0, Attack=1)
+                        y_eval_binary = (y_eval_np != 0).astype(int)
+                        
+                        # Calculate metrics
+                        accuracy = accuracy_score(y_eval_binary, predictions_np)
+                        precision = precision_score(y_eval_binary, predictions_np, zero_division=0)
+                        recall = recall_score(y_eval_binary, predictions_np, zero_division=0)
+                        f1 = f1_score(y_eval_binary, predictions_np, average='macro')
+                        mcc = matthews_corrcoef(y_eval_binary, predictions_np)
+                        
+                        fold_accuracies.append(accuracy)
+                        fold_precisions.append(precision)
+                        fold_recalls.append(recall)
+                        fold_f1_scores.append(f1)
+                        fold_mcc_scores.append(mcc)
+                        
+                        logger.info(
+                            f"    📊 TTT Fold {fold_idx + 1} metrics: Accuracy={accuracy:.4f}, "
+                            f"F1={f1:.4f}, MCC={mcc:.4f}")
+                
+                except Exception as e:
+                    logger.warning(f"⚠️ TTT Fold {fold_idx + 1} failed: {e}")
+                    # Append default values to maintain fold count
+                    fold_accuracies.append(0.0)
+                    fold_precisions.append(0.0)
+                    fold_recalls.append(0.0)
+                    fold_f1_scores.append(0.0)
+                    fold_mcc_scores.append(0.0)
+            
+            # Calculate statistics across folds (same format as base model)
+            results = {
+                'accuracy_mean': np.mean(fold_accuracies),
+                'accuracy_std': np.std(fold_accuracies),
+                'precision_mean': np.mean(fold_precisions),
+                'precision_std': np.std(fold_precisions),
+                'recall_mean': np.mean(fold_recalls),
+                'recall_std': np.std(fold_recalls),
+                'macro_f1_mean': np.mean(fold_f1_scores),
+                'macro_f1_std': np.std(fold_f1_scores),
+                'mcc_mean': np.mean(fold_mcc_scores),
+                'mcc_std': np.std(fold_mcc_scores),
+                # Store individual fold results for visualization
+                'fold_accuracies': fold_accuracies,
+                'fold_f1_scores': fold_f1_scores,
+                'fold_mcc_scores': fold_mcc_scores,
+                'confusion_matrix': None,  # Will be calculated from final fold if needed
+                'roc_curve': None,
+                'roc_auc': None,
+                'optimal_threshold': None
+            }
+            
+            logger.info(f"✅ TTT Model k-fold evaluation completed")
+            logger.info(
+                f"  Accuracy: {results['accuracy_mean']:.4f} ± {results['accuracy_std']:.4f}")
+            logger.info(
+                f"  F1-Score: {results['macro_f1_mean']:.4f} ± {results['macro_f1_std']:.4f}")
+            logger.info(
+                f"  MCC: {results['mcc_mean']:.4f} ± {results['mcc_std']:.4f}")
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"❌ TTT Model k-fold evaluation failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return {
+                'accuracy_mean': 0.0, 'accuracy_std': 0.0,
+                'precision_mean': 0.0, 'precision_std': 0.0,
+                'recall_mean': 0.0, 'recall_std': 0.0,
+                'macro_f1_mean': 0.0, 'macro_f1_std': 0.0,
+                'mcc_mean': 0.0, 'mcc_std': 0.0,
+                'confusion_matrix': None,
+                'roc_curve': None,
+                'roc_auc': None,
+                'optimal_threshold': None
+            }
+    
     def _focal_loss(self, logits, targets, class_weights, alpha=0.25, gamma=2.0):
         """
         Focal loss implementation for handling class imbalance
@@ -5219,10 +5380,50 @@ def main():
         adapted_evaluation_results = system.evaluate_adapted_model(adapted_model)
         system.adapted_evaluation_results = adapted_evaluation_results
         
-        # Store evaluation results FIRST (before comparison) so visualization can proceed even if comparison fails
+        # ADDITIONAL: Run k-fold CV for statistical robustness (after single evaluation)
+        logger.info("\n" + "="*80)
+        logger.info("📈 PHASE 3.5: K-FOLD CV FOR STATISTICAL ROBUSTNESS (IEEE PLOTS)")
+        logger.info("="*80)
+        logger.info("📈 Additional evaluation with k-fold CV for statistical robustness...")
+        
+        # Initialize default results
+        base_kfold_results = {'accuracy_mean': 0.0, 'accuracy_std': 0.0, 'macro_f1_mean': 0.0, 'macro_f1_std': 0.0, 'precision_mean': 0.0, 'precision_std': 0.0, 'recall_mean': 0.0, 'recall_std': 0.0, 'mcc_mean': 0.0, 'mcc_std': 0.0}
+        ttt_kfold_results = {'accuracy_mean': 0.0, 'accuracy_std': 0.0, 'macro_f1_mean': 0.0, 'macro_f1_std': 0.0, 'precision_mean': 0.0, 'precision_std': 0.0, 'recall_mean': 0.0, 'recall_std': 0.0, 'mcc_mean': 0.0, 'mcc_std': 0.0}
+        
+        # Get test data for k-fold CV
+        if hasattr(system, 'preprocessed_data') and system.preprocessed_data:
+            X_test = system.preprocessed_data['X_test']
+            y_test = system.preprocessed_data['y_test']
+            X_test_tensor = torch.FloatTensor(X_test).to(system.device)
+            y_test_tensor = torch.LongTensor(y_test).to(system.device)
+            
+            try:
+                base_kfold_results = system._evaluate_base_model_kfold(
+                    X_test_tensor, y_test_tensor)
+            except Exception as e:
+                logger.warning(f"Base model k-fold evaluation failed: {e}")
+            
+            try:
+                # Use k-fold CV for TTT model (same splits as base model for fair comparison)
+                if not hasattr(system, 'coordinator') or not system.coordinator or not system.coordinator.model:
+                    logger.warning("No coordinator model available for TTT k-fold - skipping")
+                    ttt_kfold_results = {'accuracy_mean': 0.0, 'accuracy_std': 0.0, 'macro_f1_mean': 0.0, 'macro_f1_std': 0.0, 'precision_mean': 0.0, 'precision_std': 0.0, 'recall_mean': 0.0, 'recall_std': 0.0, 'mcc_mean': 0.0, 'mcc_std': 0.0}
+                else:
+                    # Function uses coordinator.model internally (no need to pass it)
+                    ttt_kfold_results = system._evaluate_ttt_model_kfold(
+                        X_test_tensor, y_test_tensor)
+            except Exception as e:
+                logger.warning(f"TTT model k-fold evaluation failed: {e}")
+        else:
+            logger.warning("No preprocessed data available for k-fold CV - skipping")
+        
+        # Store evaluation results with k-fold CV data (for IEEE plots)
         evaluation_results = {
             'base_model': base_evaluation_results,
             'adapted_model': adapted_evaluation_results,
+            # Statistical robustness results (for IEEE plots only)
+            'base_model_kfold': base_kfold_results,
+            'ttt_model_kfold': ttt_kfold_results,
             'comparison': {}
         }
         system.evaluation_results = evaluation_results
@@ -5248,6 +5449,33 @@ def main():
         # Generate IEEE statistical robustness plots
         logger.info("📊 Generating IEEE statistical robustness plots...")
         try:
+            # VERIFICATION: Log what data is available for IEEE plots
+            logger.info("="*80)
+            logger.info("📊 VERIFICATION: Checking available data for IEEE plots")
+            logger.info("="*80)
+            logger.info(f"evaluation_results keys: {list(evaluation_results.keys())}")
+            
+            if 'base_model_kfold' in evaluation_results:
+                base_kfold = evaluation_results['base_model_kfold']
+                logger.info(f"base_model_kfold keys: {list(base_kfold.keys())}")
+                logger.info(f"Has fold_accuracies: {'fold_accuracies' in base_kfold}")
+                if 'fold_accuracies' in base_kfold:
+                    logger.info(f"Fold accuracies: {base_kfold['fold_accuracies']}")
+                    logger.info(f"Fold accuracies length: {len(base_kfold['fold_accuracies'])}")
+                    logger.info(f"Accuracy mean: {base_kfold.get('accuracy_mean', 'N/A')}")
+                    logger.info(f"Accuracy std: {base_kfold.get('accuracy_std', 'N/A')}")
+            
+            if 'ttt_model_kfold' in evaluation_results:
+                ttt_kfold = evaluation_results['ttt_model_kfold']
+                logger.info(f"ttt_model_kfold keys: {list(ttt_kfold.keys())}")
+                logger.info(f"Has fold_accuracies: {'fold_accuracies' in ttt_kfold}")
+                if 'fold_accuracies' in ttt_kfold:
+                    logger.info(f"TTT Fold accuracies: {ttt_kfold['fold_accuracies']}")
+                    logger.info(f"TTT Fold accuracies length: {len(ttt_kfold['fold_accuracies'])}")
+                    logger.info(f"TTT Accuracy mean: {ttt_kfold.get('accuracy_mean', 'N/A')}")
+                    logger.info(f"TTT Accuracy std: {ttt_kfold.get('accuracy_std', 'N/A')}")
+            
+            logger.info("="*80)
 
             from ieee_statistical_plots import IEEEStatisticalVisualizer
             ieee_visualizer = IEEEStatisticalVisualizer()
@@ -5262,20 +5490,22 @@ def main():
             )
             ieee_plot_paths.append(comparison_path)
             
-            # 2. Evaluation methodology comparison
-            methodology_path = ieee_visualizer.plot_evaluation_methodology_comparison()
-            ieee_plot_paths.append(methodology_path)
-            
-            # 3. K-fold cross-validation results
-            kfold_path = ieee_visualizer.plot_kfold_cross_validation_results()
+            # 2. K-fold cross-validation results
+            kfold_path = ieee_visualizer.plot_kfold_cross_validation_results(
+                real_results=evaluation_results
+            )
             ieee_plot_paths.append(kfold_path)
             
-            # 4. Meta-tasks evaluation results
-            metatasks_path = ieee_visualizer.plot_meta_tasks_evaluation_results()
+            # 3. K-fold CV consistency analysis (replaces meta-tasks)
+            metatasks_path = ieee_visualizer.plot_meta_tasks_evaluation_results(
+                real_results=evaluation_results
+            )
             ieee_plot_paths.append(metatasks_path)
             
             # 5. Effect size analysis
-            effect_size_path = ieee_visualizer.plot_effect_size_analysis()
+            effect_size_path = ieee_visualizer.plot_effect_size_analysis(
+                real_results=evaluation_results
+            )
             ieee_plot_paths.append(effect_size_path)
             
             logger.info(f"✅ IEEE statistical plots generated: {len(ieee_plot_paths)} plots")

@@ -14,8 +14,8 @@ class SystemConfig:
     """Centralized system configuration - single source of truth"""
     
     # === FEDERATED LEARNING CONFIGURATION ===
-    num_clients: int =5
-    num_rounds: int = 10 # Increased rounds for better federated learning convergence
+    num_clients: int = 3  # Reduced for quick test
+    num_rounds: int = 3  # Reduced for quick test
     local_epochs: int = 50  # Balanced epochs per round for better federated learning
     learning_rate: float = 0.001
     batch_size: int = 32
@@ -30,7 +30,7 @@ class SystemConfig:
     # === DATA CONFIGURATION ===
     data_path: str = "UNSW_NB15_training-set.csv"
     test_path: str = "UNSW_NB15_testing-set.csv"
-    zero_day_attack: str = "Analysis"  # Single place to control attack type
+    zero_day_attack: str = "Exploits"  # Single place to control attack type
     
     # Attack type mapping (UNSW-NB15 dataset)
     attack_types = {
