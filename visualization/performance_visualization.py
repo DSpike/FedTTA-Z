@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Performance Visualization Module for Blockchain Federated Learning System
+Performance Visualization Module for Federated Learning System
 Provides comprehensive plotting and visualization of performance metrics
 """
 
@@ -25,7 +25,7 @@ sns.set_palette("husl")
 
 class PerformanceVisualizer:
     """
-    Comprehensive performance visualization for blockchain federated learning system
+    Comprehensive performance visualization for federated learning system
     """
     
     def __init__(self, output_dir: str = "performance_plots", attack_name: str = ""):
@@ -484,306 +484,6 @@ class PerformanceVisualizer:
         plt.close()  # Close figure instead of showing it
         return plot_path if save else ""
     
-    def plot_blockchain_metrics(self, blockchain_data: Dict, save: bool = True) -> str:
-        """
-        Plot blockchain-related metrics
-        
-        Args:
-            blockchain_data: Dictionary with blockchain metrics
-            save: Whether to save the plot
-            
-        Returns:
-            plot_path: Path to saved plot
-        """
-        if not blockchain_data:
-            logger.warning("No blockchain data provided for plotting")
-            return ""
-        
-        # Check if we have real data or empty data
-        gas_used = blockchain_data.get('gas_used', [])
-        logger.info(f"🔍 DEBUG: plot_blockchain_metrics - gas_used type: {type(gas_used)}, length: {len(gas_used) if hasattr(gas_used, '__len__') else 'no length'}, value: {gas_used}")
-        if not gas_used:
-            logger.warning("No gas usage data available - blockchain transactions may not have been recorded")
-            # Create empty plot with message
-            fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6))
-            fig.suptitle('Blockchain Metrics - No Data Available', fontsize=16, fontweight='bold')
-            
-            ax1.text(0.5, 0.5, 'No Gas Data\nAvailable', ha='center', va='center', fontsize=14, fontweight='bold',
-                    bbox=dict(boxstyle='round,pad=1', facecolor='lightgray', alpha=0.8))
-            ax1.set_title('Gas Usage', fontweight='bold')
-            ax1.set_xlim(0, 1)
-            ax1.set_ylim(0, 1)
-            ax1.axis('off')
-            
-            ax2.text(0.5, 0.5, 'No IPFS Data\nAvailable', ha='center', va='center', fontsize=14, fontweight='bold',
-                    bbox=dict(boxstyle='round,pad=1', facecolor='lightgray', alpha=0.8))
-            ax2.set_title('IPFS Storage', fontweight='bold')
-            ax2.set_xlim(0, 1)
-            ax2.set_ylim(0, 1)
-            ax2.axis('off')
-            
-            ax3.text(0.5, 0.5, 'No Transaction\nData Available', ha='center', va='center', fontsize=14, fontweight='bold',
-                    bbox=dict(boxstyle='round,pad=1', facecolor='lightgray', alpha=0.8))
-            ax3.set_title('Transaction Count', fontweight='bold')
-            ax3.set_xlim(0, 1)
-            ax3.set_ylim(0, 1)
-            ax3.axis('off')
-            
-            plt.tight_layout()
-            
-            if save:
-                plot_path = os.path.join(self.output_dir, f'blockchain_metrics_{self.timestamp}.png')
-                plt.savefig(plot_path, dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
-                logger.info(f"Empty blockchain metrics plot saved: {plot_path}")
-            
-            plt.close()
-            return plot_path if save else ""
-        
-        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 12))
-        
-        # Extract blockchain metrics
-        transactions = blockchain_data.get('transactions', [])
-        ipfs_cids = blockchain_data.get('ipfs_cids', [])
-        gas_used = blockchain_data.get('gas_used', [])
-        block_numbers = blockchain_data.get('block_numbers', [])
-        
-        # Plot transactions over time
-        if transactions:
-            ax1.plot(range(len(transactions)), transactions, 'b-', linewidth=2, marker='o')
-            ax1.set_title('Blockchain Transactions Over Time', fontweight='bold')
-            ax1.set_xlabel('Time Step')
-            ax1.set_ylabel('Number of Transactions')
-            ax1.grid(True, alpha=0.3)
-        
-        # Plot IPFS CIDs (as a count)
-        if ipfs_cids:
-            ax2.bar(range(len(ipfs_cids)), [1] * len(ipfs_cids), color='lightgreen', alpha=0.7)
-            ax2.set_title('IPFS Model Storage Events', fontweight='bold')
-            ax2.set_xlabel('Storage Event')
-            ax2.set_ylabel('Models Stored')
-            ax2.set_ylim(0, 1.2)
-        
-        # Plot gas usage
-        if gas_used:
-            ax3.bar(range(len(gas_used)), gas_used, color='orange', alpha=0.7)
-            ax3.set_title('Gas Usage Per Transaction', fontweight='bold')
-            ax3.set_xlabel('Transaction')
-            ax3.set_ylabel('Gas Used')
-            ax3.grid(True, alpha=0.3)
-        
-        # Plot block numbers
-        if block_numbers:
-            ax4.plot(range(len(block_numbers)), block_numbers, 'r-', linewidth=2, marker='s')
-            ax4.set_title('Block Numbers Over Time', fontweight='bold')
-            ax4.set_xlabel('Transaction')
-            ax4.set_ylabel('Block Number')
-            ax4.grid(True, alpha=0.3)
-        
-        plt.tight_layout()
-        
-        if save:
-            plot_path = os.path.join(self.output_dir, f"blockchain_metrics_{self.timestamp}.png")
-            plt.savefig(plot_path, dpi=300, bbox_inches='tight')
-            logger.info(f"Blockchain metrics plot saved: {plot_path}")
-        
-        plt.close()  # Close figure instead of showing it
-        return plot_path if save else ""
-    
-    def plot_gas_usage_analysis(self, blockchain_data: Dict, save: bool = True) -> str:
-        """
-        Plot detailed gas usage analysis with bar charts
-        
-        Args:
-            blockchain_data: Dictionary with blockchain metrics
-            save: Whether to save the plot
-            
-        Returns:
-            plot_path: Path to saved plot
-        """
-        if not blockchain_data:
-            logger.warning("No blockchain data provided for gas usage plotting")
-            return ""
-        
-        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
-        fig.suptitle('Blockchain Gas Usage Analysis', fontsize=16, fontweight='bold')
-        
-        # Extract gas usage data
-        gas_used = blockchain_data.get('gas_used', [])
-        transactions = blockchain_data.get('transactions', [])
-        transaction_types = blockchain_data.get('transaction_types', [])
-        rounds = blockchain_data.get('rounds', [])
-        logger.info(f"🔍 DEBUG: plot_gas_usage_analysis - gas_used: {gas_used}, transactions: {len(transactions)}, types: {len(transaction_types)}, rounds: {len(rounds)}")
-        
-        # If no gas data, return empty plot with warning
-        if not gas_used:
-            logger.warning("No real gas data available for visualization - skipping gas usage analysis plot")
-            # Create empty plot with message
-            ax1.text(0.5, 0.5, 'No Gas Data Available\nReal blockchain transactions\nnot recorded during training', 
-                    ha='center', va='center', fontsize=14, fontweight='bold',
-                    bbox=dict(boxstyle='round,pad=1', facecolor='lightgray', alpha=0.8))
-            ax1.set_title('Gas Usage by Transaction Type - No Data', fontweight='bold')
-            ax1.set_xlim(0, 1)
-            ax1.set_ylim(0, 1)
-            ax1.axis('off')
-            
-            ax2.text(0.5, 0.5, 'No Gas Data Available\nReal blockchain transactions\nnot recorded during training', 
-                    ha='center', va='center', fontsize=14, fontweight='bold',
-                    bbox=dict(boxstyle='round,pad=1', facecolor='lightgray', alpha=0.8))
-            ax2.set_title('Gas Usage by Round - No Data', fontweight='bold')
-            ax2.set_xlim(0, 1)
-            ax2.set_ylim(0, 1)
-            ax2.axis('off')
-            
-            ax3.text(0.5, 0.5, 'No Gas Data Available\nReal blockchain transactions\nnot recorded during training', 
-                    ha='center', va='center', fontsize=14, fontweight='bold',
-                    bbox=dict(boxstyle='round,pad=1', facecolor='lightgray', alpha=0.8))
-            ax3.set_title('Individual Transaction Gas Usage - No Data', fontweight='bold')
-            ax3.set_xlim(0, 1)
-            ax3.set_ylim(0, 1)
-            ax3.axis('off')
-            
-            ax4.text(0.5, 0.5, 'No Gas Data Available\nReal blockchain transactions\nnot recorded during training', 
-                    ha='center', va='center', fontsize=14, fontweight='bold',
-                    bbox=dict(boxstyle='round,pad=1', facecolor='lightgray', alpha=0.8))
-            ax4.set_title('Gas Usage Statistics - No Data', fontweight='bold')
-            ax4.set_xlim(0, 1)
-            ax4.set_ylim(0, 1)
-            ax4.axis('off')
-            
-            plt.tight_layout()
-            
-            if save:
-                plot_path = os.path.join(self.output_dir, f'gas_usage_analysis_{self.timestamp}.png')
-                plt.savefig(plot_path, dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
-                logger.info(f"Empty gas usage analysis plot saved: {plot_path}")
-            
-            plt.close()
-            return plot_path if save else ""
-        
-        # Plot 1: Gas Usage by Transaction Type
-        if transaction_types:
-            type_gas = {}
-            for gas, tx_type in zip(gas_used, transaction_types):
-                if tx_type not in type_gas:
-                    type_gas[tx_type] = []
-                type_gas[tx_type].append(gas)
-            
-            types = list(type_gas.keys())
-            avg_gas = [np.mean(type_gas[t]) for t in types]
-            colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98FB98', '#F0E68C', '#FFB6C1', '#87CEEB']
-            
-            bars1 = ax1.bar(types, avg_gas, color=colors[:len(types)], alpha=0.8, edgecolor='black', linewidth=1)
-            ax1.set_title('Average Gas Usage by Transaction Type', fontweight='bold', fontsize=12)
-            ax1.set_ylabel('Gas Used (units)')
-            ax1.tick_params(axis='x', rotation=0)
-            ax1.grid(True, alpha=0.3, axis='y')
-            
-            # Add value labels on bars
-            for bar, value in zip(bars1, avg_gas):
-                height = bar.get_height()
-                ax1.text(bar.get_x() + bar.get_width()/2., height + height*0.01,
-                        f'{value:.0f}', ha='center', va='bottom', fontweight='bold')
-        
-        # Plot 2: Gas Usage by Round
-        if rounds:
-            round_gas = {}
-            for gas, round_name in zip(gas_used, rounds):
-                if round_name not in round_gas:
-                    round_gas[round_name] = []
-                round_gas[round_name].append(gas)
-            
-            round_names = list(round_gas.keys())
-            total_gas_per_round = [sum(round_gas[r]) for r in round_names]
-            colors2 = ['#FF9999', '#66B2FF', '#99FF99', '#FFCC99', '#FF99CC', '#DDA0DD', '#98FB98', '#F0E68C', '#FFB6C1', '#87CEEB']
-            
-            bars2 = ax2.bar(round_names, total_gas_per_round, color=colors2[:len(round_names)], 
-                           alpha=0.8, edgecolor='black', linewidth=1)
-            ax2.set_title('Total Gas Usage per Federated Round', fontweight='bold', fontsize=12)
-            ax2.set_ylabel('Total Gas Used (units)')
-            ax2.set_xlabel('Federated Round')
-            ax2.tick_params(axis='x', rotation=0)
-            ax2.grid(True, alpha=0.3, axis='y')
-            
-            # Add value labels on bars
-            for bar, value in zip(bars2, total_gas_per_round):
-                height = bar.get_height()
-                ax2.text(bar.get_x() + bar.get_width()/2., height + height*0.01,
-                        f'{value:,}', ha='center', va='bottom', fontweight='bold')
-        
-        # Plot 3: Gas Usage Trend Over Time
-        if gas_used:
-            x_pos = range(len(gas_used))
-            colors3 = []
-            for tx_type in transaction_types if transaction_types else ['Unknown'] * len(gas_used):
-                if 'Client Update' in str(tx_type):
-                    colors3.append('#FF6B6B')  # Red for client updates
-                elif 'Model Update' in str(tx_type):
-                    colors3.append('#4ECDC4')  # Teal for model updates
-                elif 'Incentive Distribution' in str(tx_type):
-                    colors3.append('#45B7D1')  # Blue for incentives
-                elif 'IPFS Storage' in str(tx_type):
-                    colors3.append('#96CEB4')  # Green for IPFS
-                elif 'Client IPFS Storage' in str(tx_type):
-                    colors3.append('#FFEAA7')  # Yellow for client IPFS
-                else:
-                    colors3.append('#DDA0DD')  # Purple for others
-            
-            bars3 = ax3.bar(x_pos, gas_used, color=colors3, alpha=0.7, edgecolor='black', linewidth=0.5)
-            ax3.set_title('Gas Usage Trend Over All Transactions', fontweight='bold', fontsize=12)
-            ax3.set_xlabel('Transaction Number')
-            ax3.set_ylabel('Gas Used (units)')
-            ax3.grid(True, alpha=0.3, axis='y')
-            
-            # Add round separators
-            if rounds:
-                round_starts = []
-                current_round = rounds[0]
-                for i, round_name in enumerate(rounds):
-                    if round_name != current_round:
-                        round_starts.append(i)
-                        current_round = round_name
-                
-                for start in round_starts:
-                    ax3.axvline(x=start, color='red', linestyle='--', alpha=0.7, linewidth=2)
-        
-        # Plot 4: Gas Usage Statistics
-        if gas_used:
-            stats_data = {
-                'Min': min(gas_used),
-                'Max': max(gas_used),
-                'Mean': np.mean(gas_used),
-                'Median': np.median(gas_used),
-                'Total': sum(gas_used)
-            }
-            
-            stat_names = list(stats_data.keys())
-            stat_values = list(stats_data.values())
-            colors4 = ['#FF9999', '#FF6666', '#66B2FF', '#99FF99', '#FFCC99']
-            
-            bars4 = ax4.bar(stat_names, stat_values, color=colors4, alpha=0.8, 
-                           edgecolor='black', linewidth=1)
-            ax4.set_title('Gas Usage Statistics', fontweight='bold', fontsize=12)
-            ax4.set_ylabel('Gas Units')
-            ax4.grid(True, alpha=0.3, axis='y')
-            
-            # Add value labels on bars
-            for bar, value in zip(bars4, stat_values):
-                height = bar.get_height()
-                ax4.text(bar.get_x() + bar.get_width()/2., height + height*0.01,
-                        f'{value:,.0f}', ha='center', va='bottom', fontweight='bold')
-        
-        plt.tight_layout()
-        
-        if save:
-            plot_path = os.path.join(self.output_dir, f'gas_usage_analysis_{self.timestamp}.png')
-            plt.savefig(plot_path, dpi=300, bbox_inches='tight')
-            logger.info(f"Gas usage analysis plot saved: {plot_path}")
-            plt.close()
-            return plot_path
-        else:
-            plt.close()  # Close figure instead of showing it
-            return ""
-    
     def create_comprehensive_report(self, system_data: Dict, save: bool = True) -> str:
         """
         Create a comprehensive performance report with all plots
@@ -810,7 +510,6 @@ class PerformanceVisualizer:
         round_results = system_data.get('round_results', [])
         evaluation_results = system_data.get('evaluation_results', {})
         client_results = system_data.get('client_results', [])
-        blockchain_data = system_data.get('blockchain_data', {})
         
         # Plot 1: Training History
         if training_history:
@@ -913,30 +612,8 @@ class PerformanceVisualizer:
                    startangle=90)
             ax6.set_title('Zero-Day Detection Distribution', fontweight='bold')
         
-        # Plot 7: Blockchain Transactions
-        if blockchain_data:
-            ax7 = fig.add_subplot(gs[2, 0])
-            transactions = blockchain_data.get('transactions', [])
-            if transactions:
-                ax7.plot(range(len(transactions)), transactions, 'b-', linewidth=2, marker='o')
-                ax7.set_title('Blockchain Transactions', fontweight='bold')
-                ax7.set_xlabel('Time Step')
-                ax7.set_ylabel('Transactions')
-                ax7.grid(True, alpha=0.3)
-        
-        # Plot 8: IPFS Storage
-        if blockchain_data:
-            ax8 = fig.add_subplot(gs[2, 1])
-            ipfs_cids = blockchain_data.get('ipfs_cids', [])
-            if ipfs_cids:
-                ax8.bar(range(len(ipfs_cids)), [1] * len(ipfs_cids), color='lightgreen', alpha=0.7)
-                ax8.set_title('IPFS Model Storage', fontweight='bold')
-                ax8.set_xlabel('Storage Event')
-                ax8.set_ylabel('Models Stored')
-                ax8.set_ylim(0, 1.2)
-        
-        # Plot 9: System Summary
-        ax9 = fig.add_subplot(gs[2, 2])
+        # Plot 7: System Summary
+        ax7 = fig.add_subplot(gs[2, 0])
         summary_data = {
             'Training Rounds': len(round_results),
             'Clients': len(client_results),
@@ -948,19 +625,19 @@ class PerformanceVisualizer:
         values = list(summary_data.values())
         colors = ['skyblue', 'lightgreen', 'lightcoral', 'gold']
         
-        bars = ax9.bar(metrics, values, color=colors, alpha=0.8)
-        ax9.set_title('System Summary', fontweight='bold')
-        ax9.set_ylabel('Value')
-        ax9.tick_params(axis='x', rotation=45)
+        bars = ax7.bar(metrics, values, color=colors, alpha=0.8)
+        ax7.set_title('System Summary', fontweight='bold')
+        ax7.set_ylabel('Value')
+        ax7.tick_params(axis='x', rotation=45)
         
         # Add value labels
         for bar, value in zip(bars, values):
             height = bar.get_height()
-            ax9.text(bar.get_x() + bar.get_width()/2., height + 0.01,
+            ax7.text(bar.get_x() + bar.get_width()/2., height + 0.01,
                     f'{value:.3f}', ha='center', va='bottom', fontweight='bold')
         
         # Add overall title
-        fig.suptitle('Blockchain Federated Learning System - Comprehensive Performance Report', 
+        fig.suptitle('Federated Learning System - Comprehensive Performance Report', 
                     fontsize=16, fontweight='bold', y=0.98)
         
         if save:
@@ -1313,14 +990,9 @@ class PerformanceVisualizer:
                 if abs(improvement) >= 0.01:  # Show if change is at least 0.01%
                     # Position annotation at the middle of the TTT bar
                     ttt_bar_center = x[i] + width/2
-                    color = 'green' if improvement > 0 else 'red'
-                    # Special highlighting for AUC-PR (PRIMARY metric)
-                    if base_metrics[i] == 'auc_pr':
-                        annotation_text = f'{improvement:+.2f}% ⭐'
-                        facecolor = 'lightgreen' if improvement > 0 else 'lightcoral'
-                    else:
-                        annotation_text = f'{improvement:+.2f}%'
-                        facecolor = color
+                    # Use consistent colors for all metrics: lightgreen for improvements, lightcoral for decreases
+                    annotation_text = f'{improvement:+.2f}%'
+                    facecolor = 'lightgreen' if improvement > 0 else 'lightcoral'
                     ax1.annotate(annotation_text, 
                                xy=(ttt_bar_center, ttt_val + 0.05), 
                                xytext=(ttt_bar_center, ttt_val + 0.1),
@@ -1351,7 +1023,7 @@ class PerformanceVisualizer:
             elif m == 'accuracy_mean' or m == 'accuracy':
                 metric_labels.append('Accuracy')
             elif m == 'auc_pr':
-                metric_labels.append('AUC-PR ⭐')  # Mark as PRIMARY metric
+                metric_labels.append('AUC-PR')  # Mark as PRIMARY metric
             else:
                 metric_labels.append(m.replace('_', ' ').title())
         
@@ -1637,9 +1309,13 @@ class PerformanceVisualizer:
         if 'pr_curve' in base_results and 'pr_curve' in ttt_results:
             base_auc_pr = base_results.get('auc_pr', 0)
             ttt_auc_pr = ttt_results.get('auc_pr', 0)
-            improvement = ttt_auc_pr - base_auc_pr
+            # Calculate improvement as percentage
+            if base_auc_pr > 0:
+                improvement = ((ttt_auc_pr - base_auc_pr) / base_auc_pr) * 100
+            else:
+                improvement = 0
             
-            ax.text(0.05, 0.15, f'AUC-PR Improvement: {improvement:+.3f} ⭐', 
+            ax.text(0.05, 0.15, f'AUC-PR Improvement: {improvement:+.2f}%', 
                    fontsize=11, fontweight='bold', fontfamily='Times New Roman',
                    bbox=dict(boxstyle='round,pad=0.4', facecolor='lightgreen', alpha=0.8, edgecolor='black'))
         
@@ -1656,130 +1332,9 @@ class PerformanceVisualizer:
         plt.close()  # Close figure instead of showing it
         return plot_path if save else ""
 
-    def plot_token_distribution(self, incentive_data: Dict[str, Any], save: bool = True) -> str:
-        """
-        Create a simple single bar chart showing total tokens distributed to each client
-        
-        Args:
-            incentive_data: Dictionary containing token distribution data
-            save: Whether to save the plot
-            
-        Returns:
-            str: Path to saved plot or empty string
-        """
-        try:
-            # Extract data from incentive_data
-            participant_rewards = incentive_data.get('participant_rewards', {})
-            total_rewards = incentive_data.get('total_rewards_distributed', 0)
-            
-            if not participant_rewards:
-                logger.warning("No token distribution data available for visualization")
-                return ""
-            
-            # Create a single figure with one bar chart
-            fig, ax = plt.subplots(1, 1, figsize=(12, 8))
-            fig.suptitle('Total ERC-20 Token Distribution to Clients', fontsize=16, fontweight='bold', fontfamily='Times New Roman')
-            
-            # Sort participants by token amount (descending)
-            sorted_participants = sorted(participant_rewards.items(), key=lambda x: x[1], reverse=True)
-            participant_names = [f"Client {i+1}" for i in range(len(sorted_participants))]
-            token_amounts = [amount for _, amount in sorted_participants]
-            
-            logger.info(f"🔍 DEBUG: Token distribution visualization - {len(sorted_participants)} clients")
-            logger.info(f"🔍 DEBUG: Participant rewards: {participant_rewards}")
-            logger.info(f"🔍 DEBUG: Sorted participants: {sorted_participants}")
-            
-            # Create bar chart with IEEE-standard styling
-            bars = ax.bar(participant_names, token_amounts, 
-                         color=['#FCF4A4',  '#D1D0C8', '#6A642A', '#d62728', '#9467bd', '#8c564b'][:len(participant_names)],
-                         alpha=0.8, edgecolor='none', linewidth=1.2)
-                         
-            
-            ax.set_xlabel('Federated Learning Clients', fontsize=14, fontweight='bold', fontfamily='Times New Roman')
-            ax.set_ylabel('Total Tokens Received', fontsize=14, fontweight='bold', fontfamily='Times New Roman')
-            ax.set_title('Cumulative Token Distribution Across All Rounds', fontsize=14, fontweight='bold', fontfamily='Times New Roman')
-            ax.grid(True, alpha=0.3, linestyle='--', axis='y')
-            
-            # Add value labels on top of bars
-            for bar, value in zip(bars, token_amounts):
-                height = bar.get_height()
-                ax.text(bar.get_x() + bar.get_width()/2., height + max(token_amounts)*0.01,
-                       f'{value:,.0f}', ha='center', va='bottom', fontsize=12, fontweight='bold', fontfamily='Times New Roman')
-            
-            # Add statistics text box
-            if total_rewards > 0:
-                stats_text = f"""
-Token Distribution Summary:
-• Total Tokens Distributed: {total_rewards:,.0f}
-• Number of Participants: {len(participant_rewards)}
-• Average per Client: {total_rewards/len(participant_rewards):,.0f}
-• Incentive Mechanism: Performance-based ERC-20
-                """
-                fig.text(0.02, 0.02, stats_text, fontsize=11, fontfamily='Times New Roman',
-                        bbox=dict(boxstyle='round,pad=0.5', facecolor='lightblue', alpha=0.8),
-                        verticalalignment='bottom')
-            
-            plt.tight_layout()
-            plt.subplots_adjust(bottom=0.15)  # Make room for statistics text
-            
-            if save:
-                plot_path = os.path.join(self.output_dir, f"token_distribution_{self.attack_name}_{self.timestamp}.png")
-                plt.savefig(plot_path, dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
-                logger.info(f"Token distribution plot saved: {plot_path}")
-            
-            plt.close()
-            return plot_path if save else ""
-            
-        except Exception as e:
-            logger.error(f"Error creating token distribution visualization: {str(e)}")
-            return ""
-
 def main():
-    """Example usage of the performance visualizer"""
-    # Initialize visualizer
-    visualizer = PerformanceVisualizer()
-    
-    # Example data (replace with actual system data)
-    example_data = {
-        'training_history': {
-            'epoch_losses': [0.5, 0.3, 0.2, 0.1, 0.05],
-            'epoch_accuracies': [0.6, 0.7, 0.8, 0.9, 0.95]
-        },
-        'round_results': [
-            {'round': 1, 'accuracy': 0.8, 'avg_loss': 0.2, 'num_clients': 3},
-            {'round': 2, 'accuracy': 0.85, 'avg_loss': 0.15, 'num_clients': 3},
-            {'round': 3, 'accuracy': 0.9, 'avg_loss': 0.1, 'num_clients': 3}
-        ],
-        'evaluation_results': {
-            'accuracy': 0.5,
-            'precision': 0.4,
-            'recall': 0.3,
-            'f1_score': 0.35,
-            'zero_day_detection_rate': 0.0,
-            'avg_confidence': 0.0
-        },
-        'client_results': [
-            {'client_id': 'client_1', 'accuracy': 0.5, 'f1_score': 0.3, 'precision': 0.4, 'recall': 0.3},
-            {'client_id': 'client_2', 'accuracy': 0.5, 'f1_score': 0.3, 'precision': 0.4, 'recall': 0.3},
-            {'client_id': 'client_3', 'accuracy': 0.5, 'f1_score': 0.3, 'precision': 0.4, 'recall': 0.3}
-        ],
-        'blockchain_data': {
-            'transactions': [1, 2, 3, 4, 5],
-            'ipfs_cids': ['Qm1', 'Qm2', 'Qm3', 'Qm4', 'Qm5'],
-            'gas_used': [21000, 25000, 23000, 24000, 22000]
-        }
-    }
-    
-    # Generate all plots
-    visualizer.plot_training_history(example_data['training_history'])
-    visualizer.plot_federated_rounds(example_data['round_results'])
-    # visualizer.plot_zero_day_detection_metrics(example_data['evaluation_results'])  # Removed - not properly plotting
-    visualizer.plot_client_performance(example_data['client_results'])
-    visualizer.plot_blockchain_metrics(example_data['blockchain_data'])
-    visualizer.create_comprehensive_report(example_data)
-    visualizer.save_metrics_to_json(example_data)
-    
-    logger.info("All performance visualizations completed!")
+    """Main function for performance visualizer - uses real data from system"""
+    logger.info("Performance visualizer initialized. Use with real system data only.")
 
 if __name__ == "__main__":
     main()

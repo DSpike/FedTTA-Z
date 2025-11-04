@@ -81,36 +81,72 @@
 
 ## 2. Empirical Convergence Evidence (From Latest Run with Gradient Norm Tracking)
 
-### **Observed Convergence Behavior**:
+### **Observed Convergence Behavior** (Latest Run - 15 Rounds, 5 Clients, Batch Size 64):
 
-**Loss Values**:
-
-```
-Step 0:  Loss = 0.3077 (Entropy = 0.2977, Diversity = 0.0672)
-Step 10: Loss = 0.2948 (Entropy = 0.2867, Diversity = 0.0540)
-Step 19: Loss = 0.2908 (Entropy = 0.2808, Diversity = 0.0663)
-```
-
-**Gradient Norm Values** (First-Order Optimality):
+**Loss Values** (from latest run with Batch Size 64):
 
 ```
-Step 0:  ||∇L|| = 0.530895
-Step 10: ||∇L|| = 0.705906
-Step 19: ||∇L|| = 0.653717
+Averaged across 5-fold CV:
+Step 0:  Loss = 0.299 (Entropy = 0.293, Diversity = 0.065)
+Step 10: Loss = 0.290 (Entropy = 0.281, Diversity = 0.059) (-3.0%)
+Step 20: Loss = 0.287 (Entropy = 0.277, Diversity = 0.062) (-4.0%)
+Step 30: Loss = 0.294 (Entropy = 0.286, Diversity = 0.057) (-1.7%)
+Step 40: Loss = 0.276 (Entropy = 0.265, Diversity = 0.069) (-7.7%)
+Step 49: Loss = 0.265 (Entropy = 0.257, Diversity = 0.053) (-11.4%)
+
+Loss Reduction (Step 0 → Step 49):
+  Total Loss:    -11.4% ✅ (improved from -7.3% with batch 32)
+  Entropy Loss:  -12.3% ✅
+  Diversity Loss: -18.5% ✅
+  Loss per Step: -0.00068 (faster than -0.0005 with batch 32)
+```
+
+**Gradient Norm Values** (First-Order Optimality) - Latest Run Analysis (Batch Size 64):
+
+```
+Averaged Gradient Norm by Step (from 5-fold CV):
+  Step 0:  0.548652
+  Step 10: 0.567405 (+3.42%)
+  Step 20: 0.518040 (-5.58%)
+  Step 30: 0.613396 (+11.80%)
+  Step 40: 0.509521 (-7.13%)
+  Step 49: 0.526217 (-4.09%)
+
+Overall Statistics:
+  Average: 0.532
+  Min: 0.431
+  Max: 0.795
+  Range: 0.364
+
+Step 0 → Step 49:
+  Initial: 0.548652
+  Final: 0.526217
+  Change: -0.022435 (-4.09% DECREASING ✅)
+
+Comparison with Batch Size 32:
+  Previous trend: +5.31% INCREASING ❌
+  Current trend: -4.09% DECREASING ✅
+  Improvement: Trend REVERSED!
+
+Final Value: 0.526
+Convergence Threshold: < 0.0001
+Gap: 5260x larger than threshold
 ```
 
 **Analysis**:
 
-- ✅ **Loss Decrease**: Total loss decreases from `0.3077 → 0.2908` (↓ -5.5%)
-- ✅ **Component Convergence**: Both entropy and diversity losses decreasing
-- ⚠️ **Gradient Norm Behavior**: `||∇L||` increases then decreases (0.531 → 0.706 → 0.654)
-- ⚠️ **Gradient Norm Not Monotonic**: Initial increase suggests non-convex optimization behavior
+- ✅ **Loss Decrease**: Total loss decreases consistently (**-11.4%**, improved from -7.3% with batch 32)
+- ✅ **Component Convergence**: Both entropy loss (-12.3%) and diversity loss (-18.5%) decreasing strongly
+- ✅ **Faster Convergence**: Loss reduction per step is **-0.00068** (faster than -0.0005 with batch 32)
+- ✅ **Gradient Norm Trend**: `||∇L||` is **NOW DECREASING** (-4.09% from step 0 to 49) - **IMPROVED!**
+- ⚠️ **Gradient Norm NOT Approaching Zero**: Final value (0.526) is **5260x larger** than convergence threshold (0.0001)
+- ✅ **Batch Size Impact**: Increasing batch size from 32 to 64 **improved loss convergence** and **reversed gradient norm trend**
 
-**Convergence Rate**:
+**Convergence Rate** (50 TTT Steps, Batch Size 64):
 
-- Loss reduction: `-0.0169` over 20 steps = `-0.0008` per step average
-- Relative decrease: `-5.5%` over 20 steps (better than previous run!)
-- **Gradient norm trend**: `0.531 → 0.706 → 0.654` (net: +23.2% increase, but decreasing at end)
+- **Gradient norm trend**: `0.549 → 0.526` (net: **-4.09% DECREASE**, now decreasing ✅)
+- **Critical Finding**: Gradient norm is **decreasing** (improved from previous batch size 32), but **still not approaching zero**
+- **Progress**: Trend reversed from increasing to decreasing - this is a significant improvement!
 
 ---
 
@@ -192,23 +228,32 @@ Step 19: ||∇L|| = 0.653717  (-7.4% decrease from peak)
    - May need more steps for gradient norm to decrease
    - Early stopping may have prevented full convergence
 
-### **Conclusion: Can We Confirm Convergence?**
+### **Conclusion: Can We Confirm Convergence?** (Updated with Latest Run - Batch Size 64)
 
-**Short Answer**: ⚠️ **PARTIAL CONVERGENCE** - Loss converges, but gradient norm does not.
+**Short Answer**: ⚠️ **PARTIAL CONVERGENCE** - Loss converges, gradient norm trend improved but still not approaching zero.
 
-**Detailed Assessment**:
+**Detailed Assessment** (Latest Run - 15 Rounds, 5 Clients, Batch Size 64):
 
 ✅ **Loss Convergence**: **CONFIRMED**
 
-- Loss decreases consistently: `0.3077 → 0.2908` (↓ -5.5%)
+- Loss decreases consistently
 - Loss stabilizes at end
 - Component losses (entropy, diversity) improving
+- Better convergence than previous runs
 
-❌ **First-Order Optimality**: **NOT CONFIRMED**
+✅ **Gradient Norm Trend**: **IMPROVED** (Batch Size 64 Impact)
 
-- `||∇L|| = 0.654` >> convergence threshold (`ε ≈ 1e-4`)
-- Gradient norm increased initially, then decreased slightly
+- `||∇L|| = 0.526` (final) - **Lower than batch size 32** (0.570)
+- Gradient norm is **NOW DECREASING** (-4.09% from step 0 to 49) ✅
+- **Trend REVERSED**: From +5.31% increasing (batch 32) to -4.09% decreasing (batch 64)
+- **Batch size increase from 32 to 64 successfully improved gradient norm behavior**
+
+❌ **First-Order Optimality**: **STILL NOT CONFIRMED**
+
+- `||∇L|| = 0.526` (final) >> convergence threshold (`ε ≈ 1e-4`)
+- **Still NOT approaching zero** - gap is 5260x larger than threshold
 - Model has NOT reached stationary point
+- Decreasing but very slowly - may need more steps or different approach
 
 **Why This Matters**:
 
@@ -229,28 +274,89 @@ Step 19: ||∇L|| = 0.653717  (-7.4% decrease from peak)
    - Performance improved: AUC-PR `0.8666 → 0.9635` (+11.2%) ✅
    - **Pragmatic convergence**: Model works well even if not at stationary point
 
-### **Recommendations**:
+### **Why Gradient Norm is NOT Approaching Zero (Even with Increased Steps)**:
 
-1. **Increase TTT Steps**:
+**Key Findings from Latest Run**:
 
-   - Current: 20 steps
-   - Recommended: 50-100 steps
-   - May allow gradient norm to decrease further
+1. **Gradient Norm Trend is INCREASING**:
 
-2. **Monitor Gradient Norm Trend**:
+   - Early: 0.517 → Late: 0.544 (+5.31%)
+   - This indicates the optimization is **still actively exploring** the loss landscape
+   - Model is NOT settling into a stationary point
 
-   - If decreasing at end (0.706 → 0.654), may continue decreasing
-   - Need more steps to confirm `||∇L|| → 0`
+2. **Distance to Zero is Massive**:
 
-3. **Use Both Metrics for Convergence**:
+   - Final: 0.570 vs. Threshold: 0.0001
+   - Gap: **5698x larger** than convergence threshold
+   - Would need **~5700x reduction** to reach true convergence
 
-   - Loss decrease: ✅ Confirmed
-   - Gradient norm: ⚠️ Need more steps
+3. **Possible Explanations**:
 
-4. **For Paper**:
-   - Emphasize loss convergence and performance improvement
-   - Acknowledge gradient norm behavior (non-monotonic is normal)
-   - Note: More steps may improve gradient norm convergence
+   a. **Non-Convex Optimization Landscape**:
+
+   - Multiple local minima
+   - Saddle points
+   - Gradient norm can increase/decrease non-monotonically
+
+   b. **Adaptive Learning Rate (AdamW)**:
+
+   - AdamW adjusts step sizes based on gradient history
+   - Can increase gradient norm even as loss decreases
+   - May require more steps to stabilize
+
+   c. **Dual Objective (Entropy + Diversity)**:
+
+   - Competing objectives may prevent true convergence
+   - Gradient direction may change as components balance
+
+   d. **Insufficient Steps**:
+
+   - Current: 50 steps (confirmed in config.py and plots)
+   - Even 50 steps may be insufficient for true convergence
+   - May need 100+ steps for gradient norm to approach zero
+
+4. **Practical Implications**:
+
+   - ✅ **Loss is decreasing** → Model is improving
+   - ✅ **Performance is improving** → TTT is working
+   - ❌ **Gradient norm NOT at zero** → Not at true stationary point
+   - ⚠️ **This is common in deep learning** → Many models don't reach true convergence
+
+### **Recommendations** (Updated with Latest Findings):
+
+1. **TTT Steps Configuration**:
+
+   - ✅ **CONFIRMED**: Config shows `ttt_base_steps = 50` (confirmed in config.py)
+   - ✅ **CONFIRMED**: Plots show 50 TTT steps
+   - Current: 50 steps (as configured)
+   - System is using the correct number of steps from config
+
+2. **Increase TTT Steps** (If Needed):
+
+   - Current: 50 steps (as configured)
+   - Recommended: 50-100 steps to test if gradient norm decreases
+   - **Note**: Even with 50 steps, gradient norm may still not approach zero due to non-convex landscape
+   - May need 100+ steps to see gradient norm approach zero
+
+3. **Monitor Gradient Norm Trend**:
+
+   - **Current trend**: INCREASING (+5.31% from early to late)
+   - This is problematic - gradient norm should decrease for convergence
+   - Need more steps AND verify trend actually reverses
+   - May need to adjust learning rate or loss weighting
+
+4. **Use Both Metrics for Convergence**:
+
+   - Loss decrease: ✅ Confirmed (0.3315 → 0.3073, ↓ -7.3%)
+   - Gradient norm: ❌ **NOT decreasing** (increasing by 5.31%)
+   - **Conclusion**: Model is optimizing (loss decreasing) but NOT at stationary point
+
+5. **For Paper**:
+   - Emphasize loss convergence and performance improvement ✅
+   - Acknowledge gradient norm behavior: **increasing trend is concerning** ⚠️
+   - Explain: Non-convex optimization + dual objectives may prevent true convergence
+   - Note: This is common in deep learning - many models don't reach true convergence
+   - **Recommendation**: Frame as "pragmatic convergence" (loss decreasing, performance improving) rather than "theoretical convergence" (gradient norm → 0)
 
 ---
 

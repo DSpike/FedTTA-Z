@@ -1,0 +1,45 @@
+{
+  "confusion_matrix_before": {
+    "tn": 92,
+    "fp": 0,
+    "fn": 240,
+    "tp": 0
+  },
+  "confusion_matrix_after": {
+    "tn": 92,
+    "fp": 0,
+    "fn": 221,
+    "tp": 19
+  },
+  "changes": {
+    "tn_change": 0,
+    "fp_change": 0,
+    "fn_change": -19,
+    "tp_change": 19,
+    "fp_change_pct": 0.0,
+    "tp_change_pct": null
+  },
+  "new_false_positives": {
+    "count": 0,
+    "confidence_before_mean": null,
+    "confidence_before_std": null,
+    "confidence_after_mean": null,
+    "confidence_after_std": null
+  },
+  "fixed_false_positives": {
+    "count": 0,
+    "confidence_before_mean": null,
+    "confidence_after_mean": null
+  },
+  "new_true_positives": {
+    "count": 19,
+    "confidence_before_mean": 0.4900864064693451,
+    "confidence_after_mean": 0.5283969044685364
+  },
+  "new_false_negatives": {
+    "count": 0,
+    "confidence_before_mean": null,
+    "confidence_after_mean": null
+  },
+  "sample_size": 332
+}

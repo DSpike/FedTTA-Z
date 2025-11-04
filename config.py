@@ -14,8 +14,8 @@ class SystemConfig:
     """Centralized system configuration - single source of truth"""
     
     # === FEDERATED LEARNING CONFIGURATION ===
-    num_clients: int = 3  # Reduced for quick test
-    num_rounds: int = 3  # Reduced for quick test
+    num_clients: int = 5   # Reduced for quick test
+    num_rounds: int = 15  # Reduced for quick test
     local_epochs: int = 50  # Balanced epochs per round for better federated learning
     learning_rate: float = 0.001
     batch_size: int = 32
@@ -30,7 +30,7 @@ class SystemConfig:
     # === DATA CONFIGURATION ===
     data_path: str = "UNSW_NB15_training-set.csv"
     test_path: str = "UNSW_NB15_testing-set.csv"
-    zero_day_attack: str = "Exploits"  # Single place to control attack type
+    zero_day_attack: str = "Analysis"  # Single place to control attack type
     
     # Attack type mapping (UNSW-NB15 dataset)
     attack_types = {
@@ -70,9 +70,10 @@ class SystemConfig:
     transductive_lr: float = 0.0005
     
     # === TEST-TIME TRAINING (TTT) CONFIGURATION ===
-    ttt_base_steps: int = 20  # Base number of TTT adaptation steps (INCREASED from 10 to 25 for better loss convergence)
+    ttt_base_steps: int = 50  # Base number of TTT adaptation steps (INCREASED from 10 to 25 for better loss convergence)
     ttt_max_steps: int = 300  # Maximum TTT steps (safety limit)
     ttt_adaptation_query_size: int = 750  # TTT adaptation query set size (CRITICAL: increased from 200 to 500-1000 range for better performance)
+    ttt_batch_size: int = 32  # TTT batch size (Testing with 16 to find optimal batch size)
     ttt_lr: float = 3e-5  # TTT learning rate (INCREASED from 1e-5 to 3e-5 for faster adaptation while maintaining stability)
     ttt_lr_min: float = 1e-6  # Minimum learning rate
     ttt_lr_decay: float = 0.8  # Learning rate decay factor
@@ -158,6 +159,7 @@ class SystemConfig:
             'learning_rate': self.learning_rate,
             'ttt_base_steps': self.ttt_base_steps,
             'ttt_max_steps': self.ttt_max_steps,
+            'ttt_batch_size': self.ttt_batch_size,
             'ttt_lr': self.ttt_lr,
         }
 

@@ -1,0 +1,34 @@
+{
+  "attack_rate": {
+    "before_ttt": 0.0,
+    "after_ttt": 0.0572289156626506,
+    "true_rate": 0.7228915662650602,
+    "absolute_change": 0.0572289156626506,
+    "relative_change_pct": 0.0
+  },
+  "bias_analysis": {
+    "bias_before": -0.7228915662650602,
+    "bias_after": -0.6656626506024096,
+    "bias_change": 0.05722891566265065,
+    "improved": true
+  },
+  "confusion_matrix_before": {
+    "tn": 92,
+    "fp": 0,
+    "fn": 240,
+    "tp": 0
+  },
+  "confusion_matrix_after": {
+    "tn": 92,
+    "fp": 0,
+    "fn": 221,
+    "tp": 19
+  },
+  "confusion_matrix_changes": {
+    "tn_change": 0,
+    "fp_change": 0,
+    "fn_change": -19,
+    "tp_change": 19
+  },
+  "sample_size": 332
+}

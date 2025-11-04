@@ -439,7 +439,7 @@ class SimpleFedAVGCoordinator:
             
             # TTT configuration - use config values
             ttt_steps = getattr(config, 'ttt_base_steps', 100) if config else 100
-            batch_size = 32
+            batch_size = getattr(config, 'ttt_batch_size', 64) if config else 64  # Use config batch size, default to 64
             n_batches = (len(query_x) + batch_size - 1) // batch_size
             
             # Initialize threshold manager
@@ -735,7 +735,7 @@ class SimpleFedAVGCoordinator:
         """
         # Configuration
         num_steps = getattr(config, 'ttt_steps', 100) if config else 100
-        batch_size = getattr(config, 'ttt_batch_size', 32) if config else 32
+        batch_size = getattr(config, 'ttt_batch_size', 64) if config else 64  # Use config batch size, default to 64
         lr = getattr(config, 'ttt_lr', 0.00025) if config else 0.00025
         
         # Pseudo-labeling configuration
@@ -966,7 +966,7 @@ class TENTPseudoLabels:
         query_x,
         query_y=None,
         num_steps=100,
-        batch_size=32,
+        batch_size=64,  # Default to 64, but should be passed from config
         lr=0.00025,
         update_teacher_every=1
     ):

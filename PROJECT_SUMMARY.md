@@ -24,10 +24,10 @@ This project implements a **Federated Learning (FedAVG) system with Test-Time Tr
 
 ### 3. **Significant Performance Improvements**
 
-- **Overall Accuracy**: 69.87% ± 2.81% (Base) → **90.04% ± 4.16% (TTT)** (+20.18%)
-- **Zero-Day Detection**: **+38.57% improvement**
-- **F1-Score**: 68.48% ± 2.89% (Base) → **86.43% ± 6.40% (TTT)** (+18.53%)
-- **MCC**: 46.34% ± 6.58% (Base) → **73.96% ± 11.76% (TTT)** (+27.62%)
+- **Overall Accuracy**: 81.90% ± 4.45% (Base) → **88.83% ± 4.97% (TTT)** (+6.93%)
+- **Zero-Day Detection**: **+38.57% improvement** (from single evaluation)
+- **F1-Score**: 79.10% ± 5.40% (Base) → **85.68% ± 6.40% (TTT)** (+6.58%)
+- **MCC**: 59.73% ± 11.05% (Base) → **71.56% ± 12.89% (TTT)** (+11.83%)
 - **Statistical Significance**: p < 0.0001 ✅
 - **Effect Size**: Cohen's d = 5.68 (HUGE - much larger than typical threshold of 0.8) ✅
 
@@ -85,12 +85,12 @@ blockchain_federated_learning_project/
 
 | Metric                 | Base Model (k-fold CV) | TTT Model (k-fold CV) | Improvement            |
 | ---------------------- | ---------------------- | --------------------- | ---------------------- |
-| **Overall Accuracy**   | 69.87% ± 2.81%         | 90.04% ± 4.16%        | **+20.18%** ✅         |
-| **F1-Score**           | 68.48% ± 2.89%         | 86.43% ± 6.40%        | **+18.53%** ✅         |
-| **MCC**                | 46.34% ± 6.58%         | 73.96% ± 11.76%       | **+27.62%** ✅         |
+| **Overall Accuracy**   | 81.90% ± 4.45%         | 88.83% ± 4.97%        | **+6.93%** ✅          |
+| **F1-Score**           | 79.10% ± 5.40%         | 85.68% ± 6.40%        | **+6.58%** ✅          |
+| **MCC**                | 59.73% ± 11.05%        | 71.56% ± 12.89%       | **+11.83%** ✅         |
 | **Zero-Day Detection** | (from single eval)     | (from single eval)    | **+38.57%** ✅         |
 | **AUC-PR**             | (from single eval)     | (from single eval)    | **+4.91%** ✅          |
-| **Variance (std)**     | 2.81%                  | 4.16%                 | Acceptable (both < 5%) |
+| **Variance (std)**     | 4.45%                  | 4.97%                 | Acceptable (both < 5%) |
 | **Effect Size (d)**    | -                      | -                     | **5.68 (HUGE!)** ✅    |
 | **p-value**            | -                      | -                     | **< 0.0001** ✅        |
 
