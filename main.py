@@ -5512,7 +5512,10 @@ def main():
             for i, path in enumerate(ieee_plot_paths, 1):
                 logger.info(f"  {i}. {path}")
         except Exception as e:
-            logger.warning(f"⚠️ IEEE statistical plots generation failed: {e}")
+            import traceback
+            logger.error(f"⚠️ IEEE statistical plots generation failed: {e}")
+            logger.error(f"Error details: {traceback.format_exc()}")
+            logger.warning("⚠️ Continuing execution despite IEEE plot generation failure...")
         
         # Evaluate final global model performance
         final_evaluation = system.evaluate_final_global_model()

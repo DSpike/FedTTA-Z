@@ -40,8 +40,10 @@ class IEEEStatisticalVisualizer:
     """IEEE standard statistical robustness visualization"""
     
     def __init__(self, output_dir: str = "performance_plots/ieee_statistical_plots"):
-        self.output_dir = output_dir
-        os.makedirs(output_dir, exist_ok=True)
+        # Normalize path for cross-platform compatibility
+        self.output_dir = os.path.normpath(output_dir)
+        os.makedirs(self.output_dir, exist_ok=True)
+        logger.info(f"📁 IEEE plots output directory: {self.output_dir}")
     
     def plot_evaluation_methodology_comparison(self):
         """Figure 1: Evaluation Methodology Comparison - REMOVED per user request"""
@@ -217,10 +219,18 @@ class IEEEStatisticalVisualizer:
         ax2.grid(True, alpha=0.3, axis='y')
         
         plt.tight_layout()
-        plt.savefig(os.path.join(self.output_dir, 'ieee_kfold_cross_validation.pdf'))
-        plt.savefig(os.path.join(self.output_dir, 'ieee_kfold_cross_validation.png'))
-        plt.show()
-        return os.path.join(self.output_dir, 'ieee_kfold_cross_validation.png')
+        output_path_pdf = os.path.normpath(os.path.join(self.output_dir, 'ieee_kfold_cross_validation.pdf'))
+        output_path_png = os.path.normpath(os.path.join(self.output_dir, 'ieee_kfold_cross_validation.png'))
+        try:
+            plt.savefig(output_path_pdf, dpi=300, bbox_inches='tight')
+            plt.savefig(output_path_png, dpi=300, bbox_inches='tight')
+            logger.info(f"✅ Saved: {output_path_png}")
+            plt.close(fig)
+        except Exception as e:
+            logger.error(f"❌ Failed to save k-fold CV plot: {str(e)}")
+            plt.close(fig)
+            raise
+        return output_path_png
     
     def plot_meta_tasks_evaluation_results(self, real_results=None):
         """Figure 3: K-Fold CV Consistency Analysis
@@ -315,10 +325,18 @@ class IEEEStatisticalVisualizer:
         ax2.grid(True, alpha=0.3)
         
         plt.tight_layout()
-        plt.savefig(os.path.join(self.output_dir, 'ieee_kfold_consistency_analysis.pdf'))
-        plt.savefig(os.path.join(self.output_dir, 'ieee_kfold_consistency_analysis.png'))
-        plt.show()
-        return os.path.join(self.output_dir, 'ieee_kfold_consistency_analysis.png')
+        output_path_pdf = os.path.normpath(os.path.join(self.output_dir, 'ieee_kfold_consistency_analysis.pdf'))
+        output_path_png = os.path.normpath(os.path.join(self.output_dir, 'ieee_kfold_consistency_analysis.png'))
+        try:
+            plt.savefig(output_path_pdf, dpi=300, bbox_inches='tight')
+            plt.savefig(output_path_png, dpi=300, bbox_inches='tight')
+            logger.info(f"✅ Saved: {output_path_png}")
+            plt.close(fig)
+        except Exception as e:
+            logger.error(f"❌ Failed to save k-fold consistency plot: {str(e)}")
+            plt.close(fig)
+            raise
+        return output_path_png
     
     def plot_statistical_comparison(self, real_results=None, save_dir='performance_plots/ieee_statistical_plots/'):
         """Figure 4: Unified Statistical Comparison of All Metrics"""
@@ -537,11 +555,20 @@ class IEEEStatisticalVisualizer:
         
         plt.tight_layout()
         # Save plot
+        save_dir = os.path.normpath(save_dir)
         os.makedirs(save_dir, exist_ok=True)
-        plt.savefig(os.path.join(save_dir, 'ieee_statistical_comparison.pdf'), dpi=300, bbox_inches='tight')
-        plt.savefig(os.path.join(save_dir, 'ieee_statistical_comparison.png'), dpi=300, bbox_inches='tight')
-        plt.show()
-        return os.path.join(save_dir, 'ieee_statistical_comparison.png')
+        output_path_pdf = os.path.normpath(os.path.join(save_dir, 'ieee_statistical_comparison.pdf'))
+        output_path_png = os.path.normpath(os.path.join(save_dir, 'ieee_statistical_comparison.png'))
+        try:
+            plt.savefig(output_path_pdf, dpi=300, bbox_inches='tight')
+            plt.savefig(output_path_png, dpi=300, bbox_inches='tight')
+            logger.info(f"✅ Saved: {output_path_png}")
+            plt.close(fig)
+        except Exception as e:
+            logger.error(f"❌ Failed to save statistical comparison plot: {str(e)}")
+            plt.close(fig)
+            raise
+        return output_path_png
     
     def plot_effect_size_analysis(self, real_results=None):
         """Figure 5: Effect Size and Statistical Power Analysis
@@ -677,10 +704,18 @@ class IEEEStatisticalVisualizer:
         ax2.set_ylim(0.7, 1.0)
         
         plt.tight_layout()
-        plt.savefig(os.path.join(self.output_dir, 'ieee_effect_size_analysis.pdf'))
-        plt.savefig(os.path.join(self.output_dir, 'ieee_effect_size_analysis.png'))
-        plt.show()
-        return os.path.join(self.output_dir, 'ieee_effect_size_analysis.png')
+        output_path_pdf = os.path.normpath(os.path.join(self.output_dir, 'ieee_effect_size_analysis.pdf'))
+        output_path_png = os.path.normpath(os.path.join(self.output_dir, 'ieee_effect_size_analysis.png'))
+        try:
+            plt.savefig(output_path_pdf, dpi=300, bbox_inches='tight')
+            plt.savefig(output_path_png, dpi=300, bbox_inches='tight')
+            logger.info(f"✅ Saved: {output_path_png}")
+            plt.close(fig)
+        except Exception as e:
+            logger.error(f"❌ Failed to save effect size analysis plot: {str(e)}")
+            plt.close(fig)
+            raise
+        return output_path_png
     
     def generate_all_ieee_plots(self):
         """Generate all IEEE standard statistical plots"""
@@ -688,9 +723,7 @@ class IEEEStatisticalVisualizer:
         print("=" * 60)
         
         plots = {}
-        
         # Evaluation Methodology Comparison plot removed per user request
-        
         print("1. Creating K-Fold Cross-Validation Results...")
         plots['kfold'] = self.plot_kfold_cross_validation_results()
         

@@ -15,11 +15,11 @@ class SystemConfig:
     
     # === FEDERATED LEARNING CONFIGURATION ===
     num_clients: int = 5   # Reduced for quick test
-    num_rounds: int = 15  # Reduced for quick test
+    num_rounds: int = 3  # Reduced for quick test
     local_epochs: int = 50  # Balanced epochs per round for better federated learning
     learning_rate: float = 0.001
     batch_size: int = 32
-    dirichlet_alpha: float = 0.5 # Dirichlet distribution parameter for non-IID data splitting
+    dirichlet_alpha: float = 100 # Dirichlet distribution parameter for non-IID data splitting
                                   # α = 0.1: Very high heterogeneity (extreme non-IID)
                                   # α = 1.0: Moderate heterogeneity (balanced non-IID) - RECOMMENDED
                                   # α = 10.0: Low heterogeneity (near IID)

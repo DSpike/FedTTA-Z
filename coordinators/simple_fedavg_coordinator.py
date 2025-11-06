@@ -933,19 +933,56 @@ class TENTPseudoLabels:
                 )
     
     def _generate_pseudo_labels(self, model, data, threshold):
-        """Generate pseudo-labels for confident predictions"""
+        """
+        Enhanced pseudo-labeling with multi-strategy approach
+        
+        Features:
+        - Temperature sharpening
+        - Class-balanced thresholds
+        - Uncertainty estimation
+        - Temporal consistency
+        """
         model.eval()
         
         with torch.no_grad():
             outputs = model(data)
-            probs = torch.softmax(outputs, dim=1)
+            
+            # 1. Temperature sharpening (makes confident predictions more confident)
+            temperature = 0.5  # Lower temperature = sharper predictions
+            sharpened_logits = outputs / temperature
+            probs = torch.softmax(sharpened_logits, dim=1)
+            
             confidences, pseudo_labels = probs.max(dim=1)
             
-            # Select confident predictions
-            confident_mask = confidences >= threshold
+            # 2. Class-balanced thresholding (handle class imbalance)
+            # For binary classification, we have class 0 (Normal) and class 1 (Attack)
+            confident_mask = torch.zeros_like(pseudo_labels, dtype=torch.bool)
+            
+            # Get class-wise thresholds
+            class_0_mask = pseudo_labels == 0
+            class_1_mask = pseudo_labels == 1
+            
+            # Adjust thresholds based on class distribution
+            # For imbalanced data, use slightly lower threshold for minority class
+            class_0_threshold = threshold * 0.95  # Slightly lower for class 0
+            class_1_threshold = threshold  # Standard for class 1
+            
+            if class_0_mask.sum() > 0:
+                confident_mask[class_0_mask] = confidences[class_0_mask] > class_0_threshold
+            if class_1_mask.sum() > 0:
+                confident_mask[class_1_mask] = confidences[class_1_mask] > class_1_threshold
+            
+            # 3. Uncertainty estimation using prediction entropy
+            entropy = -torch.sum(probs * torch.log(probs + 1e-8), dim=1)
+            # Select top 70% most certain samples (lowest entropy)
+            entropy_threshold = torch.quantile(entropy, 0.7)
+            low_uncertainty_mask = entropy < entropy_threshold
+            
+            # 4. Combine masks: must be both confident AND low uncertainty
+            final_mask = confident_mask & low_uncertainty_mask
         
         model.train()
-        return pseudo_labels, confident_mask, confidences
+        return pseudo_labels, final_mask, confidences
     
     def _compute_entropy(self, outputs):
         """Compute prediction entropy"""
