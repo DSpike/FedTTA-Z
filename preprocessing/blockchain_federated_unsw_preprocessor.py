@@ -6,17 +6,13 @@ Implements the 6-step preprocessing pipeline for zero-day detection
 import pandas as pd
 import numpy as np
 import torch
-import torch.nn as nn
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.feature_selection import mutual_info_classif, SelectKBest
-from sklearn.feature_selection import RFE
-from sklearn.svm import LinearSVC
+from sklearn.feature_selection import mutual_info_classif
 from imblearn.over_sampling import SMOTE, ADASYN
 from imblearn.under_sampling import RandomUnderSampler
-import psutil
 import logging
 import os
 import pickle
@@ -38,7 +34,7 @@ class UNSWPreprocessor:
     2. Feature Engineering  
     3. Data Cleaning (handles missing values, duplicates, infinite values)
     4. Categorical Encoding (after cleaning to avoid encoding invalid data)
-    5. Feature Selection (IGRF-RFE hybrid)
+    5. Feature Selection (IG + RF hybrid)
     6. Feature Scaling
     7. Data Rebalancing
     """
@@ -56,6 +52,7 @@ class UNSWPreprocessor:
         self.scaler = StandardScaler()
         self.label_encoders = {}
         self.target_encoders = {}
+        self.onehot_columns = {}  # Track one-hot encoded columns for transform
         self.feature_names = None
         
         # UNSW-NB15 attack types
@@ -73,6 +70,47 @@ class UNSWPreprocessor:
         }
         
         logger.info("UNSW-NB15 Preprocessor initialized")
+    
+    def _create_flow_ids(self, df: pd.DataFrame) -> List:
+        """
+        Create flow IDs for packets based on network flow characteristics
+        
+        Flow ID is created from source IP, destination IP, protocol, and timestamp
+        (or other distinguishing features if available)
+        
+        Args:
+            df: DataFrame with test data after preprocessing
+            
+        Returns:
+            flow_ids: List of flow IDs for each packet
+        """
+        logger.info("Creating flow IDs for flow-level evaluation...")
+        
+        # Check if we have IP/port columns (UNSW-NB15 has srcip, dstip, sport, dport, proto)
+        flow_columns = []
+        
+        # Try to find flow-defining columns
+        possible_columns = ['srcip', 'dstip', 'sport', 'dport', 'proto', 'stime', 'ltime']
+        
+        for col in possible_columns:
+            if col in df.columns:
+                flow_columns.append(col)
+        
+        if len(flow_columns) >= 2:
+            # Create flow ID from combination of columns
+            # Use string concatenation for simplicity
+            flow_ids = df[flow_columns].astype(str).apply(lambda x: '_'.join(x), axis=1).tolist()
+            logger.info(f"  Created flow IDs from columns: {flow_columns}")
+            logger.info(f"  Unique flows: {len(set(flow_ids))} out of {len(flow_ids)} packets")
+        else:
+            # Fallback: Use index-based grouping (every 5 packets = 1 flow)
+            # This is a simple heuristic if flow columns are not available
+            packets_per_flow = 5
+            flow_ids = [i // packets_per_flow for i in range(len(df))]
+            logger.warning(f"  Flow-defining columns not found, using index-based grouping ({packets_per_flow} packets/flow)")
+            logger.info(f"  Created {len(set(flow_ids))} flows from {len(df)} packets")
+        
+        return flow_ids
     
     def step1_data_quality_assessment(self, df: pd.DataFrame) -> Dict:
         """
@@ -210,30 +248,43 @@ class UNSWPreprocessor:
         
         return df
     
-    def step5_igrf_rfe_feature_selection(self, df: pd.DataFrame, target_col: str = 'attack_cat') -> pd.DataFrame:
+    def step5_feature_selection_hybrid(self, df: pd.DataFrame, target_col: str = 'attack_cat', 
+                                       n_features_final: int = 30) -> pd.DataFrame:
         """
-        Step 5: Enhanced IGRF-RFE Hybrid Feature Selection for Multiclass Zero-Day Detection
-        Uses multiclass labels (0-9 from attack_cat) instead of binary 'label'
-        Combines Information Gain (IG) and Random Forest (RF) with optimized RFE using LinearSVC
-        Adds correlation filtering (drop features with Pearson corr > 0.8) before RFE
+        Step 5: Two-Stage IG + RF Hybrid Feature Selection for Multiclass Zero-Day Detection
+        
+        This method implements a cleaner two-stage feature selection approach:
+        - Stage 1 (IG): Information Gain selects top 40 features from ~48 features using mutual_info_classif
+        - Stage 2 (RF): Random Forest selects final 30 features from those 40 using feature importances
+        
+        Why IG + RF Hybrid:
+        - IG provides statistical feature relevance independent of any model (captures non-linear relationships)
+        - RF provides model-based feature importance (captures feature interactions and non-linear patterns)
+        - Together they complement each other: IG finds general relevance, RF finds model-specific importance
+        
+        Why We Removed RFE:
+        - RFE uses linear assumptions (e.g., LinearSVC) which don't fit non-linear intrusion patterns
+        - RFE is computationally expensive and requires iterative training
+        - RFE's linear nature misses important non-linear feature interactions common in network attacks
+        
+        Why 30 Features:
+        - Balance between information content and computational efficiency
+        - Reduces dimensionality from ~48 to 30 (37.5% reduction) while preserving critical attack signatures
+        - Prevents overfitting by removing redundant/noisy features
+        - Maintains interpretability for security analysts
         
         Note: This step is called AFTER categorical encoding (step 4) to work with
         properly encoded features for better feature selection performance.
         
-        Performance Optimizations:
-        - Subsamples data (~20%) for RFE training to reduce computational cost
-        - Uses LinearSVC instead of LogisticRegression for faster training on high-dimensional data
-        - Sets step=0.1 to eliminate 10% of features per iteration, reducing total iterations
-        - Applies feature selection to full dataset after training on subsample
-        
         Args:
             df: Input dataframe
             target_col: Target column name (default: 'attack_cat' for multiclass)
+            n_features_final: Final number of features to select (default: 30)
             
         Returns:
-            df: Dataframe with selected features
+            df: Dataframe with selected features + ['label', 'binary_label', 'attack_cat']
         """
-        logger.info("Step 5: Enhanced IGRF-RFE Hybrid Feature Selection for Multiclass Zero-Day Detection")
+        logger.info("Step 5: Two-Stage IG + RF Hybrid Feature Selection for Multiclass Zero-Day Detection")
         
         # Separate features and target (exclude attack_cat and other non-feature columns)
         exclude_cols = ['label', 'attack_cat', 'binary_label']
@@ -243,125 +294,116 @@ class UNSWPreprocessor:
         
         logger.info(f"  Input features: {len(feature_cols)}")
         logger.info(f"  Using multiclass target: {target_col} (classes: {sorted(y.unique())})")
+        logger.info(f"  Target final features: {n_features_final}")
         
-        # 1. Correlation filtering - Remove highly correlated features
-        logger.info("  Applying correlation filtering (Pearson corr > 0.8)...")
-        corr_matrix = X.corr().abs()
-        upper_tri = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
+        # Calculate stage 1 features (1.33x final features to give RF room to select)
+        stage1_features = max(n_features_final, int(n_features_final * 1.33))
+        stage1_features = min(stage1_features, len(feature_cols))  # Don't exceed available features
         
-        # Find features to drop (highly correlated with others)
-        to_drop = [column for column in upper_tri.columns if any(upper_tri[column] > 0.8)]
-        logger.info(f"  Dropping {len(to_drop)} highly correlated features: {to_drop[:10]}{'...' if len(to_drop) > 10 else ''}")
+        logger.info(f"  Stage 1 (IG): Selecting top {stage1_features} features")
+        logger.info(f"  Stage 2 (RF): Selecting final {n_features_final} features from {stage1_features}")
         
-        # Remove highly correlated features
-        X_filtered = X.drop(columns=to_drop)
-        feature_cols_filtered = [col for col in feature_cols if col not in to_drop]
+        # STAGE 1: Information Gain Selection
+        logger.info("  Stage 1: Computing Information Gain scores...")
         
-        logger.info(f"  Features after correlation filtering: {len(feature_cols_filtered)}")
-        
-        # 2. Subsample data for RFE to improve performance (~20% of data, ~50k samples)
-        # This reduces computational cost while preserving class distribution
-        logger.info("  Subsampling data for RFE performance optimization...")
-        n_subsample = max(50000, int(len(X_filtered) * 0.2))  # At least 50k samples or 20%
-        if len(X_filtered) > n_subsample:
-            # Convert to torch tensors for stratified sampling
-            X_torch = torch.from_numpy(X_filtered.values).float()
-            # Convert string labels to numeric for torch compatibility
-            y_numeric = pd.Categorical(y).codes
-            y_torch = torch.from_numpy(y_numeric).long()
-            
-            # Use stratified sampling to preserve class distribution
-            X_subsample, y_subsample = self.sample_stratified_subset(
-                X_torch, y_torch, n_subsample, random_state=42
+        # OPTIMIZATION: For large datasets (>100K samples), use sampling to speed up IG computation
+        # IG is a statistical measure, so it works well on representative samples
+        max_samples_for_ig = 100000  # Use up to 100K samples for IG computation
+        if len(X) > max_samples_for_ig:
+            logger.info(f"  ⚡ Large dataset detected ({len(X):,} samples). Sampling {max_samples_for_ig:,} samples for faster IG computation...")
+            # Stratified sampling to maintain class distribution
+            from sklearn.model_selection import train_test_split
+            X_sample, _, y_sample, _ = train_test_split(
+                X.values, y.values, 
+                train_size=max_samples_for_ig, 
+                stratify=y.values,
+                random_state=42
             )
-            
-            # Convert back to numpy
-            X_subsample = X_subsample.numpy()
-            y_subsample = y_subsample.numpy()
-            
-            logger.info(f"  Subsampled from {len(X_filtered)} to {len(X_subsample)} samples for RFE")
+            logger.info(f"  ✅ Using {len(X_sample):,} samples for IG computation (representative sample)")
+            ig_scores = mutual_info_classif(X_sample, y_sample, random_state=42, n_jobs=-1)
         else:
-            X_subsample = X_filtered
-            y_subsample = y
-            logger.info(f"  Using full dataset ({len(X_filtered)} samples) for RFE")
+            logger.info(f"  Using all {len(X):,} samples for IG computation")
+            ig_scores = mutual_info_classif(X.values, y.values, random_state=42, n_jobs=-1)
         
-        # 3. Calculate Information Gain (IG) scores for multiclass on subsampled data
-        logger.info("  Computing Information Gain scores for multiclass...")
-        ig_scores = mutual_info_classif(X_subsample, y_subsample, random_state=42)
         ig_scores = np.array(ig_scores)
         
-        # 4. Train Random Forest and get feature importances for multiclass on subsampled data
-        logger.info("  Training Random Forest for multiclass feature importance...")
-        rf = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
-        rf.fit(X_subsample, y_subsample)
+        # Get top features by IG score
+        top_ig_indices = np.argsort(ig_scores)[-stage1_features:][::-1]
+        stage1_selected_features = [feature_cols[i] for i in top_ig_indices]
+        X_stage1 = X[stage1_selected_features]
+        
+        logger.info(f"  Stage 1 complete: Selected {len(stage1_selected_features)} features")
+        
+        # Log top 10 features by IG score
+        ig_feature_df = pd.DataFrame({
+            'feature': feature_cols,
+            'ig_score': ig_scores
+        }).sort_values('ig_score', ascending=False)
+        
+        logger.info("  Top 10 features by Information Gain:")
+        for idx, row in ig_feature_df.head(10).iterrows():
+            logger.info(f"    {row['feature']}: {row['ig_score']:.4f}")
+        
+        # STAGE 2: Random Forest Selection
+        logger.info("  Stage 2: Training Random Forest for feature importance...")
+        rf = RandomForestClassifier(
+            n_estimators=100,
+            max_depth=10,
+            random_state=42,
+            n_jobs=-1
+        )
+        rf.fit(X_stage1.values, y.values)
         rf_importances = rf.feature_importances_
         
-        # 4. Normalize both scores to [0, 1] range
-        ig_scores_norm = (ig_scores - ig_scores.min()) / (ig_scores.max() - ig_scores.min() + 1e-8)
-        rf_importances_norm = (rf_importances - rf_importances.min()) / (rf_importances.max() - rf_importances.min() + 1e-8)
+        # Get top features by RF importance
+        top_rf_indices = np.argsort(rf_importances)[-n_features_final:][::-1]
+        final_selected_features = [stage1_selected_features[i] for i in top_rf_indices]
         
-        # 5. Combine IG and RF scores (weighted average: 0.6 IG + 0.4 RF)
-        hybrid_scores = 0.6 * ig_scores_norm + 0.4 * rf_importances_norm
+        logger.info(f"  Stage 2 complete: Selected {len(final_selected_features)} features")
         
-        # 6. Create feature importance dataframe
+        # Log top 10 features by RF importance
+        rf_feature_df = pd.DataFrame({
+            'feature': stage1_selected_features,
+            'rf_importance': rf_importances
+        }).sort_values('rf_importance', ascending=False)
+        
+        logger.info("  Top 10 features by Random Forest importance:")
+        for idx, row in rf_feature_df.head(10).iterrows():
+            logger.info(f"    {row['feature']}: {row['rf_importance']:.4f}")
+        
+        # Log final selected features
+        logger.info(f"  Final {len(final_selected_features)} selected features:")
+        for i, feat in enumerate(final_selected_features, 1):
+            logger.info(f"    {i}. {feat}")
+        
+        # Create feature importance dataframe for later use
         feature_importance_df = pd.DataFrame({
-            'feature': feature_cols_filtered,
-            'ig_score': ig_scores,
-            'rf_importance': rf_importances,
-            'hybrid_score': hybrid_scores
-        }).sort_values('hybrid_score', ascending=False)
+            'feature': feature_cols,
+            'ig_score': ig_scores
+        })
+        feature_importance_df = feature_importance_df[feature_importance_df['feature'].isin(final_selected_features)].copy()
+        feature_importance_df['rf_importance'] = 0.0
+        for idx, feat in enumerate(stage1_selected_features):
+            if feat in feature_importance_df['feature'].values:
+                feature_importance_df.loc[feature_importance_df['feature'] == feat, 'rf_importance'] = rf_importances[idx]
         
-        # 7. Resource monitoring before RFE
-        memory_percent = psutil.virtual_memory().percent
-        logger.info(f"  Memory usage before RFE: {memory_percent:.1f}%")
+        # Return dataframe with selected features + target columns
+        # Only include columns that actually exist in the dataframe
+        selected_cols = final_selected_features.copy()
         
-        # 8. Use actual RFE with LinearSVC for faster performance on high-dimensional data
-        # LinearSVC is much faster than LogisticRegression for RFE on large datasets
-        logger.info("  Applying actual RFE with LinearSVC (faster than LogisticRegression)...")
+        # Add target and label columns if they exist
+        for col in [target_col, 'label', 'binary_label', 'attack_cat']:
+            if col in df.columns and col not in selected_cols:
+                selected_cols.append(col)
         
-        # Use configurable feature selection ratio with hardcoded fallback
-        try:
-            from config import get_config
-            config = get_config()
-            feature_ratio = getattr(config, 'feature_selection_ratio', 0.8)
-        except:
-            feature_ratio = 0.8  # Hardcoded default if config fails
-            logger.warning("  Config unavailable, using hardcoded feature_ratio=0.8")
-        
-        n_features_to_select = max(10, int(len(feature_cols_filtered) * feature_ratio))
-        
-        # Create RFE with LinearSVC for multiclass (much faster than LogisticRegression)
-        # dual=False is faster for high-dimensional data, step=0.1 reduces iterations
-        estimator = LinearSVC(dual=False, max_iter=100, random_state=42)
-        rfe = RFE(estimator=estimator, n_features_to_select=n_features_to_select, step=0.1)
-        
-        # Fit RFE on subsampled data for speed, then transform full dataset
-        logger.info(f"  Fitting RFE on {len(X_subsample)} samples to select {n_features_to_select} features...")
-        rfe.fit(X_subsample, y_subsample)
-        
-        # Apply feature selection to full dataset
-        logger.info("  Applying feature selection to full dataset...")
-        X_selected = rfe.transform(X_filtered)
-        
-        # Get selected feature names
-        selected_features = [feature_cols_filtered[i] for i in range(len(feature_cols_filtered)) if rfe.support_[i]]
-        
-        logger.info(f"  Selected {len(selected_features)} features out of {len(feature_cols_filtered)}")
-        logger.info(f"  Top 10 selected features: {selected_features[:10]}")
-        
-        # 9. Return dataframe with selected features + target + attack_cat (if exists)
-        selected_features.append(target_col)
-        if 'attack_cat' in df.columns:
-            selected_features.append('attack_cat')
-        df_selected = df[selected_features].copy()
+        df_selected = df[selected_cols].copy()
         
         # Store feature selection info for later use
-        # Exclude target column and attack_cat from selected features
-        feature_only_cols = [col for col in selected_features if col not in [target_col, 'attack_cat']]
-        self.selected_features = feature_only_cols
-        self.feature_importance_scores = feature_importance_df
+        self.selected_features = final_selected_features
+        self.feature_importance_scores = feature_importance_df.sort_values('ig_score', ascending=False)
         
         logger.info(f"  Final shape: {df_selected.shape}")
+        logger.info(f"  Feature reduction: {len(feature_cols)} → {len(final_selected_features)} ({100 * (1 - len(final_selected_features)/len(feature_cols)):.1f}% reduction)")
         
         return df_selected
     
@@ -410,9 +452,77 @@ class UNSWPreprocessor:
                 else:  # Low-cardinality: One-hot encoding
                     # One-hot encoding for service and state
                     dummies = pd.get_dummies(df[col], prefix=col)
+                    # Store one-hot column names for later transform
+                    self.onehot_columns[col] = dummies.columns.tolist()
                     df = pd.concat([df, dummies], axis=1)
                     df = df.drop(columns=[col])
                     logger.info(f"    Applied one-hot encoding to {col} → {dummies.shape[1]} features")
+        
+        logger.info(f"  Final shape after encoding: {df.shape}")
+        return df
+    
+    def step4_categorical_encoding_transform(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Transform test data using fitted categorical encoders from training data.
+        This method should be called AFTER step4_categorical_encoding has been called on training data.
+        
+        Args:
+            df: Test dataframe (should be cleaned)
+            
+        Returns:
+            df: Dataframe with encoded features using fitted encoders
+        """
+        logger.info("Step 4 (Transform): Applying fitted categorical encoders to test data")
+        
+        # Identify categorical columns
+        categorical_cols = ['proto', 'service', 'state']
+        
+        for col in categorical_cols:
+            if col in df.columns:
+                unique_count = df[col].nunique()
+                logger.info(f"  {col}: {unique_count} unique values")
+                
+                if unique_count > 10:  # High-cardinality: Use fitted target encoder
+                    # Use fitted target encoder from training data
+                    if col in self.target_encoders:
+                        target_mean = self.target_encoders[col]
+                        # Map values, using mean of all target means for unseen categories
+                        default_value = target_mean.mean() if len(target_mean) > 0 else 0.0
+                        df[f'{col}_target_encoded'] = df[col].map(target_mean).fillna(default_value)
+                        logger.info(f"    Applied fitted target encoding to {col}")
+                    else:
+                        # Fallback: use frequency encoding if encoder not found
+                        freq_encoding = df[col].value_counts() / len(df)
+                        df[f'{col}_freq_encoded'] = df[col].map(freq_encoding)
+                        logger.warning(f"    Warning: No fitted encoder found for {col}, using frequency encoding")
+                    
+                    # Drop original column
+                    df = df.drop(columns=[col])
+                
+                else:  # Low-cardinality: One-hot encoding
+                    # One-hot encoding - ensure same columns as training
+                    if col in self.onehot_columns:
+                        # Use the same one-hot columns from training
+                        expected_cols = self.onehot_columns[col]
+                        dummies = pd.get_dummies(df[col], prefix=col)
+                        
+                        # Add missing columns (present in training but not in test) with zeros
+                        for expected_col in expected_cols:
+                            if expected_col not in dummies.columns:
+                                dummies[expected_col] = 0
+                        
+                        # Select only expected columns in correct order (add missing ones with zeros first)
+                        dummies = dummies[expected_cols]
+                        
+                        df = pd.concat([df, dummies], axis=1)
+                        df = df.drop(columns=[col])
+                        logger.info(f"    Applied one-hot encoding to {col} → {len(expected_cols)} features (aligned with training)")
+                    else:
+                        # Fallback: create one-hot normally if no training columns stored
+                        dummies = pd.get_dummies(df[col], prefix=col)
+                        df = pd.concat([df, dummies], axis=1)
+                        df = df.drop(columns=[col])
+                        logger.warning(f"    Warning: No training one-hot columns found for {col}, created {dummies.shape[1]} features")
         
         logger.info(f"  Final shape after encoding: {df.shape}")
         return df
@@ -783,7 +893,7 @@ class UNSWPreprocessor:
         # Get other attack types from test data only (excluding zero-day attack)
         test_other_attacks = test_attacks[test_attacks['attack_cat'] != zero_day_attack].copy()
         if len(test_other_attacks) > 0:
-            other_attacks_sample = test_other_attacks.sample(n=min(target_attack_samples // 2, len(test_other_attacks)), random_state=42)
+            other_attacks_sample = test_other_attacks.sample(n=min(target_attack_samples // 3, len(test_other_attacks)), random_state=42)  # Changed: // 2 → // 3
         else:
             # Fallback: if no other attacks in test data, use zero-day only
             logger.warning("No other attack types found in test data, using only zero-day attacks")
@@ -854,69 +964,134 @@ class UNSWPreprocessor:
         logger.info(f"Training data: {train_df.shape}")
         logger.info(f"Testing data: {test_df.shape}")
         
-        # Combine datasets for complete preprocessing and rebalancing
-        logger.info("\nCombining datasets for complete preprocessing...")
-        complete_df = pd.concat([train_df, test_df], ignore_index=True)
-        logger.info(f"Combined dataset shape: {complete_df.shape}")
-        
-        # Process complete dataset
+        # FIX #1: Process train and test separately to prevent data leakage
         # Correct preprocessing order: Quality Assessment → Feature Engineering → Data Cleaning → Categorical Encoding → Feature Selection
         # Note: Categorical encoding comes before feature selection to provide encoded features for selection algorithms
-        logger.info("\nProcessing complete dataset...")
-        complete_quality = self.step1_data_quality_assessment(complete_df)
-        complete_df = self.step2_feature_engineering(complete_df)
-        complete_df = self.step3_data_cleaning(complete_df)  # Data cleaning before encoding
-        complete_df = self.step4_categorical_encoding(complete_df)  # Encoding after cleaning
-        # Apply IGRF-RFE hybrid feature selection after encoding
-        logger.info("Applying IGRF-RFE hybrid feature selection...")
-        complete_df = self.step5_igrf_rfe_feature_selection(complete_df, target_col='attack_cat')  # Feature selection after encoding
         
-        # Apply data rebalancing to complete dataset using 10-class labels
-        logger.info("\nApplying data rebalancing to complete dataset...")
-        complete_df = self.step7_data_rebalancing_complete(complete_df)
+        logger.info("\nProcessing training data...")
+        train_quality = self.step1_data_quality_assessment(train_df)
+        train_df = self.step2_feature_engineering(train_df)
+        train_df = self.step3_data_cleaning(train_df)  # Data cleaning before encoding
+        train_df = self.step4_categorical_encoding(train_df)  # Encoding after cleaning - FITS encoders
         
-        # Split into 80/10/10 (train/val/test) using STRATIFIED sampling to preserve class distribution
-        logger.info("\nSplitting into 80/10/10 (train/val/test) using stratified sampling...")
-        original_total = len(complete_df)
+        logger.info("\nProcessing test data...")
+        test_quality = self.step1_data_quality_assessment(test_df)
+        test_df = self.step2_feature_engineering(test_df)
+        test_df = self.step3_data_cleaning(test_df)  # Data cleaning before encoding
+        test_df = self.step4_categorical_encoding_transform(test_df)  # Transform using fitted encoders from training
+        
+        # Check if feature selection is enabled
+        try:
+            from config import Config
+            use_feature_selection = Config().use_igrf_rfe
+        except:
+            use_feature_selection = True  # Default to enabled if config not available
+        
+        if use_feature_selection:
+            # FIX #1: Feature selection on TRAINING data only (prevents leakage)
+            logger.info("\nApplying IG + RF hybrid feature selection to TRAINING data only...")
+            train_df = self.step5_feature_selection_hybrid(train_df, target_col='attack_cat', n_features_final=30)
+            
+            # Apply same selected features to test data
+            selected_features = self.selected_features
+            logger.info(f"\nApplying selected features ({len(selected_features)} features) to test data...")
+            
+            # Ensure we include target columns if they exist in test_df
+            target_cols = []
+            for col in ['label', 'binary_label', 'attack_cat']:
+                if col in test_df.columns:
+                    target_cols.append(col)
+            
+            # Select only the features that exist in test_df
+            available_selected_features = [f for f in selected_features if f in test_df.columns]
+            missing_features = [f for f in selected_features if f not in test_df.columns]
+            
+            if missing_features:
+                logger.warning(f"  Warning: {len(missing_features)} selected features not found in test data: {missing_features[:5]}...")
+            
+            # Select features and target columns
+            test_df = test_df[available_selected_features + target_cols].copy()
+            
+            # Add missing selected features as zeros (shouldn't happen, but for safety)
+            for feat in missing_features:
+                test_df[feat] = 0.0
+                logger.info(f"  Added missing selected feature '{feat}' to test data (filled with 0)")
+            
+            # Ensure test_df has all selected features in the same order
+            final_test_features = selected_features + target_cols
+            # Reorder and ensure all columns exist
+            for col in final_test_features:
+                if col not in test_df.columns:
+                    test_df[col] = 0.0
+            test_df = test_df[final_test_features]
+            
+            logger.info(f"  Test data shape after feature selection: {test_df.shape}")
+        else:
+            # TEMPORARILY DISABLED: Skip feature selection, keep all features
+            logger.info("\n⚠️  Feature selection DISABLED - keeping all features...")
+            
+            # Ensure we include target columns if they exist
+            target_cols = []
+            for col in ['label', 'binary_label', 'attack_cat']:
+                if col in train_df.columns:
+                    target_cols.append(col)
+            
+            # Remove target columns from feature list
+            feature_cols = [col for col in train_df.columns if col not in target_cols]
+            
+            # Store all features as "selected" for consistency
+            self.selected_features = feature_cols
+            logger.info(f"  Keeping all {len(feature_cols)} features (excluding target columns)")
+            
+            # Ensure train and test have the same features
+            train_feature_cols = [col for col in train_df.columns if col not in target_cols]
+            test_feature_cols = [col for col in test_df.columns if col not in target_cols]
+            
+            # Find common features
+            common_features = list(set(train_feature_cols) & set(test_feature_cols))
+            logger.info(f"  Common features between train and test: {len(common_features)}")
+            
+            # Keep only common features (plus target columns)
+            train_df = train_df[common_features + target_cols].copy()
+            test_df = test_df[common_features + target_cols].copy()
+            
+            logger.info(f"  Training data shape after skipping feature selection: {train_df.shape}")
+            logger.info(f"  Test data shape after skipping feature selection: {test_df.shape}")
+        
+        # FIX #2: Split FIRST, then rebalance training data only (prevents leakage)
+        # Split training data into train/val using STRATIFIED sampling BEFORE rebalancing
+        logger.info("\nSplitting training data into train/val using stratified sampling (BEFORE rebalancing)...")
+        original_train_total = len(train_df)
         
         # Use stratified split to preserve class distribution
         from sklearn.model_selection import train_test_split
         
         # Prepare features and labels for stratified split
-        feature_cols = [col for col in complete_df.columns if col not in ['label', 'binary_label', 'attack_cat']]
-        X = complete_df[feature_cols].values
-        y = complete_df['label'].values
+        feature_cols = [col for col in train_df.columns if col not in ['label', 'binary_label', 'attack_cat']]
+        X = train_df[feature_cols].values
+        y = train_df['label'].values
         
-        # First split: 80% train+val, 20% test
-        X_train_val, X_test_split, y_train_val, y_test_split = train_test_split(
-            X, y, 
-            test_size=0.1,  # 10% for test
+        # Split: 80% train, 20% val (BEFORE rebalancing)
+        X_train_split, X_val_split, y_train_split, y_val_split = train_test_split(
+            X, y,
+            test_size=0.2,  # 20% for validation
             stratify=y,  # This ensures all classes are represented in both sets
             random_state=42
         )
         
-        # Second split: 80% train, 20% val (from the 80% train+val)
-        X_train_split, X_val_split, y_train_split, y_val_split = train_test_split(
-            X_train_val, y_train_val,
-            test_size=0.125,  # 20% of 80% = 10% of total
-            stratify=y_train_val,  # This ensures all classes are represented in both sets
-            random_state=42
-        )
+        # Log split percentages relative to original training total
+        train_pct = (len(X_train_split) / original_train_total) * 100
+        val_pct = (len(X_val_split) / original_train_total) * 100
         
-        # Log split percentages relative to original total
-        train_pct = (len(X_train_split) / original_total) * 100
-        val_pct = (len(X_val_split) / original_total) * 100
-        test_pct = (len(X_test_split) / original_total) * 100
-        
-        logger.info(f"Split percentages relative to original total ({original_total}):")
+        logger.info(f"Split percentages relative to original training data ({original_train_total}):")
         logger.info(f"  Train: {len(X_train_split)} samples (~{train_pct:.2f}%)")
         logger.info(f"  Validation: {len(X_val_split)} samples (~{val_pct:.2f}%)")
-        logger.info(f"  Test: {len(X_test_split)} samples (~{test_pct:.2f}%)")
+        logger.info(f"  Test: {len(test_df)} samples (original test set - untouched)")
         
-        # Reconstruct dataframes
-        train_df = pd.DataFrame(X_train_split, columns=feature_cols)
-        train_df['label'] = y_train_split
-        train_df['binary_label'] = (y_train_split != 0).astype(int)
+        # Reconstruct dataframes (before rebalancing)
+        train_df_split = pd.DataFrame(X_train_split, columns=feature_cols)
+        train_df_split['label'] = y_train_split
+        train_df_split['binary_label'] = (y_train_split != 0).astype(int)
         
         val_df = pd.DataFrame(X_val_split, columns=feature_cols)
         val_df['label'] = y_val_split
@@ -928,20 +1103,39 @@ class UNSWPreprocessor:
             'Exploits': 5, 'Generic': 6, 'Reconnaissance': 7, 'Shellcode': 8, 'Worms': 9
         }
         reverse_mapping = {v: k for k, v in attack_type_mapping.items()}
-        train_df['attack_cat'] = [reverse_mapping[label] for label in y_train_split]
+        train_df_split['attack_cat'] = [reverse_mapping[label] for label in y_train_split]
         val_df['attack_cat'] = [reverse_mapping[label] for label in y_val_split]
         
-        test_df = pd.DataFrame(X_test_split, columns=feature_cols)
-        test_df['label'] = y_test_split
-        test_df['binary_label'] = (y_test_split != 0).astype(int)
-        test_df['attack_cat'] = [reverse_mapping[label] for label in y_test_split]
+        # FIX #2: Rebalance TRAINING data only (validation and test remain untouched)
+        logger.info("\nApplying data rebalancing to TRAINING data only (validation and test untouched)...")
+        train_df_before_rebal = len(train_df_split)
+        train_df_rebalanced = self.step7_data_rebalancing_complete(train_df_split)
+        train_df_after_rebal = len(train_df_rebalanced)
+        
+        logger.info(f"  Training data: {train_df_before_rebal} → {train_df_after_rebal} samples (rebalanced)")
+        logger.info(f"  Validation data: {len(val_df)} samples (unchanged - original distribution)")
+        logger.info(f"  Test data: {len(test_df)} samples (unchanged - original distribution)")
+        
+        # Use rebalanced training data
+        train_df = train_df_rebalanced
+        
+        # Ensure test_df has label and binary_label columns (they should already exist)
+        if 'label' not in test_df.columns:
+            # Create label from attack_cat if needed
+            if 'attack_cat' in test_df.columns:
+                test_df['label'] = test_df['attack_cat'].map({v: k for k, v in attack_type_mapping.items()})
+            else:
+                logger.error("  ❌ Test data missing both 'label' and 'attack_cat' columns!")
+        
+        if 'binary_label' not in test_df.columns and 'label' in test_df.columns:
+            test_df['binary_label'] = (test_df['label'] != 0).astype(int)
         
         logger.info(f"Rebalanced training data: {train_df.shape}")
         logger.info(f"Rebalanced validation data: {val_df.shape}")
-        logger.info(f"Rebalanced test data: {test_df.shape}")
+        logger.info(f"Test data: {test_df.shape}")
         
         # Align features between train, validation, and test data
-        logger.info("Aligning features between train, validation, and test data...")
+        logger.info("\nAligning features between train, validation, and test data...")
         train_cols = set(train_df.columns)
         val_cols = set(val_df.columns)
         test_cols = set(test_df.columns)
@@ -1014,6 +1208,9 @@ class UNSWPreprocessor:
         y_test_multiclass = torch.LongTensor(test_scaled['label'].values)  # Multiclass labels (0-9)
         test_attack_cat = test_scaled['attack_cat'].values.tolist()  # Attack category names
         
+        # Create flow IDs for test data
+        test_flow_ids = self._create_flow_ids(test_scaled)
+        
         return {
             'X_train': X_train,
             'y_train': y_train,
@@ -1023,6 +1220,7 @@ class UNSWPreprocessor:
             'y_test': y_test,  # Binary labels for training
             'y_test_multiclass': y_test_multiclass,  # Multiclass labels for zero-day identification
             'test_attack_cat': test_attack_cat,  # Attack category names for zero-day identification
+            'test_flow_ids': test_flow_ids,  # Flow IDs for flow-level evaluation
             'zero_day_indices': zero_day_indices,
             'feature_names': feature_cols,
             'scaler': self.scaler,
@@ -1030,8 +1228,8 @@ class UNSWPreprocessor:
             'zero_day_attack': zero_day_attack,
             'attack_types': self.attack_types,
             'quality_reports': {
-                'train': complete_quality,
-                'test': complete_quality
+                'train': train_quality,
+                'test': test_quality
             }
         }
     

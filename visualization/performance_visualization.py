@@ -95,19 +95,37 @@ class PerformanceVisualizer:
         """
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
         
-        epochs = range(1, len(training_history['epoch_losses']) + 1)
+        epoch_losses = training_history['epoch_losses']
+        epochs = range(1, len(epoch_losses) + 1)
+        
+        positive_losses = [loss for loss in epoch_losses if loss > 0]
+        use_log_scale = False
+        if positive_losses:
+            min_loss = min(positive_losses)
+            max_loss = max(positive_losses)
+            loss_ratio = max_loss / min_loss if min_loss > 0 else float('inf')
+            use_log_scale = loss_ratio > 50
+            logger.info(f"Training loss range: [{min_loss:.4f}, {max_loss:.4f}] ratio={loss_ratio:.2f} → {'log' if use_log_scale else 'linear'} scale")
+        else:
+            logger.warning("Training history contains non-positive losses; using linear scale")
+        
+        plot_losses = [max(loss, 1e-6) for loss in epoch_losses] if use_log_scale else epoch_losses
         
         # Plot training loss
-        ax1.plot(epochs, training_history['epoch_losses'], 'b-', linewidth=2, marker='o', markersize=6)
+        ax1.plot(epochs, plot_losses, 'b-', linewidth=2, marker='o', markersize=6)
         ax1.set_title(f'Federated Training Loss Over Rounds{self._get_title_suffix()}', fontweight='bold', fontfamily='Times New Roman')
         ax1.set_xlabel('Round', fontfamily='Times New Roman')
         ax1.set_ylabel('Average Loss', fontfamily='Times New Roman')
         ax1.grid(True, alpha=0.3)
-        ax1.set_yscale('log')
+        if use_log_scale:
+            ax1.set_yscale('log')
+        else:
+            ax1.set_yscale('linear')
         
         # Add value labels for loss
-        for i, loss in enumerate(training_history['epoch_losses']):
-            ax1.annotate(f'{loss:.4f}', (epochs[i], loss), 
+        for i, loss in enumerate(epoch_losses):
+            plot_val = plot_losses[i]
+            ax1.annotate(f'{loss:.4f}', (epochs[i], plot_val), 
                         textcoords="offset points", xytext=(0,10), ha='center',
                         fontsize=8, fontfamily='Times New Roman')
         
@@ -154,20 +172,17 @@ class PerformanceVisualizer:
         
         steps = ttt_adaptation_data['steps']
         total_losses = ttt_adaptation_data['total_losses']
-        support_losses = ttt_adaptation_data['support_losses']
-        consistency_losses = ttt_adaptation_data['consistency_losses']
+        # Simplified TTT: Only entropy and pseudo-label losses (removed repulsion, balance, contrastive, prototype)
         entropy_losses = ttt_adaptation_data.get('entropy_losses', [])
-        prototype_losses = ttt_adaptation_data.get('prototype_losses', [])
-        gradient_norms = ttt_adaptation_data.get('gradient_norms', [])  # Gradient norm for convergence proof
+        pseudo_losses = ttt_adaptation_data.get('pseudo_losses', [])
         
         # Fix dimension mismatch by ensuring all arrays have the same length
-        loss_components = [total_losses, support_losses, consistency_losses]
+        # We always have total_losses; other components are optional
+        loss_components = [total_losses]
         if entropy_losses:
             loss_components.append(entropy_losses)
-        if prototype_losses:
-            loss_components.append(prototype_losses)
-        if gradient_norms:
-            loss_components.append(gradient_norms)
+        if pseudo_losses:
+            loss_components.append(pseudo_losses)
         
         min_length = min(len(steps), *[len(comp) for comp in loss_components])
         if min_length == 0:
@@ -208,26 +223,21 @@ class PerformanceVisualizer:
         # Truncate all arrays to the minimum length
         steps = steps[:min_length]
         total_losses = total_losses[:min_length]
-        support_losses = support_losses[:min_length]
-        consistency_losses = consistency_losses[:min_length]
         if entropy_losses:
             entropy_losses = entropy_losses[:min_length]
-        if prototype_losses:
-            prototype_losses = prototype_losses[:min_length]
-        if gradient_norms:
-            gradient_norms = gradient_norms[:min_length]
+        if pseudo_losses:
+            pseudo_losses = pseudo_losses[:min_length]
         
         logger.info(f"TTT adaptation plot: Using {min_length} data points (steps: {len(ttt_adaptation_data['steps'])}, losses: {len(ttt_adaptation_data['total_losses'])})")
         
         # Adaptive scale selection: Use log scale only if loss range spans >2 orders of magnitude (100x)
         # Collect all positive loss values for range calculation
         all_positive_losses = []
-        for loss_list in [total_losses, support_losses, consistency_losses]:
-            all_positive_losses.extend([v for v in loss_list if v > 0])
+        all_positive_losses.extend([v for v in total_losses if v > 0])
         if entropy_losses:
             all_positive_losses.extend([v for v in entropy_losses if v > 0])
-        if prototype_losses:
-            all_positive_losses.extend([v for v in prototype_losses if v > 0])
+        if pseudo_losses:
+            all_positive_losses.extend([v for v in pseudo_losses if v > 0])
         
         if len(all_positive_losses) > 0:
             min_loss = min(all_positive_losses)
@@ -262,92 +272,30 @@ class PerformanceVisualizer:
                             textcoords="offset points", xytext=(0,10), ha='center',
                             fontsize=7, fontfamily='Times New Roman', alpha=0.7)
         
-        # Plot 2: Loss Components (including Total Loss for comparison)
-        # Use EXACT same styling as Plot 1 for consistency
-        ax2.plot(steps, total_losses, 'b-', linewidth=2, marker='o', markersize=6, label='Total Loss', alpha=0.9)
-        # Use entropy_losses and diversity_losses if available (preferred), otherwise use mapped values
+        # Plot 2: Loss Components (Simplified: Total, Entropy, Pseudo-label only)
+        ax2.plot(steps, total_losses, 'b-', linewidth=2, marker='o', markersize=6,
+                 label='Total Loss', alpha=0.9)
+
+        # Entropy loss (core TENT principle)
         if entropy_losses and len(entropy_losses) == min_length:
-            # Use actual entropy loss with correct label
-            ax2.plot(steps, entropy_losses[:min_length], 'm-', linewidth=2, marker='d', markersize=6, label='Entropy Loss (Query Only)')
-        else:
-            # Fallback to mapped support_losses (which is actually entropy loss)
-            ax2.plot(steps, support_losses, 'g-', linewidth=2, marker='s', markersize=6, label='Entropy Loss (Query Only - from support_losses key)')
-        
-        # For diversity/consistency, prefer diversity_losses if available
-        diversity_to_plot = None
-        ax2_twin = None  # Track if we created a twin axis
-        ax2_grad_norm = None  # Track if we created a gradient norm axis
-        if 'diversity_losses' in ttt_adaptation_data and len(ttt_adaptation_data['diversity_losses']) == min_length:
-            diversity_to_plot = ttt_adaptation_data['diversity_losses'][:min_length]
-            # Diversity loss can be negative, so use linear scale or abs() for log scale
-            # Use separate axis or transform for negative values
-            ax2_twin = ax2.twinx() if any(v < 0 for v in diversity_to_plot) else ax2
-            ax2_twin.plot(steps, diversity_to_plot, 'c-', linewidth=2, marker='^', markersize=6, label='Diversity Loss (Query Only)')
-            if ax2_twin != ax2:
-                ax2_twin.set_ylabel('Diversity Loss (can be negative)', fontfamily='Times New Roman')
-                ax2_twin.grid(True, alpha=0.3)
-        elif len(consistency_losses) == min_length:
-            # Fallback to consistency_losses (which is actually diversity loss)
-            diversity_to_plot = consistency_losses[:min_length]
-            ax2_twin = ax2.twinx() if any(v < 0 for v in diversity_to_plot) else ax2
-            ax2_twin.plot(steps, diversity_to_plot, 'r-', linewidth=2, marker='^', markersize=6, label='Diversity Loss (Query Only - from consistency_losses key)')
-            if ax2_twin != ax2:
-                ax2_twin.set_ylabel('Diversity Loss (can be negative)', fontfamily='Times New Roman')
-                ax2_twin.grid(True, alpha=0.3)
-        if prototype_losses:
-            ax2.plot(steps, prototype_losses, 'c-', linewidth=2, marker='v', markersize=6, label='Prototype Loss')
-        
-        # Add gradient norm plot (for convergence proof) - use a third axis if needed
-        if gradient_norms and len(gradient_norms) == min_length:
-            # Use the same axis as diversity if twin exists, otherwise create new twin
-            if ax2_twin and ax2_twin != ax2:
-                # Use a third axis for gradient norm to avoid scale conflicts
-                ax2_grad_norm = ax2.twinx()
-                ax2_grad_norm.spines['right'].set_position(('outward', 60))  # Offset third axis
-                ax2_grad_norm.plot(steps, gradient_norms, 'orange', linewidth=2, marker='x', markersize=5, label='Gradient Norm ||∇L||', linestyle='--')
-                ax2_grad_norm.set_ylabel('Gradient Norm ||∇L|| (convergence proof)', fontfamily='Times New Roman', color='orange')
-                ax2_grad_norm.tick_params(axis='y', labelcolor='orange')
-                ax2_grad_norm.set_yscale('log')  # Gradient norm typically uses log scale
-                ax2_grad_norm.grid(True, alpha=0.2, linestyle=':')
-            else:
-                # No twin axis yet - create one for gradient norm
-                ax2_grad_norm = ax2.twinx()
-                ax2_grad_norm.plot(steps, gradient_norms, 'orange', linewidth=2, marker='x', markersize=5, label='Gradient Norm ||∇L||', linestyle='--')
-                ax2_grad_norm.set_ylabel('Gradient Norm ||∇L|| (convergence proof)', fontfamily='Times New Roman', color='orange')
-                ax2_grad_norm.tick_params(axis='y', labelcolor='orange')
-                ax2_grad_norm.set_yscale('log')  # Gradient norm typically uses log scale
-                ax2_grad_norm.grid(True, alpha=0.2, linestyle=':')
-        ax2.set_title('TTT Adaptation: All Loss Components', fontweight='bold', fontfamily='Times New Roman')
+            ax2.plot(steps, entropy_losses, 'm-', linewidth=2, marker='d', markersize=6,
+                     label='Entropy Loss')
+
+        # Pseudo-label loss (confident predictions as supervision)
+        if pseudo_losses and len(pseudo_losses) == min_length:
+            ax2.plot(steps, pseudo_losses, 'g-', linewidth=2, marker='s', markersize=6,
+                     label='Pseudo-label Loss')
+
+        ax2.set_title('TTT Adaptation: Loss Components (Entropy + Pseudo-Labels)', fontweight='bold', fontfamily='Times New Roman')
         ax2.set_xlabel('TTT Step', fontfamily='Times New Roman')
         ax2.set_ylabel(f'Loss Value ({"log" if use_log_scale else "linear"} scale)', fontfamily='Times New Roman')
         ax2.grid(True, alpha=0.3)
         # Use same adaptive scale as Plot 1 for consistency
-        # If diversity loss has negative values, we'll use twin axis but keep main axis scale (log or linear) consistent
         if use_log_scale:
             ax2.set_yscale('log')
         
-        # FIX 1: Combine legends from all axes if twin axes were created (includes diversity loss and gradient norm)
-        # FIX 2: Ensure total loss appears with same styling in both plots
-        lines = []
-        labels = []
-        lines1, labels1 = ax2.get_legend_handles_labels()
-        lines.extend(lines1)
-        labels.extend(labels1)
-        
-        if ax2_twin and ax2_twin != ax2:
-            lines2, labels2 = ax2_twin.get_legend_handles_labels()
-            lines.extend(lines2)
-            labels.extend(labels2)
-        
-        if ax2_grad_norm:
-            lines3, labels3 = ax2_grad_norm.get_legend_handles_labels()
-            lines.extend(lines3)
-            labels.extend(labels3)
-        
-        if lines:
-            ax2.legend(lines, labels, prop={'family': 'Times New Roman'}, loc='best', framealpha=0.9)
-        else:
-            ax2.legend(prop={'family': 'Times New Roman'}, loc='best', framealpha=0.9)
+        # Ensure total loss appears with same styling in both plots
+        ax2.legend(prop={'family': 'Times New Roman'}, loc='best', framealpha=0.9)
         
         # Add improvement annotations
         if len(total_losses) > 1:
@@ -892,8 +840,11 @@ class PerformanceVisualizer:
         
         # Extract metrics for comparison - handle both direct evaluation and k-fold formats
         # Include AUC-PR as PRIMARY metric for imbalanced zero-day detection
-        base_metrics = ['accuracy', 'precision', 'recall', 'f1_score', 'auc_pr', 'mcc']
-        ttt_metrics = ['accuracy', 'precision', 'recall', 'f1_score', 'auc_pr', 'mcc']
+        # Include Zero-Day Detection Rate (ZDR) for zero-day attack detection evaluation
+        # Order: Accuracy, Precision, Recall, F1-Score, AUC-PR (PRIMARY), ZDR (CRITICAL for zero-day), FAR
+        # MCC replaced with FAR (False Alarm Rate) as requested
+        base_metrics = ['accuracy', 'precision', 'recall', 'f1_score', 'auc_pr', 'zero_day_detection_rate', 'far']
+        ttt_metrics = ['accuracy', 'precision', 'recall', 'f1_score', 'auc_pr', 'zero_day_detection_rate', 'far']
         
         # Calculate metrics from available data
         base_values = []
@@ -933,17 +884,34 @@ class PerformanceVisualizer:
                 else:
                     ttt_val = ttt_results.get('recall', ttt_results.get('recall_mean', 0))
             elif metric == 'f1_score':
-                # Try both formats: direct and k-fold
-                base_val = base_results.get('f1_score', base_results.get('macro_f1_mean', 0))
-                ttt_val = ttt_results.get('f1_score', ttt_results.get('macro_f1_mean', 0))
+                # For binary classification with imbalanced data, prefer weighted F1 over macro F1
+                # Weighted F1 accounts for class imbalance better than macro F1
+                base_val = base_results.get('f1_score', 
+                                           base_results.get('f1_score_weighted',
+                                           base_results.get('macro_f1_mean', 0)))
+                ttt_val = ttt_results.get('f1_score',
+                                         ttt_results.get('f1_score_weighted',
+                                         ttt_results.get('macro_f1_mean', 0)))
             elif metric == 'auc_pr':
                 # AUC-PR (Precision-Recall AUC) - PRIMARY metric for imbalanced zero-day detection
                 base_val = base_results.get('auc_pr', 0)
                 ttt_val = ttt_results.get('auc_pr', 0)
-            elif metric == 'mcc':
-                # Try both formats: direct and k-fold (note: mccc vs mcc)
-                base_val = base_results.get('mcc', base_results.get('mccc', base_results.get('mcc_mean', 0)))
-                ttt_val = ttt_results.get('mcc', ttt_results.get('mccc', ttt_results.get('mcc_mean', 0)))
+            elif metric == 'zero_day_detection_rate':
+                # Zero-Day Detection Rate (ZDR) - critical metric for zero-day attack detection
+                base_val = base_results.get('zero_day_detection_rate', base_results.get('zdr', 0))
+                ttt_val = ttt_results.get('zero_day_detection_rate', ttt_results.get('zdr', 0))
+            elif metric == 'far':
+                # False Alarm Rate (FAR) = FP / (FP + TN)
+                if len(base_cm) == 2 and len(base_cm[0]) == 2:
+                    tn, fp = base_cm[0][0], base_cm[0][1]
+                    base_val = fp / (fp + tn) if (fp + tn) > 0 else 0
+                else:
+                    base_val = base_results.get('far', 0)
+                if len(ttt_cm) == 2 and len(ttt_cm[0]) == 2:
+                    tn, fp = ttt_cm[0][0], ttt_cm[0][1]
+                    ttt_val = fp / (fp + tn) if (fp + tn) > 0 else 0
+                else:
+                    ttt_val = ttt_results.get('far', 0)
             else:
                 # Fallback to direct key lookup
                 base_val = base_results.get(metric, 0)
@@ -1024,6 +992,10 @@ class PerformanceVisualizer:
                 metric_labels.append('Accuracy')
             elif m == 'auc_pr':
                 metric_labels.append('AUC-PR')  # Mark as PRIMARY metric
+            elif m == 'zero_day_detection_rate':
+                metric_labels.append('ZDR ⭐')  # Zero-Day Detection Rate - CRITICAL metric for zero-day detection
+            elif m == 'far':
+                metric_labels.append('FAR (↓)')  # False Alarm Rate - lower is better
             else:
                 metric_labels.append(m.replace('_', ' ').title())
         
@@ -1067,6 +1039,14 @@ class PerformanceVisualizer:
         ax2.set_xticklabels(metric_labels, fontfamily='Times New Roman')
         ax2.axhline(y=0, color='black', linestyle='-', linewidth=0.5)
         ax2.grid(True, alpha=0.3)
+        
+        # Add note about F1-score for imbalanced data
+        note_text = ("Note: F1-score uses weighted average for imbalanced data.\n"
+                    "ZDR (Zero-Day Detection Rate) is critical, FAR (False Alarm Rate) lower is better.")
+        fig.text(0.5, 0.02, note_text, ha='center', fontsize=9, 
+                fontfamily='Times New Roman', style='italic',
+                bbox=dict(boxstyle='round,pad=0.5', facecolor='lightyellow', alpha=0.8, 
+                         edgecolor='black', linewidth=0.5))
         
         # Add summary statistics
         avg_improvement = np.mean(improvements)
