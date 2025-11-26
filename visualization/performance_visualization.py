@@ -920,10 +920,10 @@ class PerformanceVisualizer:
             base_values.append(base_val)
             ttt_values.append(ttt_val)
         
-        # Create figure with IEEE standard styling
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
+        # Create figure with IEEE standard styling (single plot - improvement analysis removed)
+        fig, ax1 = plt.subplots(1, 1, figsize=(12, 8))
         
-        # Plot 1: Performance Comparison
+        # Performance Comparison
         x = np.arange(len(base_metrics))
         width = 0.35
         
@@ -1004,42 +1004,6 @@ class PerformanceVisualizer:
         ax1.grid(True, alpha=0.3)
         ax1.set_ylim(0, 1.2)
         
-        # Plot 2: Performance Improvement Analysis
-        improvements = []
-        for i in range(len(base_values)):
-            if base_values[i] > 0:
-                improvement = ((ttt_values[i] - base_values[i]) / base_values[i]) * 100
-            else:
-                improvement = 0
-            improvements.append(improvement)
-        
-        # Color-code improvements
-        improvement_colors = ['#28a745' if imp >= 0 else '#dc3545' for imp in improvements]
-        
-        bars3 = ax2.bar(range(len(improvements)), improvements, color=improvement_colors, 
-                       alpha=0.8, edgecolor='black', linewidth=0.5)
-        
-        # Add improvement value labels
-        for bar, improvement in zip(bars3, improvements):
-            height = bar.get_height()
-            ax2.text(bar.get_x() + bar.get_width()/2., 
-                    height + (1 if height >= 0 else -3),
-                    f'{improvement:+.1f}%', ha='center', 
-                    va='bottom' if height >= 0 else 'top',
-                    fontsize=9, fontweight='bold', fontfamily='Times New Roman',
-                    bbox=dict(boxstyle='round,pad=0.15', facecolor='white', alpha=0.9, 
-                             edgecolor='black', linewidth=0.5))
-        
-        ax2.set_xlabel('Performance Metrics', fontsize=11, fontweight='bold', fontfamily='Times New Roman')
-        ax2.set_ylabel('Improvement (%)', fontsize=11, fontweight='bold', fontfamily='Times New Roman')
-        ax2.set_title('Performance Improvement Analysis', fontsize=13, fontweight='bold', 
-                     pad=15, fontfamily='Times New Roman')
-        ax2.set_xticks(range(len(improvements)))
-        # Fix MCCC label to MCC for improvement analysis
-        ax2.set_xticklabels(metric_labels, fontfamily='Times New Roman')
-        ax2.axhline(y=0, color='black', linestyle='-', linewidth=0.5)
-        ax2.grid(True, alpha=0.3)
-        
         # Add note about F1-score for imbalanced data
         note_text = ("Note: F1-score uses weighted average for imbalanced data.\n"
                     "ZDR (Zero-Day Detection Rate) is critical, FAR (False Alarm Rate) lower is better.")
@@ -1048,23 +1012,175 @@ class PerformanceVisualizer:
                 bbox=dict(boxstyle='round,pad=0.5', facecolor='lightyellow', alpha=0.8, 
                          edgecolor='black', linewidth=0.5))
         
-        # Add summary statistics
-        avg_improvement = np.mean(improvements)
-        max_improvement = np.max(improvements)
-        min_improvement = np.min(improvements)
-        
-        summary_text = f'Avg: {avg_improvement:+.1f}%\nMax: {max_improvement:+.1f}%\nMin: {min_improvement:+.1f}%'
-        ax2.text(0.02, 0.98, summary_text, transform=ax2.transAxes, 
-                fontsize=9, fontweight='bold', fontfamily='Times New Roman',
-                verticalalignment='top', bbox=dict(boxstyle='round,pad=0.3', 
-                facecolor='lightblue', alpha=0.8, edgecolor='black', linewidth=0.5))
-        
         plt.tight_layout()
         
         if save:
             plot_path = os.path.join(self.output_dir, self._get_filename("performance_comparison_annotated"))
             plt.savefig(plot_path, dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
             logger.info(f"Performance comparison plot with annotations saved: {plot_path}")
+        
+        plt.close()  # Close figure instead of showing it
+        return plot_path if save else ""
+    
+    def plot_zero_day_performance_comparison(self, base_results: Dict, ttt_results: Dict, 
+                                             save: bool = True) -> str:
+        """
+        Plot performance comparison for zero-day specific samples only (Base vs TTT)
+        
+        Args:
+            base_results: Base model results dictionary (must contain 'zero_day_only' key)
+            ttt_results: TTT model results dictionary (must contain 'zero_day_only' key)
+            save: Whether to save the plot
+            
+        Returns:
+            plot_path: Path to saved plot
+        """
+        if not base_results or not ttt_results:
+            logger.warning("No comparison data provided for zero-day performance plotting")
+            return ""
+        
+        # Extract zero-day only metrics
+        base_zero_day = base_results.get('zero_day_only', {})
+        ttt_zero_day = ttt_results.get('zero_day_only', {})
+        
+        if not base_zero_day or not ttt_zero_day:
+            logger.warning("Zero-day specific metrics not found in results - skipping zero-day comparison plot")
+            return ""
+        
+        # Extract metrics for comparison - focus on zero-day specific metrics
+        # Order: Accuracy, Precision, Recall, F1-Score, Zero-Day Detection Rate
+        # Note: AUC-PR removed - not meaningful for zero-day-only samples (all are attacks, no normal samples to create PR curve)
+        # Note: FAR removed - not meaningful for zero-day-only samples (all are attacks, so FAR is always 0.0)
+        base_metrics = ['accuracy', 'precision', 'recall', 'f1_score', 'zero_day_detection_rate']
+        ttt_metrics = ['accuracy', 'precision', 'recall', 'f1_score', 'zero_day_detection_rate']
+        
+        # Calculate metrics from zero-day only data
+        base_values = []
+        ttt_values = []
+        
+        # Get confusion matrices for zero-day samples
+        base_cm = base_zero_day.get('confusion_matrix', [[0, 0], [0, 0]])
+        ttt_cm = ttt_zero_day.get('confusion_matrix', [[0, 0], [0, 0]])
+        
+        for metric in base_metrics:
+            if metric == 'accuracy':
+                base_val = base_zero_day.get('accuracy', 0)
+                ttt_val = ttt_zero_day.get('accuracy', 0)
+            elif metric == 'precision':
+                # Calculate precision from confusion matrix if available
+                if len(base_cm) == 2 and len(base_cm[0]) == 2:
+                    tp, fp = base_cm[1][1], base_cm[0][1]
+                    base_val = tp / (tp + fp) if (tp + fp) > 0 else base_zero_day.get('precision', 0)
+                else:
+                    base_val = base_zero_day.get('precision', 0)
+                if len(ttt_cm) == 2 and len(ttt_cm[0]) == 2:
+                    tp, fp = ttt_cm[1][1], ttt_cm[0][1]
+                    ttt_val = tp / (tp + fp) if (tp + fp) > 0 else ttt_zero_day.get('precision', 0)
+                else:
+                    ttt_val = ttt_zero_day.get('precision', 0)
+            elif metric == 'recall':
+                # Calculate recall from confusion matrix if available
+                if len(base_cm) == 2 and len(base_cm[0]) == 2:
+                    tp, fn = base_cm[1][1], base_cm[1][0]
+                    base_val = tp / (tp + fn) if (tp + fn) > 0 else base_zero_day.get('recall', 0)
+                else:
+                    base_val = base_zero_day.get('recall', 0)
+                if len(ttt_cm) == 2 and len(ttt_cm[0]) == 2:
+                    tp, fn = ttt_cm[1][1], ttt_cm[1][0]
+                    ttt_val = tp / (tp + fn) if (tp + fn) > 0 else ttt_zero_day.get('recall', 0)
+                else:
+                    ttt_val = ttt_zero_day.get('recall', 0)
+            elif metric == 'f1_score':
+                base_val = base_zero_day.get('f1_score', 0)
+                ttt_val = ttt_zero_day.get('f1_score', 0)
+            elif metric == 'zero_day_detection_rate':
+                base_val = base_zero_day.get('zero_day_detection_rate', 0)
+                ttt_val = ttt_zero_day.get('zero_day_detection_rate', 0)
+            else:
+                base_val = base_zero_day.get(metric, 0)
+                ttt_val = ttt_zero_day.get(metric, 0)
+            
+            base_values.append(base_val)
+            ttt_values.append(ttt_val)
+        
+        # Get sample counts for title
+        base_num_samples = base_zero_day.get('num_samples', 0)
+        ttt_num_samples = ttt_zero_day.get('num_samples', 0)
+        
+        # Create figure with IEEE standard styling (single plot - improvement analysis removed)
+        fig, ax1 = plt.subplots(1, 1, figsize=(12, 8))
+        
+        # Zero-Day Performance Comparison
+        x = np.arange(len(base_metrics))
+        width = 0.35
+        
+        # Add attack name to labels if available
+        base_label = f'Base Model [{self.attack_name}]' if self.attack_name else 'Base Model'
+        ttt_label = f'TTT Model [{self.attack_name}]' if self.attack_name else 'TTT Model'
+        
+        bars1 = ax1.bar(x - width/2, base_values, width, label=base_label, 
+                       color='skyblue', alpha=0.8, edgecolor='black', linewidth=0.5)
+        bars2 = ax1.bar(x + width/2, ttt_values, width, label=ttt_label, 
+                       color='lightcoral', alpha=0.8, edgecolor='black', linewidth=0.5)
+        
+        # Add value labels with professional formatting
+        def add_value_labels(bars, values):
+            for bar, value in zip(bars, values):
+                height = bar.get_height()
+                ax1.text(bar.get_x() + bar.get_width()/2., height + 0.015,
+                        f'{value:.3f}', ha='center', va='bottom', 
+                        fontsize=9, fontweight='bold', fontfamily='Times New Roman',
+                        bbox=dict(boxstyle='round,pad=0.15', facecolor='white', alpha=0.9, 
+                                 edgecolor='black', linewidth=0.5))
+        
+        add_value_labels(bars1, base_values)
+        add_value_labels(bars2, ttt_values)
+        
+        # Add performance improvement annotations
+        for i, (base_val, ttt_val) in enumerate(zip(base_values, ttt_values)):
+            if base_val > 0:
+                improvement = ((ttt_val - base_val) / base_val) * 100
+                if abs(improvement) >= 0.01:
+                    ttt_bar_center = x[i] + width/2
+                    annotation_text = f'{improvement:+.2f}%'
+                    facecolor = 'lightgreen' if improvement > 0 else 'lightcoral'
+                    ax1.annotate(annotation_text, 
+                               xy=(ttt_bar_center, ttt_val + 0.05), 
+                               xytext=(ttt_bar_center, ttt_val + 0.1),
+                               ha='center', va='bottom',
+                               fontsize=8, fontweight='bold', fontfamily='Times New Roman',
+                               bbox=dict(boxstyle='round,pad=0.3', facecolor=facecolor, 
+                                        alpha=0.9, edgecolor='black', linewidth=0.5),
+                               arrowprops=dict(arrowstyle='->', lw=1.5, color='black'))
+        
+        # Metric labels
+        metric_labels = ['Accuracy', 'Precision', 'Recall', 'F1-Score', 'ZDR']
+        
+        ax1.set_xlabel('Performance Metrics', fontsize=11, fontweight='bold', fontfamily='Times New Roman')
+        ax1.set_ylabel('Score', fontsize=11, fontweight='bold', fontfamily='Times New Roman')
+        ax1.set_title(f'Zero-Day Attack Detection Performance Comparison\n({base_num_samples} zero-day samples only)', 
+                     fontsize=13, fontweight='bold', pad=15, fontfamily='Times New Roman')
+        ax1.set_xticks(x)
+        ax1.set_xticklabels(metric_labels, fontfamily='Times New Roman')
+        ax1.set_ylim([0, 1.15])
+        ax1.legend(loc='upper left', fontsize=10, prop={'family': 'Times New Roman'}, framealpha=0.9)
+        ax1.grid(True, alpha=0.3, axis='y')
+        
+        # Add note about zero-day specific evaluation
+        note_text = ("Note: Metrics calculated on ZERO-DAY SAMPLES ONLY (all samples are attacks).\n"
+                    "ZDR (Zero-Day Detection Rate) is the critical metric for zero-day attack detection.\n"
+                    "AUC-PR excluded: Not meaningful when all samples are attacks (no normal samples for PR curve).")
+        fig.text(0.5, 0.02, note_text, ha='center', fontsize=9, 
+                fontfamily='Times New Roman', style='italic',
+                bbox=dict(boxstyle='round,pad=0.5', facecolor='lightyellow', alpha=0.8, 
+                         edgecolor='black', linewidth=0.5))
+        
+        plt.tight_layout()
+        
+        if save:
+            plot_path = os.path.join(self.output_dir, self._get_filename("zero_day_performance_comparison"))
+            plt.savefig(plot_path, dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
+            logger.info(f"Zero-day performance comparison plot saved: {plot_path}")
         
         plt.close()  # Close figure instead of showing it
         return plot_path if save else ""
