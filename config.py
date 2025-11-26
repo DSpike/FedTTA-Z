@@ -31,7 +31,7 @@ class SystemConfig:
     # === DATA CONFIGURATION ===
     data_path: str = "UNSW_NB15_training-set.csv"
     test_path: str = "UNSW_NB15_testing-set.csv"
-    zero_day_attack: str = "Generic"  # UNSW-NB15 attack type (previously PortScan for CICIDS)
+    zero_day_attack: str = "Backdoor"  # UNSW-NB15 attack type (previously PortScan for CICIDS)
     
     # Attack type mapping (UNSW-NB15 dataset)
     attack_types = {
@@ -85,9 +85,9 @@ class SystemConfig:
     
     # === TCN CONFIGURATION ===
     use_tcn: bool = True
-    sequence_length: int = 40
-    sequence_stride: int = 12
-    meta_epochs: int = 5  # Reduced from 3 to 1 for faster training
+    sequence_length: int = 30
+    sequence_stride: int = 15
+    meta_epochs: int = 3  # Reduced from 3 to 1 for faster training
     transductive_steps: int = 20
     transductive_lr: float = 0.0005
     
@@ -95,10 +95,10 @@ class SystemConfig:
     ttt_base_steps: int = 300  # Set to 200 for balanced performance and speed
     ttt_max_steps: int = 400  # Maximum TTT steps (safety limit)
     ttt_adaptation_query_size: int = 1500  # INCREASED from 1200: More data = better adaptation (+1-2% TTT accuracy)
-    ttt_batch_size: int = 32  # TTT batch size (OPTIMAL: validated in hyperparameter tuning)
+    ttt_batch_size: int =64  # TTT batch size (OPTIMAL: validated in hyperparameter tuning)
     # Use a stabilized LR for zero-day adaptation
     # REDUCED from 7e-4 to 4e-4 to prevent overconfident predictions that hurt AUC-PR calibration
-    ttt_lr: float = 8e-4  # Reduced to improve probability calibration and AUC-PR (+better calibration, +2-4% AUC-PR)
+    ttt_lr: float = 7e-4  # Reduced to improve probability calibration and AUC-PR (+better calibration, +2-4% AUC-PR)
     
     # === ATTACK PROTOTYPE DISCOVERY TTT ===
     use_attack_prototype_ttt: bool = False  # Enable attack prototype discovery TTT (+5-8% improvement)
@@ -115,7 +115,7 @@ class SystemConfig:
     ttt_timeout: int = 45  # TTT timeout in seconds (increased)
     ttt_improvement_threshold: float = 1e-5  # Minimum improvement threshold (more sensitive)
     # REMOVED: ttt_threshold, ttt_min_threshold - replaced with adaptive threshold (pseudo_threshold → pseudo_min_threshold)
-    ttt_entropy_weight: float = 0.2    # Weight for entropy loss in TTT (test-time only)
+    ttt_entropy_weight: float = 0.5    # Weight for entropy loss in TTT (test-time only)
     ttt_consistency_weight: float = 0.10  # Weight for prototype consistency in unsupervised TTT
     ttt_mixup_alpha: float = 0.20       # DISABLED: MixUp inappropriate for TTT with unlabeled data
     # Temperature scaling for probability calibration after TTT (improves AUC-PR calibration)

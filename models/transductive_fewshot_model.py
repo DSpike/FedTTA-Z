@@ -156,14 +156,14 @@ class EfficientTCN(nn.Module):
         # Depthwise separable convolution layers
         # Layer 1: input_dim -> hidden_dim
         self.depthwise1 = nn.Conv1d(input_dim, input_dim, 
-                                   kernel_size=3, padding=1, groups=input_dim)
+                                   kernel_size=4, padding=2, groups=input_dim)
         self.pointwise1 = nn.Conv1d(input_dim, hidden_dim, kernel_size=1)
         self.bn1 = nn.BatchNorm1d(hidden_dim)
         self.dropout1 = nn.Dropout(dropout)
         
         # Layer 2: hidden_dim -> hidden_dim (for temporal pattern capture)
         self.depthwise2 = nn.Conv1d(hidden_dim, hidden_dim,
-                                   kernel_size=3, padding=1, groups=hidden_dim)
+                                   kernel_size=4, padding=2, groups=hidden_dim)
         self.pointwise2 = nn.Conv1d(hidden_dim, hidden_dim, kernel_size=1)
         self.bn2 = nn.BatchNorm1d(hidden_dim)
         self.dropout2 = nn.Dropout(dropout)
@@ -183,11 +183,15 @@ class EfficientTCN(nn.Module):
         """
         # Convert to (batch_size, input_dim, sequence_length) for Conv1d
         x = x.transpose(1, 2)  # (B, L, C) -> (B, C, L)
+        original_length = x.size(2)  # Store original sequence length
         
         # First depthwise separable conv
         residual = x
         x = self.depthwise1(x)
         x = self.pointwise1(x)
+        # Crop to maintain original sequence length (kernel_size=4 with padding=2 adds 1 element)
+        if x.size(2) > original_length:
+            x = x[:, :, :original_length]
         x = self.bn1(x)
         x = F.relu(x)
         x = self.dropout1(x)
@@ -201,6 +205,9 @@ class EfficientTCN(nn.Module):
         residual2 = x
         x = self.depthwise2(x)
         x = self.pointwise2(x)
+        # Crop to maintain original sequence length
+        if x.size(2) > original_length:
+            x = x[:, :, :original_length]
         x = self.bn2(x)
         x = F.relu(x)
         x = self.dropout2(x)
@@ -232,14 +239,14 @@ class EfficientTCN(nn.Module):
         # Depthwise separable convolution layers
         # Layer 1: input_dim -> hidden_dim
         self.depthwise1 = nn.Conv1d(input_dim, input_dim, 
-                                   kernel_size=3, padding=1, groups=input_dim)
+                                   kernel_size=4, padding=2, groups=input_dim)
         self.pointwise1 = nn.Conv1d(input_dim, hidden_dim, kernel_size=1)
         self.bn1 = nn.BatchNorm1d(hidden_dim)
         self.dropout1 = nn.Dropout(dropout)
         
         # Layer 2: hidden_dim -> hidden_dim (for temporal pattern capture)
         self.depthwise2 = nn.Conv1d(hidden_dim, hidden_dim,
-                                   kernel_size=3, padding=1, groups=hidden_dim)
+                                   kernel_size=4, padding=2, groups=hidden_dim)
         self.pointwise2 = nn.Conv1d(hidden_dim, hidden_dim, kernel_size=1)
         self.bn2 = nn.BatchNorm1d(hidden_dim)
         self.dropout2 = nn.Dropout(dropout)
@@ -259,11 +266,15 @@ class EfficientTCN(nn.Module):
         """
         # Convert to (batch_size, input_dim, sequence_length) for Conv1d
         x = x.transpose(1, 2)  # (B, L, C) -> (B, C, L)
+        original_length = x.size(2)  # Store original sequence length
         
         # First depthwise separable conv
         residual = x
         x = self.depthwise1(x)
         x = self.pointwise1(x)
+        # Crop to maintain original sequence length (kernel_size=4 with padding=2 adds 1 element)
+        if x.size(2) > original_length:
+            x = x[:, :, :original_length]
         x = self.bn1(x)
         x = F.relu(x)
         x = self.dropout1(x)
@@ -277,6 +288,9 @@ class EfficientTCN(nn.Module):
         residual2 = x
         x = self.depthwise2(x)
         x = self.pointwise2(x)
+        # Crop to maintain original sequence length
+        if x.size(2) > original_length:
+            x = x[:, :, :original_length]
         x = self.bn2(x)
         x = F.relu(x)
         x = self.dropout2(x)
