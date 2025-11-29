@@ -650,16 +650,17 @@ class SimpleFedAVGCoordinator:
             logger.error(f"Quick system self-check failed: {str(e)}")
             return summary
     
-    def distribute_data(self, train_data: torch.Tensor, train_labels: torch.Tensor):
+    def distribute_data(self, train_data: torch.Tensor, train_labels: torch.Tensor, train_multiclass_labels: Optional[torch.Tensor] = None):
         """Distribute data among clients using Dirichlet distribution for realistic non-IID"""
         alpha = getattr(self.config, "dirichlet_alpha", 1.0) if hasattr(self, "config") and self.config else 1.0
-        self.distribute_data_with_dirichlet(train_data, train_labels, alpha=alpha)
+        self.distribute_data_with_dirichlet(train_data, train_labels, alpha=alpha, train_multiclass_labels=train_multiclass_labels)
     
     def distribute_data_with_dirichlet(
         self,
         train_data: torch.Tensor,
         train_labels: torch.Tensor,
         alpha: float = 1.0,
+        train_multiclass_labels: Optional[torch.Tensor] = None,
     ):
         """
         Distribute training data among clients using Dirichlet distribution for realistic non-IID
@@ -691,6 +692,7 @@ class SimpleFedAVGCoordinator:
         for i, client in enumerate(self.clients):
             client_data_list = []
             client_labels_list = []
+            client_multiclass_labels_list = []
             
             for label in unique_labels:
                 label_mask = train_labels == label
@@ -710,6 +712,8 @@ class SimpleFedAVGCoordinator:
                         
                         client_data_list.append(train_data[selected_indices])
                         client_labels_list.append(train_labels[selected_indices])
+                        if train_multiclass_labels is not None:
+                            client_multiclass_labels_list.append(train_multiclass_labels[selected_indices])
                         
                         logger.info(
                             f"Client {client.client_id} - Class {label.item()}: "
@@ -723,11 +727,18 @@ class SimpleFedAVGCoordinator:
                 shuffle_indices = torch.randperm(len(client_data))
                 client_data = client_data[shuffle_indices]
                 client_labels = client_labels[shuffle_indices]
+                
+                if train_multiclass_labels is not None and client_multiclass_labels_list:
+                    client_multiclass_labels = torch.cat(client_multiclass_labels_list, dim=0)
+                    client_multiclass_labels = client_multiclass_labels[shuffle_indices]
+                else:
+                    client_multiclass_labels = None
             else:
                 client_data = train_data.new_empty((0,) + train_data.shape[1:])
                 client_labels = train_labels.new_empty((0,), dtype=train_labels.dtype)
+                client_multiclass_labels = None
             
-            client.set_training_data(client_data, client_labels)
+            client.set_training_data(client_data, client_labels, client_multiclass_labels)
             
             class_counts = {}
             for label in unique_labels:
@@ -743,9 +754,18 @@ class SimpleFedAVGCoordinator:
         """Run one federated learning round with minimal memory usage"""
         logger.info(f"Starting federated round {self.current_round + 1}")
         
+        # Save global model parameters for FedProx (if enabled)
+        global_params_for_fedprox = None
+        if hasattr(self.config, 'use_fedprox') and self.config.use_fedprox:
+            global_params_for_fedprox = {
+                name: param.detach().clone().cpu() 
+                for name, param in self.model.named_parameters()
+            }
+            logger.info(f"📌 FedProx: Saved global model parameters (μ={getattr(self.config, 'fedprox_mu', 0.01):.3f})")
+        
         client_updates: List[SimpleClientUpdate] = []
         for client in self.clients:
-            update = client.train_local_model(epochs)
+            update = client.train_local_model(epochs, global_params=global_params_for_fedprox)
             client_updates.append(update)
             torch.cuda.empty_cache()
         
@@ -2142,7 +2162,7 @@ class TENTPseudoLabels:
                         start_idx = batch_idx * batch_size
                         end_idx = min((batch_idx + 1) * batch_size, len(query_x))
                         x_batch = query_x[start_idx:end_idx]
-                    
+                        
                         # Apply Gaussian noise if enabled
                         if self.gaussian_noise_std > 0:
                             noise = torch.randn_like(x_batch) * self.gaussian_noise_std
@@ -2522,14 +2542,22 @@ class SimpleFederatedClient:
         self.model = TENTPseudoLabels._clone_model_efficient(model, device=device)
         self.train_data: Optional[torch.Tensor] = None
         self.train_labels: Optional[torch.Tensor] = None
+        self.train_multiclass_labels: Optional[torch.Tensor] = None  # Multiclass labels for attack type distinction
         
-    def set_training_data(self, train_data: torch.Tensor, train_labels: torch.Tensor):
+    def set_training_data(self, train_data: torch.Tensor, train_labels: torch.Tensor, train_multiclass_labels: Optional[torch.Tensor] = None):
         """Set training data"""
         self.train_data = train_data.to(self.device)
         self.train_labels = train_labels.to(self.device)
+        if train_multiclass_labels is not None:
+            self.train_multiclass_labels = train_multiclass_labels.to(self.device)
     
-    def train_local_model(self, epochs: int = 2) -> SimpleClientUpdate:
-        """Train local model using ONLY transductive meta-learning (no TTT)"""
+    def train_local_model(self, epochs: int = 2, global_params: Optional[Dict[str, torch.Tensor]] = None) -> SimpleClientUpdate:
+        """Train local model using ONLY transductive meta-learning (no TTT)
+        
+        Args:
+            epochs: Number of training epochs
+            global_params: Global model parameters for FedProx proximal term (if enabled)
+        """
         logger.info(
             f"Client {self.client_id}: Starting transductive meta-learning training for {epochs} epochs"
         )
@@ -2577,13 +2605,19 @@ class SimpleFederatedClient:
                 phase="training",
                 normal_query_ratio=0.8,
                 zero_day_attack_label=self.config.zero_day_attack_label,
+                enforce_equal_support_composition=getattr(self.config, 'enforce_equal_support_composition', True),
+                include_all_attack_types_in_support=getattr(self.config, 'include_all_attack_types_in_support', False),
+                data_y_multiclass=self.train_multiclass_labels,  # Pass multiclass labels for attack type distinction
             )
             
             logger.info(
                 f"Client {self.client_id}: Running transductive meta-learning training..."
             )
             meta_training_history = self.model.meta_train(
-                local_meta_tasks, meta_epochs=self.config.meta_epochs, config=self.config
+                local_meta_tasks, 
+                meta_epochs=self.config.meta_epochs, 
+                config=self.config,
+                global_params=global_params  # Pass global params for FedProx
             )
             
             model_parameters: Dict[str, torch.Tensor] = {}

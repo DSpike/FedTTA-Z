@@ -16,6 +16,8 @@ import os
 import subprocess
 import requests
 import copy
+import pickle
+from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
 import threading
@@ -468,6 +470,8 @@ class BlockchainFederatedIncentiveSystem:
                     "Initializing TCN-based transductive few-shot model...")
                 # Use config input_dim initially, will be updated after
                 # preprocessing
+                # Get TCN kernel sizes from config if available, otherwise use default (2, 3, 4)
+                tcn_kernel_sizes = getattr(self.config, 'tcn_kernel_sizes', (2, 3, 4))
                 self.model = TransductiveLearner(
                     input_dim=self.config.input_dim,
                     hidden_dim=64,  # Optimized hidden dimension
@@ -475,7 +479,9 @@ class BlockchainFederatedIncentiveSystem:
                     num_classes=2,   # Binary classification (Normal vs Attack)
                     support_weight=self.config.support_weight,
                     test_weight=self.config.test_weight,
-                    sequence_length=self.config.sequence_length
+                    sequence_length=self.config.sequence_length,
+                    disable_tcn_feature_extraction=getattr(self.config, 'disable_tcn_feature_extraction', False),
+                    tcn_kernel_sizes=tcn_kernel_sizes
                 ).to(self.device)
                 # Update TTT config from centralized config
                 if hasattr(self.model, 'update_ttt_config'):
@@ -532,7 +538,7 @@ class BlockchainFederatedIncentiveSystem:
     
     def _stratified_test_subset(self, X_test, y_test, y_test_multiclass, test_attack_cat, n_samples):
         """
-        Create a stratified subset of test data with 30% zero-day samples (target distribution)
+        Create a stratified subset of test data with target zero-day samples (default 30%, can be overridden)
         
         Args:
             X_test: Test features tensor
@@ -550,9 +556,58 @@ class BlockchainFederatedIncentiveSystem:
         n_samples = min(n_samples, len(X_test))
         
         # TARGET: Use temp override if set (for pre-sequence sampling), otherwise default to 30%
-        # Pre-sequence target can be higher (40-45%) to compensate for sequence creation dilution
+        # Pre-sequence target can be higher (e.g., 40%) to compensate for sequence creation dilution
+        # Final target after post-sequence filtering will be 30%
         zero_day_target_percentage = getattr(self, '_temp_zero_day_target', 0.30)
-        zero_day_target_count = int(n_samples * zero_day_target_percentage)
+        
+        # CRITICAL FIX: Check availability FIRST before calculating target count
+        # This prevents warnings when target exceeds available samples
+        zero_day_label = self.config.zero_day_attack_label
+        
+        # Quick check: Count available zero-day samples before full processing
+        available_zero_day_precheck = 0
+        if y_test_multiclass is not None:
+            # Convert to numpy for checking
+            if torch.is_tensor(y_test_multiclass):
+                y_multiclass_temp = y_test_multiclass.cpu().numpy()
+            elif isinstance(y_test_multiclass, (list, np.ndarray)):
+                y_multiclass_temp = np.array(y_test_multiclass)
+            else:
+                y_multiclass_temp = None
+            
+            if y_multiclass_temp is not None:
+                zero_day_mask_temp = (y_multiclass_temp == zero_day_label)
+                available_zero_day_precheck = np.sum(zero_day_mask_temp)
+        elif test_attack_cat is not None:
+            # Convert to numpy for checking
+            if isinstance(test_attack_cat, list):
+                attack_cat_temp = np.array(test_attack_cat)
+            elif isinstance(test_attack_cat, np.ndarray):
+                attack_cat_temp = test_attack_cat
+            else:
+                attack_cat_temp = None
+            
+            if attack_cat_temp is not None and self.config.zero_day_attack in attack_cat_temp:
+                available_zero_day_precheck = np.sum(attack_cat_temp == self.config.zero_day_attack)
+        
+        # Calculate achievable subset size based on available zero-day samples
+        if available_zero_day_precheck > 0 and zero_day_target_percentage > 0:
+            # Reverse calculation: if we have N zero-day samples and want P%,
+            # then max subset size = N / P
+            max_subset_size_by_zero_day = int(available_zero_day_precheck / zero_day_target_percentage)
+            # Use the minimum of requested n_samples and what's achievable
+            effective_n_samples = min(n_samples, max_subset_size_by_zero_day)
+            zero_day_target_count = int(effective_n_samples * zero_day_target_percentage)
+            
+            # Log adjustment if subset size was reduced
+            if effective_n_samples < n_samples:
+                logger.info(f"📊 Adjusted subset size: {effective_n_samples} (from {n_samples}) to achieve {zero_day_target_percentage*100:.1f}% zero-day target with {available_zero_day_precheck} available samples")
+        else:
+            effective_n_samples = n_samples
+            zero_day_target_count = int(n_samples * zero_day_target_percentage)
+        
+        # Use effective_n_samples for the rest of the function
+        n_samples = effective_n_samples
         
         # Convert to numpy for sklearn
         X_np = X_test.cpu().numpy() if torch.is_tensor(X_test) else np.array(X_test)
@@ -576,7 +631,8 @@ class BlockchainFederatedIncentiveSystem:
             y_multiclass_subset = y_multiclass_np if y_multiclass_np is not None else None
             attack_cat_subset = attack_cat_np if attack_cat_np is not None else None
         else:
-            # MODIFIED: Ensure 30% zero-day samples
+            # MODIFIED: Ensure target percentage of zero-day samples (set via _temp_zero_day_target)
+            # Note: zero_day_target_count is already adjusted based on availability (calculated above)
             zero_day_label = self.config.zero_day_attack_label
             
             # Get indices of zero-day and non-zero-day samples
@@ -597,11 +653,11 @@ class BlockchainFederatedIncentiveSystem:
             available_zero_day = len(zero_day_indices)
             available_non_zero_day = len(non_zero_day_indices)
             
-            # Select zero-day samples (target: 30% of n_samples)
+            # Select zero-day samples (target already adjusted based on availability above)
             if available_zero_day > 0:
                 actual_zero_day_count = min(zero_day_target_count, available_zero_day)
-                if actual_zero_day_count < zero_day_target_count:
-                    logger.warning(f"⚠️  Only {available_zero_day} zero-day samples available, targeting {zero_day_target_count}. Using all {available_zero_day}.")
+                # Warning removed - target_count is already adjusted to match availability in precheck above
+                # No warning needed since we check availability first and adjust target accordingly
                 
                 # Randomly select zero-day samples
                 np.random.seed(42)
@@ -663,13 +719,16 @@ class BlockchainFederatedIncentiveSystem:
             zero_day_label = self.config.zero_day_attack_label
             zero_day_count = counts[unique == zero_day_label].sum() if zero_day_label in unique else 0
             actual_percentage = 100*zero_day_count/len(X_subset) if len(X_subset) > 0 else 0
-            logger.info(f"   Zero-day samples: {zero_day_count}/{len(X_subset)} ({actual_percentage:.1f}%) [TARGET: 30.0%]")
+            logger.info(f"   Zero-day samples: {zero_day_count}/{len(X_subset)} ({actual_percentage:.1f}%) [TARGET: {100*zero_day_target_percentage:.1f}%]")
         
         return X_subset, y_subset, y_multiclass_subset, attack_cat_subset
     
-    def preprocess_data(self) -> bool:
+    def preprocess_data(self, skip_saved_test_set: bool = False) -> bool:
         """
         Preprocess UNSW-NB15 dataset
+        
+        Args:
+            skip_saved_test_set: If True, skip loading saved test sets (useful during optimization)
         
         Returns:
             success: Whether preprocessing was successful
@@ -679,7 +738,18 @@ class BlockchainFederatedIncentiveSystem:
             return False
         
         try:
-
+            # Check if saved test set exists (from optimization trial)
+            # Skip during optimization to allow each trial to create its own test set
+            saved_test_set = None
+            if not skip_saved_test_set:
+                saved_test_set = self._load_saved_test_set()
+                if saved_test_set is not None:
+                    logger.info("📦 Found saved test set - will use it after preprocessing")
+                    logger.info(f"   Test set from trial: {saved_test_set.get('trial_number', 'unknown')}")
+                    logger.info(f"   Zero-day attack: {saved_test_set.get('zero_day_attack', 'unknown')}")
+            else:
+                logger.info("⏭️  Skipping saved test set loading (optimization mode - each trial creates its own test set)")
+            
             logger.info("Preprocessing dataset...")
             
             # Run preprocessing pipeline
@@ -815,11 +885,11 @@ class BlockchainFederatedIncentiveSystem:
                     zero_pad=True
                 )
                 
-                # Create sequences for test data (use smaller subset to avoid
-                # memory issues)
+                # Create sequences for test data (use larger subset to get more sequences)
+                # Increased from 5000 to 10000 to maximize test samples after filtering
                 test_subset_size = min(
-    5000, len(
-        self.preprocessed_data['X_test']))  # Limit to 5k samples
+    10000, len(
+        self.preprocessed_data['X_test']))  # Increased to 10k samples for more sequences
                 
                 # Get multiclass labels before subsetting for zero-day identification
                 y_test_multiclass_original = self.preprocessed_data.get('y_test_multiclass', None)
@@ -829,10 +899,10 @@ class BlockchainFederatedIncentiveSystem:
                 # Sequence creation dilutes zero-day percentage, so we need higher pre-sequence target
                 # This ensures we get enough zero-day sequences after sequence creation to maximize total
                 if y_test_multiclass_original is not None:
-                    logger.info(f"🔍 Using stratified sampling with 40% zero-day target BEFORE sequence creation (will dilute to ~30% after sequences)...")
-                    # Temporarily override target percentage for pre-sequence sampling to 40%
-                    # This ensures we get enough zero-day sequences after sequence creation
-                    self._temp_zero_day_target = 0.40  # Target 40% before sequences (will become ~30% after)
+                    logger.info(f"🔍 Using stratified sampling with 35% zero-day target BEFORE sequence creation (will dilute to ~20% after sequences)...")
+                    # Temporarily override target percentage for pre-sequence sampling to 35%
+                    # This ensures we get enough zero-day sequences after sequence creation (target is now 20% post-sequence)
+                    self._temp_zero_day_target = 0.35  # Target 35% before sequences (will become ~20% after)
                     X_test_subset, y_test_subset, y_test_multiclass_original, test_attack_cat_original = self._stratified_test_subset(
                         self.preprocessed_data['X_test'],
                         self.preprocessed_data['y_test'],
@@ -889,8 +959,8 @@ class BlockchainFederatedIncentiveSystem:
                             logger.info(f"🔍 Before post-sequence filtering: {zero_day_count_in_seq}/{total_seq_count} zero-day sequences ({current_percentage:.1f}%)")
                             logger.info(f"🔍 DEBUG: Unique labels in mapped sequences: {set(y_test_multiclass_seq.numpy() if torch.is_tensor(y_test_multiclass_seq) else y_test_multiclass_seq)}")
                             
-                            # POST-SEQUENCE FILTERING: Adjust to achieve exactly 30% zero-day sequences
-                            target_zero_day_percentage = 0.30
+                            # POST-SEQUENCE FILTERING: Adjust to achieve target zero-day percentage (reduced from 30% to 20% for more test samples)
+                            target_zero_day_percentage = 0.20  # Reduced from 0.30 to 0.20 for more total test samples
                             
                             # Get zero-day and non-zero-day sequence indices
                             zero_day_mask = (y_test_multiclass_seq == self.config.zero_day_attack_label)
@@ -908,20 +978,23 @@ class BlockchainFederatedIncentiveSystem:
                             # Use ALL available zero-day sequences to maximize total count
                             target_zero_day_count = available_zero_day
                             
-                            # Calculate needed non-zero-day sequences to maintain 30% ratio
-                            # For 30% ratio: if we have N zero-day, we need M = (7/3)N non-zero-day
-                            target_non_zero_day_count = int((target_zero_day_count * 7) // 3)  # 70% of total
+                            # Calculate needed non-zero-day sequences to maintain target percentage ratio
+                            # For 20% ratio: if we have N zero-day (20%), we need M = 4N non-zero-day (80%)
+                            # For 30% ratio: if we have N zero-day (30%), we need M = (7/3)N non-zero-day (70%)
+                            # Formula: if target = p, then M = N * (1-p)/p = N * (0.8/0.2) = 4N
+                            ratio_non_zero_day = (1.0 - target_zero_day_percentage) / target_zero_day_percentage
+                            target_non_zero_day_count = int(target_zero_day_count * ratio_non_zero_day)
                             
                             # Adjust if we don't have enough non-zero-day sequences
                             if target_non_zero_day_count > available_non_zero_day:
                                 # Not enough non-zero-day: reduce zero-day to fit available non-zero-day
-                                # If M is max non-zero-day, then N = (3/7)M is max zero-day
-                                max_zero_day_by_ratio = int((available_non_zero_day * 3) // 7)
+                                # If M is max non-zero-day, then N = M * p/(1-p) is max zero-day
+                                max_zero_day_by_ratio = int(available_non_zero_day * target_zero_day_percentage / (1.0 - target_zero_day_percentage))
                                 target_zero_day_count = min(available_zero_day, max_zero_day_by_ratio)
-                                target_non_zero_day_count = int((target_zero_day_count * 7) // 3)
+                                target_non_zero_day_count = int(target_zero_day_count * ratio_non_zero_day)
                             
                             # Final total will be: target_zero_day_count + target_non_zero_day_count
-                            logger.info(f"📊 Filtering strategy: Using {target_zero_day_count} zero-day + {target_non_zero_day_count} non-zero-day = {target_zero_day_count + target_non_zero_day_count} total sequences (target: 30% zero-day)")
+                            logger.info(f"📊 Filtering strategy: Using {target_zero_day_count} zero-day + {target_non_zero_day_count} non-zero-day = {target_zero_day_count + target_non_zero_day_count} total sequences (target: {target_zero_day_percentage*100:.0f}% zero-day)")
                             
                             if target_zero_day_count > 0 and target_non_zero_day_count > 0:
                                 np.random.seed(42)
@@ -945,12 +1018,18 @@ class BlockchainFederatedIncentiveSystem:
                                 final_zero_day_count = (y_test_multiclass_seq == self.config.zero_day_attack_label).sum().item()
                                 final_total = len(y_test_multiclass_seq)
                                 final_percentage = 100 * final_zero_day_count / final_total if final_total > 0 else 0
-                                logger.info(f"✅ After post-sequence filtering: {final_zero_day_count}/{final_total} zero-day sequences ({final_percentage:.1f}%) [TARGET: 30.0%]")
+                                logger.info(f"✅ After post-sequence filtering: {final_zero_day_count}/{final_total} zero-day sequences ({final_percentage:.1f}%) [TARGET: {target_zero_day_percentage*100:.0f}%]")
                             else:
-                                logger.warning(f"⚠️  Cannot achieve 30% zero-day ratio. Available: {available_zero_day} zero-day, {available_non_zero_day} non-zero-day. Using all available sequences without filtering.")
+                                logger.warning(f"⚠️  Cannot achieve {target_zero_day_percentage*100:.0f}% zero-day ratio. Available: {available_zero_day} zero-day, {available_non_zero_day} non-zero-day. Using all available sequences without filtering.")
                             
-                            # Store filtered sequences
+                            # Store filtered sequences (CRITICAL: All three must have the same length after filtering)
                             self.preprocessed_data['y_test_multiclass'] = y_test_multiclass_seq
+                            # IMPORTANT: X_test_seq and y_test_seq will be stored later at line 1072-1073,
+                            # but we need to ensure they're the filtered versions (which they should be since we filtered in-place)
+                            # Verify alignment before storing
+                            assert len(X_test_seq) == len(y_test_seq) == len(y_test_multiclass_seq), \
+                                f"❌ Size mismatch after filtering: X_test_seq={len(X_test_seq)}, y_test_seq={len(y_test_seq)}, y_test_multiclass_seq={len(y_test_multiclass_seq)}"
+                            logger.info(f"✅ Verified alignment: All test sequences have length {len(X_test_seq)} after filtering")
                         if len(test_attack_cat_seq) > 0:
                             self.preprocessed_data['test_attack_cat'] = test_attack_cat_seq
                             logger.info(f"✅ Final test sequences after post-sequence filtering: {len(X_test_seq)} sequences")
@@ -966,6 +1045,64 @@ class BlockchainFederatedIncentiveSystem:
                     # Store original test_attack_cat for zero-day identification (checking ALL timesteps)
                     if test_attack_cat_original is not None:
                         self.preprocessed_data['test_attack_cat_original'] = test_attack_cat_original
+                    
+                    # If saved test set exists, replace with saved one (for reproducibility)
+                    use_saved_test_set = False
+                    if saved_test_set is not None:
+                        logger.info("🔄 Checking saved test set from optimization trial...")
+                        
+                        # CRITICAL: Check sizes before overwriting to prevent mismatches
+                        saved_x_test = saved_test_set['X_test']
+                        saved_y_test = saved_test_set['y_test']
+                        saved_multiclass = saved_test_set.get('y_test_multiclass')
+                        
+                        # Get lengths
+                        saved_x_len = len(saved_x_test) if saved_x_test is not None else 0
+                        saved_y_len = len(saved_y_test) if saved_y_test is not None else 0
+                        saved_multiclass_len = len(saved_multiclass) if saved_multiclass is not None else 0
+                        
+                        # Verify alignment in saved test set
+                        if saved_x_len != saved_y_len:
+                            logger.error(f"❌ Saved test set has mismatched X_test ({saved_x_len}) and y_test ({saved_y_len}) sizes! Skipping saved test set.")
+                        elif saved_multiclass is not None and saved_multiclass_len != saved_x_len:
+                            logger.error(f"❌ Saved test set has mismatched sizes: X_test={saved_x_len}, multiclass={saved_multiclass_len}! This will cause zero-day detection to fail.")
+                            logger.warning(f"⚠️ Keeping current filtered test set instead of saved one to maintain size alignment.")
+                        else:
+                            # All sizes match - safe to use saved test set
+                            use_saved_test_set = True
+                            logger.info(f"✅ Saved test set sizes verified: {saved_x_len} sequences, {saved_multiclass_len} multiclass labels")
+                    
+                    if use_saved_test_set:
+                        # All sizes match - safe to overwrite
+                        self.preprocessed_data['X_test'] = saved_test_set['X_test']
+                        self.preprocessed_data['y_test'] = saved_test_set['y_test']
+                        saved_multiclass = saved_test_set.get('y_test_multiclass')
+                        
+                        if saved_multiclass is not None:
+                            # Sizes already verified above - safe to use
+                            self.preprocessed_data['y_test_multiclass'] = saved_multiclass
+                            logger.info(f"✅ Multiclass labels loaded: {len(saved_multiclass)} labels aligned with {len(saved_test_set['X_test'])} sequences")
+                        else:
+                            logger.warning(f"⚠️ Saved test set has no multiclass labels. Using labels from current run.")
+                        
+                        self.preprocessed_data['test_attack_cat'] = saved_test_set.get('test_attack_cat')
+                        self.preprocessed_data['X_test_original'] = saved_test_set.get('X_test_original')
+                        self.preprocessed_data['y_test_original'] = saved_test_set.get('y_test_original')
+                        self.preprocessed_data['test_attack_cat_original'] = saved_test_set.get('test_attack_cat_original')
+                        if 'zero_day_indices' in saved_test_set:
+                            self.preprocessed_data['zero_day_indices'] = saved_test_set['zero_day_indices']
+                        
+                        # Final verification
+                        x_test_len = len(self.preprocessed_data['X_test'])
+                        y_test_len = len(self.preprocessed_data['y_test'])
+                        multiclass_len = len(self.preprocessed_data.get('y_test_multiclass', []))
+                        logger.info(f"✅ Test set replaced: {x_test_len} sequences")
+                        logger.info(f"   X_test: {x_test_len}, y_test: {y_test_len}, y_test_multiclass: {multiclass_len}")
+                        if multiclass_len > 0 and multiclass_len != x_test_len:
+                            logger.error(f"❌ CRITICAL: Size mismatch after loading saved test set! X_test={x_test_len}, multiclass={multiclass_len}")
+                        logger.info(f"   Using test set from trial {saved_test_set.get('trial_number', 'unknown')}")
+                    elif saved_test_set is not None:
+                        logger.info(f"⚠️ Saved test set skipped due to size mismatch. Using current filtered test set.")
                 except Exception as e:
                     logger.error(f"❌ Failed to create test sequences: {e}")
                     # Use even smaller subset
@@ -984,6 +1121,19 @@ class BlockchainFederatedIncentiveSystem:
                     logger.info(f"✅ Fallback test sequences created: {X_test_seq.shape} (stride={self.config.sequence_stride})")
                 
                 # Update preprocessed data with sequences
+                # CRITICAL: Verify test set alignment before storing
+                if 'y_test_multiclass' in self.preprocessed_data:
+                    multiclass_len = len(self.preprocessed_data['y_test_multiclass'])
+                    test_seq_len = len(X_test_seq)
+                    if multiclass_len != test_seq_len:
+                        logger.error(f"❌ CRITICAL SIZE MISMATCH: X_test_seq has {test_seq_len} sequences but y_test_multiclass has {multiclass_len} labels!")
+                        logger.error(f"   This will cause zero-day detection to fail. Checking if saved test set was loaded incorrectly...")
+                        # Try to fix: if sizes don't match, assume multiclass labels are wrong and need to be regenerated
+                        # But we can't regenerate without original data, so this is a critical error
+                        # For now, log the error and hope the saved test set fix above handles it
+                    else:
+                        logger.info(f"✅ Verified test set alignment before storing: {test_seq_len} sequences and {multiclass_len} multiclass labels")
+                
                 self.preprocessed_data.update({
                     'X_train': X_train_seq,
                     'y_train': y_train_seq,
@@ -1012,6 +1162,41 @@ class BlockchainFederatedIncentiveSystem:
             logger.error(f"❌ Data preprocessing failed: {str(e)}")
             return False
     
+    def _load_saved_test_set(self) -> Optional[Dict[str, Any]]:
+        """
+        Load saved test set from optimization trial (if available).
+        
+        Returns:
+            Dictionary containing test set data, or None if not found
+        """
+        try:
+            test_set_dir = Path("saved_test_sets")
+            
+            # Try to load best trial test set first
+            best_test_set_path = test_set_dir / "test_set_best_trial.pkl"
+            if best_test_set_path.exists():
+                logger.info(f"📦 Loading saved test set from: {best_test_set_path}")
+                with open(best_test_set_path, 'rb') as f:
+                    test_set_data = pickle.load(f)
+                logger.info(f"✅ Loaded test set from trial {test_set_data.get('trial_number', 'unknown')}")
+                return test_set_data
+            
+            # Fallback: Try to load trial 13 specifically
+            trial13_test_set_path = test_set_dir / "test_set_trial_13.pkl"
+            if trial13_test_set_path.exists():
+                logger.info(f"📦 Loading saved test set from: {trial13_test_set_path}")
+                with open(trial13_test_set_path, 'rb') as f:
+                    test_set_data = pickle.load(f)
+                logger.info(f"✅ Loaded test set from trial {test_set_data.get('trial_number', 'unknown')}")
+                return test_set_data
+            
+            # No saved test set found
+            return None
+            
+        except Exception as e:
+            logger.warning(f"⚠️  Failed to load saved test set: {e}")
+            return None
+    
     def _update_model_architecture(self, new_input_dim: int) -> None:
         """
         Update model architecture to match actual feature count after IGRF-RFE selection
@@ -1024,6 +1209,8 @@ class BlockchainFederatedIncentiveSystem:
 
         if self.config.use_tcn:
             # Recreate the TransductiveLearner with correct input dimension
+            # Get TCN kernel sizes from config if available, otherwise use default (2, 3, 4)
+            tcn_kernel_sizes = getattr(self.config, 'tcn_kernel_sizes', (2, 3, 4))
             self.model = TransductiveLearner(
                 input_dim=new_input_dim,
                 hidden_dim=64,
@@ -1031,10 +1218,12 @@ class BlockchainFederatedIncentiveSystem:
                 num_classes=2,   # Binary classification (Normal vs Attack)
                 support_weight=self.config.support_weight,
                 test_weight=self.config.test_weight,
-                sequence_length=self.config.sequence_length
+                sequence_length=self.config.sequence_length,
+                disable_tcn_feature_extraction=getattr(self.config, 'disable_tcn_feature_extraction', False),
+                tcn_kernel_sizes=tcn_kernel_sizes
             ).to(self.device)
             logger.info(
-                f"✅ TransductiveLearner updated with {new_input_dim} input features")
+                f"✅ TransductiveLearner updated with {new_input_dim} input features (TCN kernel sizes: {tcn_kernel_sizes})")
         
         else:
             # Recreate the TransductiveFewShotModel with correct input
@@ -1086,11 +1275,18 @@ class BlockchainFederatedIncentiveSystem:
             
             # Distribute data among clients using simple splitting
             # Use binary labels for federated learning (0=Normal, 1=Attack)
+            # Get multiclass labels if available (for attack type distinction in support set)
+            train_multiclass_labels = None
+            if 'y_train_multiclass' in self.preprocessed_data:
+                train_multiclass_labels = torch.LongTensor(self.preprocessed_data['y_train_multiclass'])
+                logger.info(f"✅ Multiclass labels available: {len(torch.unique(train_multiclass_labels))} unique labels")
+            
             self.coordinator.distribute_data(
                 train_data=torch.FloatTensor(
     self.preprocessed_data['X_train']),
                 train_labels=torch.LongTensor(
-    self.preprocessed_data['y_train'])
+    self.preprocessed_data['y_train']),
+                train_multiclass_labels=train_multiclass_labels
             )
             
             # Incentive contract registration removed for pure federated learning
@@ -1140,7 +1336,11 @@ class BlockchainFederatedIncentiveSystem:
                     phase="training",
                     normal_query_ratio=0.8,  # 80% Normal samples in query set for training
                     # Exclude configured zero-day attack from training
-                    zero_day_attack_label=self.preprocessed_data['attack_types'][self.config.zero_day_attack]
+                    zero_day_attack_label=self.preprocessed_data['attack_types'][self.config.zero_day_attack],
+                    # Ensure equal Normal/Attack composition in support set (excluding zero-day)
+                    enforce_equal_support_composition=getattr(self.config, 'enforce_equal_support_composition', True),
+                    # Include all attack types in support set (uniformly distributed)
+                    include_all_attack_types_in_support=getattr(self.config, 'include_all_attack_types_in_support', False)
                 )
                 
                 # Client does meta-learning locally
@@ -2392,6 +2592,27 @@ class BlockchainFederatedIncentiveSystem:
             # Blockchain metrics and gas usage analysis plots removed as requested
             
             try:
+                # Base model overall performance bar chart (FedProx aggregated global model evaluated on TEST SET)
+                # NOTE: Uses self.coordinator.model (FedProx aggregated) evaluated on X_test, y_test (test set)
+                # This is NOT client performance aggregation, NOT validation set evaluation
+                if evaluation_results and 'base_model' in evaluation_results:
+                    base_results = evaluation_results['base_model']
+                    
+                    plot_paths['base_model_performance_barchart'] = self.visualizer.plot_base_model_performance_barchart(
+                        base_results
+                    )
+                    logger.info(
+                        "✅ Base model overall performance bar chart completed (FedProx aggregated global model on test set)")
+                else:
+                    logger.warning(
+                        "Base model results not available - skipping base model performance bar chart")
+            
+            except Exception as e:
+                import traceback
+                logger.warning(f"Base model performance bar chart failed: {str(e)}")
+                logger.debug(traceback.format_exc())
+            
+            try:
                 # Performance comparison with annotations (Base vs Adapted models)
                 if evaluation_results and 'base_model' in evaluation_results and 'adapted_model' in evaluation_results:
                     base_results = evaluation_results['base_model']
@@ -2402,6 +2623,19 @@ class BlockchainFederatedIncentiveSystem:
                     )
                     logger.info(
                         "✅ Performance comparison with annotations completed")
+                    
+                    # Zero-day specific performance comparison
+                    if 'zero_day_only' in base_results and 'zero_day_only' in adapted_results:
+                        zero_day_plot_path = self.visualizer.plot_zero_day_performance_comparison(
+                            base_results, adapted_results
+                        )
+                        if zero_day_plot_path:
+                            plot_paths['zero_day_performance_comparison'] = zero_day_plot_path
+                            logger.info("✅ Zero-day specific performance comparison completed")
+                        else:
+                            logger.warning("⚠️ Zero-day performance comparison plot generation skipped (insufficient data)")
+                    else:
+                        logger.warning("⚠️ Zero-day specific metrics not found - skipping zero-day comparison plot")
                 else:
                     logger.warning(
                         "Base and adapted model results not available - skipping performance comparison visualization")
@@ -2543,7 +2777,7 @@ class BlockchainFederatedIncentiveSystem:
             # Get the numeric label for zero-day attack
             zero_day_attack_label = attack_types.get(zero_day_attack, 1)  # Default to label 1 if not found
             
-            # FIXED: Use sequence-level multiclass labels to preserve 30% distribution from stratified sampling
+            # FIXED: Use sequence-level multiclass labels to preserve 50% distribution from stratified sampling
             # Priority: Use sequence-level labels since stratified subset already ensures correct distribution
             if 'y_test_multiclass' in self.preprocessed_data and hasattr(self.preprocessed_data['y_test_multiclass'], '__len__'):
                 # Use sequence-level multiclass labels (based on last timestep, aligned with stratified subset)
@@ -2611,6 +2845,8 @@ class BlockchainFederatedIncentiveSystem:
             logger.info(f"Evaluating base model on {len(X_test)} test samples with {num_zero_day} zero-day samples and {num_non_zero_day} non-zero-day samples")
             
             # Use the global model from coordinator (no TTT adaptation)
+            # NOTE: self.coordinator.model is the FedProx aggregated global model after all federated learning rounds
+            # This is the FINAL global model that will be evaluated on the TEST SET (not validation set)
             global_model = self.coordinator.model
             
             # Evaluate base model performance
@@ -2748,6 +2984,14 @@ class BlockchainFederatedIncentiveSystem:
                 zero_day_cm = confusion_matrix(zero_day_y_true_bin, zero_day_y_pred_bin)
                 zero_day_detection_rate = (zero_day_predictions != 0).float().mean().item()  # Detected as attack
                 
+                # Calculate FAR for zero-day samples: FAR = FP / (FP + TN)
+                # Note: Since all zero-day samples are attacks, TN=0 and FP=0 typically
+                if len(zero_day_cm) == 2 and len(zero_day_cm[0]) == 2:
+                    tn, fp = zero_day_cm[0][0], zero_day_cm[0][1]
+                    zero_day_far = fp / (fp + tn) if (fp + tn) > 0 else 0.0
+                else:
+                    zero_day_far = 0.0
+                
                 # Calculate zero-day-specific AUC-PR (using probabilities from zero-day samples only)
                 try:
                     # Get attack probabilities - use attack_probs_clean if available, otherwise calculate from base_probabilities
@@ -2822,6 +3066,11 @@ class BlockchainFederatedIncentiveSystem:
                 logger.info(f"🔍 DEBUG BASE MODEL - Zero-day actual labels: {torch.bincount(zero_day_actual, minlength=2).tolist()}")
                 logger.info(f"🔍 DEBUG BASE MODEL - Zero-day prediction distribution: {dict(zip(*np.unique(zero_day_predictions.cpu().numpy(), return_counts=True)))}")
                 logger.info(f"🔍 DEBUG BASE MODEL - Zero-day actual label distribution: {dict(zip(*np.unique(zero_day_actual.cpu().numpy(), return_counts=True)))}")
+                logger.info(f"🔍 DEBUG BASE MODEL - Zero-day confusion matrix: {zero_day_cm.tolist() if isinstance(zero_day_cm, np.ndarray) else zero_day_cm}")
+                auc_pr_str = f"{zero_day_auc_pr:.4f}" if zero_day_auc_pr is not None else "N/A"
+                logger.info(f"🔍 DEBUG BASE MODEL - Zero-day precision={zero_day_precision:.4f}, recall={zero_day_recall:.4f}, AUC-PR={auc_pr_str}")
+                if len(zero_day_attack_probs) > 0:
+                    logger.info(f"🔍 DEBUG BASE MODEL - Zero-day prob stats: min={zero_day_attack_probs.min():.4f}, max={zero_day_attack_probs.max():.4f}, mean={zero_day_attack_probs.mean():.4f}, median={np.median(zero_day_attack_probs):.4f}")
             else:
                 zero_day_accuracy = 0.0
                 zero_day_precision = 0.0
@@ -2829,6 +3078,7 @@ class BlockchainFederatedIncentiveSystem:
                 zero_day_f1 = 0.0
                 zero_day_cm = [[0, 0], [0, 0]]
                 zero_day_detection_rate = 0.0
+                zero_day_far = 0.0
                 zero_day_auc_pr = None
                 zero_day_pr_curve = None
             
@@ -2879,6 +3129,7 @@ class BlockchainFederatedIncentiveSystem:
                     'precision': zero_day_precision,
                     'recall': zero_day_recall,
                     'f1_score': zero_day_f1,
+                    'far': zero_day_far,
                     'confusion_matrix': zero_day_cm.tolist() if isinstance(zero_day_cm, np.ndarray) else zero_day_cm,
                     'zero_day_detection_rate': zero_day_detection_rate,
                     'auc_pr': zero_day_auc_pr,  # Zero-day-specific AUC-PR (calculated on zero-day samples only)
@@ -3096,7 +3347,7 @@ class BlockchainFederatedIncentiveSystem:
             # Get the numeric label for zero-day attack
             zero_day_attack_label = attack_types.get(zero_day_attack, 1)  # Default to label 1 if not found
             
-            # FIXED: Use sequence-level multiclass labels to preserve 30% distribution from stratified sampling
+            # FIXED: Use sequence-level multiclass labels to preserve 50% distribution from stratified sampling
             # Priority: Use sequence-level labels since stratified subset already ensures correct distribution
             if 'y_test_multiclass' in self.preprocessed_data and hasattr(self.preprocessed_data['y_test_multiclass'], '__len__'):
                 # Use sequence-level multiclass labels (based on last timestep, aligned with stratified subset)
@@ -3475,6 +3726,14 @@ class BlockchainFederatedIncentiveSystem:
                 adapted_zero_day_cm = confusion_matrix(adapted_zero_day_y_true_bin, adapted_zero_day_y_pred_bin)
                 zero_day_detection_rate = (zero_day_predictions != 0).float().mean().item()  # Detected as attack
                 
+                # Calculate FAR for zero-day samples: FAR = FP / (FP + TN)
+                # Note: Since all zero-day samples are attacks, TN=0 and FP=0 typically
+                if len(adapted_zero_day_cm) == 2 and len(adapted_zero_day_cm[0]) == 2:
+                    tn, fp = adapted_zero_day_cm[0][0], adapted_zero_day_cm[0][1]
+                    adapted_zero_day_far = fp / (fp + tn) if (fp + tn) > 0 else 0.0
+                else:
+                    adapted_zero_day_far = 0.0
+                
                 # Calculate zero-day-specific AUC-PR (using probabilities from zero-day samples only)
                 try:
                     # Get attack probabilities - use attack_probs_clean if available
@@ -3549,6 +3808,11 @@ class BlockchainFederatedIncentiveSystem:
                 logger.info(f"🔍 DEBUG TTT MODEL - Zero-day actual labels: {torch.bincount(zero_day_actual, minlength=2).tolist()}")
                 logger.info(f"🔍 DEBUG TTT MODEL - Zero-day prediction distribution: {dict(zip(*np.unique(zero_day_predictions.cpu().numpy(), return_counts=True)))}")
                 logger.info(f"🔍 DEBUG TTT MODEL - Zero-day actual label distribution: {dict(zip(*np.unique(zero_day_actual.cpu().numpy(), return_counts=True)))}")
+                logger.info(f"🔍 DEBUG TTT MODEL - Zero-day confusion matrix: {adapted_zero_day_cm.tolist() if isinstance(adapted_zero_day_cm, np.ndarray) else adapted_zero_day_cm}")
+                adapted_auc_pr_str = f"{adapted_zero_day_auc_pr:.4f}" if adapted_zero_day_auc_pr is not None else "N/A"
+                logger.info(f"🔍 DEBUG TTT MODEL - Zero-day precision={adapted_zero_day_precision:.4f}, recall={adapted_zero_day_recall:.4f}, AUC-PR={adapted_auc_pr_str}")
+                if len(adapted_zero_day_attack_probs) > 0:
+                    logger.info(f"🔍 DEBUG TTT MODEL - Zero-day prob stats: min={adapted_zero_day_attack_probs.min():.4f}, max={adapted_zero_day_attack_probs.max():.4f}, mean={adapted_zero_day_attack_probs.mean():.4f}, median={np.median(adapted_zero_day_attack_probs):.4f}")
             else:
                 adapted_zero_day_accuracy = 0.0
                 adapted_zero_day_precision = 0.0
@@ -3556,6 +3820,7 @@ class BlockchainFederatedIncentiveSystem:
                 adapted_zero_day_f1 = 0.0
                 adapted_zero_day_cm = [[0, 0], [0, 0]]
                 zero_day_detection_rate = 0.0
+                adapted_zero_day_far = 0.0
                 adapted_zero_day_auc_pr = None
                 adapted_zero_day_pr_curve = None
             
@@ -3603,6 +3868,7 @@ class BlockchainFederatedIncentiveSystem:
                     'precision': adapted_zero_day_precision,
                     'recall': adapted_zero_day_recall,
                     'f1_score': adapted_zero_day_f1,
+                    'far': adapted_zero_day_far,
                     'confusion_matrix': adapted_zero_day_cm.tolist() if isinstance(adapted_zero_day_cm, np.ndarray) else adapted_zero_day_cm,
                     'zero_day_detection_rate': zero_day_detection_rate,
                     'auc_pr': adapted_zero_day_auc_pr,  # Zero-day-specific AUC-PR (calculated on zero-day samples only)

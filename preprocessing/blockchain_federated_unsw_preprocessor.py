@@ -1069,6 +1069,36 @@ class UNSWPreprocessor:
         # Prepare features and labels for stratified split
         feature_cols = [col for col in train_df.columns if col not in ['label', 'binary_label', 'attack_cat']]
         X = train_df[feature_cols].values
+        
+        # CRITICAL FIX: Ensure label column contains MULTICLASS labels (0-9), not binary (0,1)
+        # Recreate label column from attack_cat to ensure multiclass labels are preserved
+        attack_type_mapping = {
+            'Normal': 0, 'Fuzzers': 1, 'Analysis': 2, 'Backdoor': 3, 'DoS': 4,
+            'Exploits': 5, 'Generic': 6, 'Reconnaissance': 7, 'Shellcode': 8, 'Worms': 9
+        }
+        
+        if 'attack_cat' in train_df.columns:
+            # Always recreate label from attack_cat to ensure multiclass labels
+            old_unique_labels = train_df['label'].unique() if 'label' in train_df.columns else []
+            train_df['label'] = train_df['attack_cat'].map(attack_type_mapping).fillna(0).astype(int)
+            new_unique_labels = train_df['label'].unique()
+            
+            if len(old_unique_labels) > 0 and len(old_unique_labels) != len(new_unique_labels):
+                logger.info(f"✅ FIXED: Recreated 'label' column from attack_cat (was {len(old_unique_labels)} labels, now {len(new_unique_labels)} labels)")
+            elif 'label' not in train_df.columns:
+                logger.info(f"✅ Created 'label' column from attack_cat. Unique labels: {sorted(new_unique_labels)}")
+        
+        # Debug: Log label distribution before split
+        unique_labels = train_df['label'].unique()
+        logger.info(f"🔍 BEFORE SPLIT: train_df has {len(unique_labels)} unique labels: {sorted(unique_labels)}")
+        if 'attack_cat' in train_df.columns:
+            unique_attack_cats = train_df['attack_cat'].unique()
+            logger.info(f"🔍 BEFORE SPLIT: train_df has {len(unique_attack_cats)} unique attack categories: {sorted(unique_attack_cats)}")
+            # Count samples per attack category
+            for attack_cat in sorted(unique_attack_cats):
+                count = len(train_df[train_df['attack_cat'] == attack_cat])
+                logger.info(f"   {attack_cat}: {count:,} samples")
+        
         y = train_df['label'].values
         
         # Split: 80% train, 20% val (BEFORE rebalancing)
@@ -1180,9 +1210,24 @@ class UNSWPreprocessor:
         
         X_train = torch.FloatTensor(train_scaled[feature_cols].values)
         y_train = torch.LongTensor(train_scaled['binary_label'].values)  # Use binary labels (0=Normal, 1=Attack)
+        y_train_multiclass = torch.LongTensor(train_scaled['label'].values)  # Multiclass labels (0-9) for attack type distinction
+        
+        # Debug: Check multiclass label distribution
+        unique_multiclass = torch.unique(y_train_multiclass)
+        logger.info(f"🔍 Training multiclass labels: {unique_multiclass.tolist()} ({len(unique_multiclass)} unique)")
+        if len(unique_multiclass) <= 2:
+            logger.warning(f"⚠️  Only {len(unique_multiclass)} unique multiclass labels found! Expected 8+ attack types (excluding zero-day).")
+            logger.warning(f"   This means 'include_all_attack_types_in_support' will not work correctly.")
+            # Check if attack_cat column exists and has multiple attack types
+            if 'attack_cat' in train_scaled.columns:
+                unique_attack_cats = train_scaled['attack_cat'].unique()
+                logger.info(f"   Available attack categories in training data: {sorted(unique_attack_cats)}")
+                if len(unique_attack_cats) > 2:
+                    logger.warning(f"   ⚠️  Attack categories exist but labels are binary! The 'label' column may have been overwritten.")
         
         X_val = torch.FloatTensor(val_scaled[feature_cols].values)
         y_val = torch.LongTensor(val_scaled['binary_label'].values)  # Use binary labels (0=Normal, 1=Attack)
+        y_val_multiclass = torch.LongTensor(val_scaled['label'].values)  # Multiclass labels (0-9)
         
         X_test = torch.FloatTensor(test_scaled[feature_cols].values)
         y_test = torch.LongTensor(test_scaled['binary_label'].values)  # Use binary labels (0=Normal, 1=Attack)
@@ -1213,9 +1258,11 @@ class UNSWPreprocessor:
         
         return {
             'X_train': X_train,
-            'y_train': y_train,
+            'y_train': y_train,  # Binary labels (0=Normal, 1=Attack)
+            'y_train_multiclass': y_train_multiclass,  # Multiclass labels (0-9) for attack type distinction
             'X_val': X_val,
-            'y_val': y_val,
+            'y_val': y_val,  # Binary labels (0=Normal, 1=Attack)
+            'y_val_multiclass': y_val_multiclass,  # Multiclass labels (0-9)
             'X_test': X_test,
             'y_test': y_test,  # Binary labels for training
             'y_test_multiclass': y_test_multiclass,  # Multiclass labels for zero-day identification

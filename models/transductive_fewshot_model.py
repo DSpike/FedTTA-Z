@@ -147,26 +147,38 @@ class EfficientTCN(nn.Module):
     This reduces parameters by ~66% and computation significantly while maintaining
     similar representational power.
     """
-    def __init__(self, input_dim, hidden_dim, sequence_length=30, dropout=0.1):
+    def __init__(self, input_dim, hidden_dim, sequence_length=30, dropout=0.1, kernel_size=4):
         super(EfficientTCN, self).__init__()
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.sequence_length = sequence_length
+        self.kernel_size = kernel_size
+        
+        # Calculate padding to maintain sequence length
+        # For kernel_size=2: padding=1, kernel_size=4: padding=2, kernel_size=6: padding=3, kernel_size=8: padding=4
+        padding = kernel_size // 2
         
         # Depthwise separable convolution layers
         # Layer 1: input_dim -> hidden_dim
         self.depthwise1 = nn.Conv1d(input_dim, input_dim, 
-                                   kernel_size=4, padding=2, groups=input_dim)
+                                   kernel_size=kernel_size, padding=padding, groups=input_dim)
         self.pointwise1 = nn.Conv1d(input_dim, hidden_dim, kernel_size=1)
         self.bn1 = nn.BatchNorm1d(hidden_dim)
         self.dropout1 = nn.Dropout(dropout)
         
         # Layer 2: hidden_dim -> hidden_dim (for temporal pattern capture)
         self.depthwise2 = nn.Conv1d(hidden_dim, hidden_dim,
-                                   kernel_size=4, padding=2, groups=hidden_dim)
+                                   kernel_size=kernel_size, padding=padding, groups=hidden_dim)
         self.pointwise2 = nn.Conv1d(hidden_dim, hidden_dim, kernel_size=1)
         self.bn2 = nn.BatchNorm1d(hidden_dim)
         self.dropout2 = nn.Dropout(dropout)
+        
+        # Layer 3: hidden_dim -> hidden_dim (for additional temporal pattern capture with third residual)
+        self.depthwise3 = nn.Conv1d(hidden_dim, hidden_dim,
+                                   kernel_size=kernel_size, padding=padding, groups=hidden_dim)
+        self.pointwise3 = nn.Conv1d(hidden_dim, hidden_dim, kernel_size=1)
+        self.bn3 = nn.BatchNorm1d(hidden_dim)
+        self.dropout3 = nn.Dropout(dropout)
         
         # Residual connection for layer 1 (if input_dim != hidden_dim)
         self.residual1 = nn.Conv1d(input_dim, hidden_dim, kernel_size=1) if input_dim != hidden_dim else None
@@ -185,7 +197,7 @@ class EfficientTCN(nn.Module):
         x = x.transpose(1, 2)  # (B, L, C) -> (B, C, L)
         original_length = x.size(2)  # Store original sequence length
         
-        # First depthwise separable conv
+        # First depthwise separable conv with residual connection
         residual = x
         x = self.depthwise1(x)
         x = self.pointwise1(x)
@@ -199,9 +211,9 @@ class EfficientTCN(nn.Module):
         # Residual connection (if needed)
         if self.residual1 is not None:
             residual = self.residual1(residual)
-        x = x + residual  # Residual connection
+        x = x + residual  # First residual connection
         
-        # Second depthwise separable conv
+        # Second depthwise separable conv with residual connection
         residual2 = x
         x = self.depthwise2(x)
         x = self.pointwise2(x)
@@ -211,7 +223,19 @@ class EfficientTCN(nn.Module):
         x = self.bn2(x)
         x = F.relu(x)
         x = self.dropout2(x)
-        x = x + residual2  # Residual connection
+        x = x + residual2  # Second residual connection
+        
+        # Third depthwise separable conv with residual connection
+        residual3 = x
+        x = self.depthwise3(x)
+        x = self.pointwise3(x)
+        # Crop to maintain original sequence length
+        if x.size(2) > original_length:
+            x = x[:, :, :original_length]
+        x = self.bn3(x)
+        x = F.relu(x)
+        x = self.dropout3(x)
+        x = x + residual3  # Third residual connection
         
         # Convert back to (batch_size, sequence_length, hidden_dim)
         x = x.transpose(1, 2)  # (B, C, L) -> (B, L, C)
@@ -230,26 +254,38 @@ class EfficientTCN(nn.Module):
     This reduces parameters by ~66% and computation significantly while maintaining
     similar representational power.
     """
-    def __init__(self, input_dim, hidden_dim, sequence_length=30, dropout=0.1):
+    def __init__(self, input_dim, hidden_dim, sequence_length=30, dropout=0.1, kernel_size=4):
         super(EfficientTCN, self).__init__()
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.sequence_length = sequence_length
+        self.kernel_size = kernel_size
+        
+        # Calculate padding to maintain sequence length
+        # For kernel_size=2: padding=1, kernel_size=4: padding=2, kernel_size=6: padding=3, kernel_size=8: padding=4
+        padding = kernel_size // 2
         
         # Depthwise separable convolution layers
         # Layer 1: input_dim -> hidden_dim
         self.depthwise1 = nn.Conv1d(input_dim, input_dim, 
-                                   kernel_size=4, padding=2, groups=input_dim)
+                                   kernel_size=kernel_size, padding=padding, groups=input_dim)
         self.pointwise1 = nn.Conv1d(input_dim, hidden_dim, kernel_size=1)
         self.bn1 = nn.BatchNorm1d(hidden_dim)
         self.dropout1 = nn.Dropout(dropout)
         
         # Layer 2: hidden_dim -> hidden_dim (for temporal pattern capture)
         self.depthwise2 = nn.Conv1d(hidden_dim, hidden_dim,
-                                   kernel_size=4, padding=2, groups=hidden_dim)
+                                   kernel_size=kernel_size, padding=padding, groups=hidden_dim)
         self.pointwise2 = nn.Conv1d(hidden_dim, hidden_dim, kernel_size=1)
         self.bn2 = nn.BatchNorm1d(hidden_dim)
         self.dropout2 = nn.Dropout(dropout)
+        
+        # Layer 3: hidden_dim -> hidden_dim (for additional temporal pattern capture with third residual)
+        self.depthwise3 = nn.Conv1d(hidden_dim, hidden_dim,
+                                   kernel_size=kernel_size, padding=padding, groups=hidden_dim)
+        self.pointwise3 = nn.Conv1d(hidden_dim, hidden_dim, kernel_size=1)
+        self.bn3 = nn.BatchNorm1d(hidden_dim)
+        self.dropout3 = nn.Dropout(dropout)
         
         # Residual connection for layer 1 (if input_dim != hidden_dim)
         self.residual1 = nn.Conv1d(input_dim, hidden_dim, kernel_size=1) if input_dim != hidden_dim else None
@@ -268,7 +304,7 @@ class EfficientTCN(nn.Module):
         x = x.transpose(1, 2)  # (B, L, C) -> (B, C, L)
         original_length = x.size(2)  # Store original sequence length
         
-        # First depthwise separable conv
+        # First depthwise separable conv with residual connection
         residual = x
         x = self.depthwise1(x)
         x = self.pointwise1(x)
@@ -282,9 +318,9 @@ class EfficientTCN(nn.Module):
         # Residual connection (if needed)
         if self.residual1 is not None:
             residual = self.residual1(residual)
-        x = x + residual  # Residual connection
+        x = x + residual  # First residual connection
         
-        # Second depthwise separable conv
+        # Second depthwise separable conv with residual connection
         residual2 = x
         x = self.depthwise2(x)
         x = self.pointwise2(x)
@@ -294,12 +330,67 @@ class EfficientTCN(nn.Module):
         x = self.bn2(x)
         x = F.relu(x)
         x = self.dropout2(x)
-        x = x + residual2  # Residual connection
+        x = x + residual2  # Second residual connection
+        
+        # Third depthwise separable conv with residual connection
+        residual3 = x
+        x = self.depthwise3(x)
+        x = self.pointwise3(x)
+        # Crop to maintain original sequence length
+        if x.size(2) > original_length:
+            x = x[:, :, :original_length]
+        x = self.bn3(x)
+        x = F.relu(x)
+        x = self.dropout3(x)
+        x = x + residual3  # Third residual connection
         
         # Convert back to (batch_size, sequence_length, hidden_dim)
         x = x.transpose(1, 2)  # (B, C, L) -> (B, L, C)
         
         return x
+
+
+class SimplePoolingFeatureExtractor(nn.Module):
+    """
+    Simple pooling-based feature extractor (TCN disabled).
+    Uses mean pooling over sequence dimension to replace TCN feature extraction.
+    This is a baseline to compare against TCN-based feature extraction.
+    """
+    def __init__(self, input_dim: int, sequence_length: int, hidden_dim: int = 64, dropout: float = 0.1):
+        super(SimplePoolingFeatureExtractor, self).__init__()
+        self.input_dim = input_dim
+        self.hidden_dim = hidden_dim
+        self.sequence_length = sequence_length
+        
+        # Match TCN output dimension for compatibility: hidden_dim + (hidden_dim // 2) + (hidden_dim * 2)
+        tcn_equivalent_dim = hidden_dim + (hidden_dim // 2) + (hidden_dim * 2)
+        self.output_dim = tcn_equivalent_dim
+        
+        # Simple projection layer to match TCN output dimension
+        # Pool sequence first (mean over time), then project to match TCN dimension
+        self.projection = nn.Sequential(
+            nn.Linear(input_dim, tcn_equivalent_dim),
+            nn.BatchNorm1d(tcn_equivalent_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout)
+        )
+    
+    def forward(self, x):
+        """
+        Forward pass: Simple mean pooling over sequence dimension
+        Args:
+            x: Input tensor of shape (batch_size, sequence_length, input_dim)
+        Returns:
+            pooled_features: Pooled features of shape (batch_size, output_dim)
+        """
+        # Mean pooling over sequence dimension (replaces temporal convolutions)
+        # x shape: (batch_size, sequence_length, input_dim)
+        pooled = x.mean(dim=1)  # (batch_size, input_dim)
+        
+        # Project to match TCN output dimension
+        output = self.projection(pooled)  # (batch_size, output_dim)
+        
+        return output
 
 
 class EfficientMultiScaleTCN(nn.Module):
@@ -310,15 +401,18 @@ class EfficientMultiScaleTCN(nn.Module):
     feature extraction, but uses EfficientTCN (depthwise separable) instead of
     standard dilated convolutions for 12-18% faster processing.
     """
-    def __init__(self, input_dim: int, sequence_length: int, hidden_dim: int = 64, dropout: float = 0.1):
+    def __init__(self, input_dim: int, sequence_length: int, hidden_dim: int = 64, dropout: float = 0.1, 
+                 kernel_sizes: tuple = (2, 3, 4)):
         super(EfficientMultiScaleTCN, self).__init__()
         
-        # Three efficient TCN branches with optimized dimensions
-        self.tcn_branch1 = EfficientTCN(input_dim, hidden_dim, sequence_length, dropout)
-        self.tcn_branch2 = EfficientTCN(input_dim, hidden_dim // 2, sequence_length, dropout)
-        self.tcn_branch3 = EfficientTCN(input_dim, hidden_dim * 2, sequence_length, dropout)
+        # Three efficient TCN branches with configurable kernel sizes for multi-scale temporal patterns
+        # kernel_sizes: tuple of (kernel1, kernel2, kernel3) for hierarchical multi-scale patterns
+        # Default: (2, 3, 4) creates a progressive scale hierarchy from fine to coarse temporal patterns
+        self.tcn_branch1 = EfficientTCN(input_dim, hidden_dim, sequence_length, dropout, kernel_size=kernel_sizes[0])      # Fine-scale patterns
+        self.tcn_branch2 = EfficientTCN(input_dim, hidden_dim // 2, sequence_length, dropout, kernel_size=kernel_sizes[1])  # Medium-scale patterns
+        self.tcn_branch3 = EfficientTCN(input_dim, hidden_dim * 2, sequence_length, dropout, kernel_size=kernel_sizes[2])   # Coarse-scale patterns
         
-        # Calculate total output dimension
+        # Calculate total output dimension (all 3 branches active)
         self.output_dim = hidden_dim + (hidden_dim // 2) + (hidden_dim * 2)
 
     def forward(self, x):
@@ -339,7 +433,7 @@ class EfficientMultiScaleTCN(nn.Module):
         pooled_out2 = out2[:, -1, :]  # (batch_size, hidden_dim // 2)
         pooled_out3 = out3[:, -1, :]  # (batch_size, hidden_dim * 2)
         
-        # Concatenate pooled outputs
+        # Concatenate pooled outputs (all 3 branches)
         combined_features = torch.cat([pooled_out1, pooled_out2, pooled_out3], dim=1)
         
         return combined_features
@@ -700,13 +794,14 @@ class TransductiveLearner(nn.Module):
     Streamlined implementation with unified methods for better maintainability
     """
     
-    def __init__(self, input_dim: int, hidden_dim: int = 128, embedding_dim: int = 64, num_classes: int = 2, support_weight: float = 0.7, test_weight: float = 0.3, sequence_length: int = 1,transductive_steps: int = 50):
+    def __init__(self, input_dim: int, hidden_dim: int = 128, embedding_dim: int = 64, num_classes: int = 2, support_weight: float = 0.7, test_weight: float = 0.3, sequence_length: int = 1, transductive_steps: int = 50, disable_tcn_feature_extraction: bool = False, tcn_kernel_sizes: tuple = (2, 3, 4)):
         super(TransductiveLearner, self).__init__()
         self.transductive_steps = transductive_steps
         self.embedding_dim = embedding_dim
         self.num_classes = num_classes  # Now supports 10 classes for UNSW-NB15
         self.support_weight = support_weight
         self.test_weight = test_weight
+        self._disable_tcn_feature_extraction = disable_tcn_feature_extraction
         
         # TTT parameters (will be updated from config)
         self.ttt_threshold = 0.5
@@ -718,17 +813,32 @@ class TransductiveLearner(nn.Module):
         # Multi-scale TCN feature extractors for temporal pattern recognition
         # OPTIMIZED: Using EfficientMultiScaleTCN with depthwise separable convolutions
         # for 12-18% faster feature extraction while maintaining representational power
-        self.feature_extractors = EfficientMultiScaleTCN(
-            input_dim=input_dim,
-            sequence_length=sequence_length,  # Use configurable sequence length
-            hidden_dim=hidden_dim,
-            dropout=0.1
-        )
+        # OR: Simple pooling-based extractor if TCN is disabled (for testing)
         
-        # Feature projection to embedding space (TCN output: hidden_dim + hidden_dim//2 + hidden_dim*2)
-        tcn_output_dim = hidden_dim + (hidden_dim // 2) + (hidden_dim * 2)
+        if self._disable_tcn_feature_extraction:
+            logger.info("⚠️  TCN feature extraction DISABLED - using simple pooling instead")
+            self.feature_extractors = SimplePoolingFeatureExtractor(
+                input_dim=input_dim,
+                sequence_length=sequence_length,
+                hidden_dim=hidden_dim,
+                dropout=0.1
+            )
+        else:
+            # Use provided kernel sizes or default (2, 3, 4)
+            self.feature_extractors = EfficientMultiScaleTCN(
+                input_dim=input_dim,
+                sequence_length=sequence_length,  # Use configurable sequence length
+                hidden_dim=hidden_dim,
+                dropout=0.1,
+                kernel_sizes=tcn_kernel_sizes
+            )
+            logger.info(f"✅ TCN initialized with kernel sizes: {tcn_kernel_sizes}")
+        
+        # Feature projection to embedding space (TCN/pooling output: hidden_dim + hidden_dim//2 + hidden_dim*2)
+        # Use output_dim from feature_extractors to match actual output dimension
+        feature_output_dim = self.feature_extractors.output_dim  # Automatically matches: hidden_dim + (hidden_dim // 2) + (hidden_dim * 2)
         self.feature_projection = nn.Sequential(
-            nn.Linear(tcn_output_dim, embedding_dim),
+            nn.Linear(feature_output_dim, embedding_dim),
             nn.BatchNorm1d(embedding_dim),  # Added for TENT compatibility
             nn.ReLU()
             # Removed excessive 0.5 dropout - causes unstable predictions during TTT
@@ -995,7 +1105,7 @@ class TransductiveLearner(nn.Module):
         """
         return PredictionUtils.update_predictions_with_confidence(test_embeddings, prototypes)
     
-    def meta_train(self, meta_tasks: List[Dict], meta_epochs: int = 100, config=None):
+    def meta_train(self, meta_tasks: List[Dict], meta_epochs: int = 100, config=None, global_params: Optional[Dict[str, torch.Tensor]] = None):
         """
         Meta-train the model on multiple tasks
         
@@ -1003,6 +1113,7 @@ class TransductiveLearner(nn.Module):
             meta_tasks: List of meta-learning tasks
             meta_epochs: Number of meta-training epochs
             config: Optional config object for accessing parameters (avoids magic numbers)
+            global_params: Global model parameters for FedProx proximal term (if enabled)
             
         Returns:
             training_history: Training metrics
@@ -1082,6 +1193,21 @@ class TransductiveLearner(nn.Module):
                 
                 # Total loss
                 total_loss = support_loss + query_loss
+                
+                # Add FedProx proximal term if enabled and global_params provided
+                if global_params is not None and hasattr(config, 'use_fedprox') and config.use_fedprox:
+                    fedprox_mu = getattr(config, 'fedprox_mu', 0.01)
+                    proximal_term = 0.0
+                    device = next(self.parameters()).device
+                    
+                    # Compute ||w - w_global||² for all parameters
+                    for name, param in self.named_parameters():
+                        if name in global_params:
+                            global_param = global_params[name].to(device)
+                            proximal_term += torch.sum((param - global_param) ** 2)
+                    
+                    # Add proximal term: (μ/2) * ||w - w_global||²
+                    total_loss = total_loss + (fedprox_mu / 2.0) * proximal_term
                 
                 # Compute accuracy
                 predictions = torch.argmax(query_logits, dim=1)
@@ -1304,7 +1430,9 @@ class TransductiveFewShotModel(nn.Module):
         return is_valid, overlap_info
 
 def create_meta_tasks(data_x, data_y, n_way: int = 2, k_shot: int = 5, n_query: int = 15, n_tasks: int = 100, 
-                     phase: str = "training", normal_query_ratio: float = 0.8, zero_day_attack_label: int = None):
+                     phase: str = "training", normal_query_ratio: float = 0.8, zero_day_attack_label: int = None,
+                     enforce_equal_support_composition: bool = True, include_all_attack_types_in_support: bool = False,
+                     data_y_multiclass: Optional[torch.Tensor] = None):
     """
     Create meta-learning tasks for few-shot learning with controlled query set distribution
     
@@ -1318,6 +1446,9 @@ def create_meta_tasks(data_x, data_y, n_way: int = 2, k_shot: int = 5, n_query: 
         phase: Phase of learning ("training", "validation", "testing")
         normal_query_ratio: Ratio of normal samples in query set (0.8 for training/validation, 0.9 for testing)
         zero_day_attack_label: Label of zero-day attack to exclude from training (None for testing phase)
+        enforce_equal_support_composition: If True, for n_way=2, ensures support set has equal Normal/Attack (excluding zero-day)
+        include_all_attack_types_in_support: If True, sample attack support set from ALL attack types uniformly (instead of one random type)
+        data_y_multiclass: Optional multiclass labels (0-9) for attack type distinction. If None, uses data_y (binary labels)
         
     Returns:
         meta_tasks: List of meta-learning tasks
@@ -1328,6 +1459,26 @@ def create_meta_tasks(data_x, data_y, n_way: int = 2, k_shot: int = 5, n_query: 
         logger.info(f"Excluding zero-day attack (label {zero_day_attack_label}) from training")
     
     meta_tasks = []
+    
+    # CRITICAL FIX: Ensure data_y is 1D before processing
+    if data_y.dim() > 1:
+        data_y = data_y.squeeze()
+    if data_y.dim() == 0:
+        data_y = data_y.unsqueeze(0)
+    
+    # Use multiclass labels for attack type distinction if available and needed
+    if include_all_attack_types_in_support and data_y_multiclass is not None:
+        # Use multiclass labels to distinguish attack types
+        labels_for_attack_types = data_y_multiclass
+        if labels_for_attack_types.dim() > 1:
+            labels_for_attack_types = labels_for_attack_types.squeeze()
+        logger.info(f"✅ Using multiclass labels for attack type distinction: {len(torch.unique(labels_for_attack_types))} unique labels")
+    else:
+        # Use binary labels (fallback)
+        labels_for_attack_types = data_y
+        if include_all_attack_types_in_support:
+            logger.warning(f"⚠️  include_all_attack_types_in_support=True but multiclass labels not provided. Using binary labels (will only see 1 attack type).")
+    
     unique_labels = torch.unique(data_y)
     
     # For training phase, exclude zero-day attack if specified
@@ -1339,41 +1490,177 @@ def create_meta_tasks(data_x, data_y, n_way: int = 2, k_shot: int = 5, n_query: 
         available_labels = unique_labels
         logger.info(f"Available labels for {phase}: {available_labels.tolist()}")
     
-    # Separate Normal (0) and Attack samples
+    # Separate Normal (0) and Attack samples (use binary labels for this)
     normal_mask = data_y == 0
     normal_indices = torch.where(normal_mask)[0]
     
     # For attack samples, exclude zero-day attack if specified
-    if zero_day_attack_label is not None:
-        attack_mask = (data_y != 0) & (data_y != zero_day_attack_label)
+    # Use multiclass labels if available for zero-day exclusion, otherwise use binary
+    if include_all_attack_types_in_support and labels_for_attack_types is not None:
+        # Use multiclass labels to exclude zero-day
+        if zero_day_attack_label is not None:
+            attack_mask = (data_y != 0) & (labels_for_attack_types != zero_day_attack_label)
+        else:
+            attack_mask = data_y != 0
     else:
-        attack_mask = data_y != 0
+        # Use binary labels (fallback)
+        if zero_day_attack_label is not None:
+            attack_mask = (data_y != 0) & (data_y != zero_day_attack_label)
+        else:
+            attack_mask = data_y != 0
     attack_indices = torch.where(attack_mask)[0]
     
     for _ in range(n_tasks):
-        # Sample classes for this task from available labels
-        task_classes = torch.randperm(len(available_labels))[:n_way]
-        selected_labels = available_labels[task_classes]
-        
-        # Create support set for each selected class
+        # Create support set
         support_x_list = []
         support_y_list = []
+        selected_labels = None  # Initialize for later use in logging
         
-        for label in selected_labels:
-            # Get samples for this class
-            class_mask = data_y == label
-            class_indices = torch.where(class_mask)[0]
+        # ENSURE EQUAL COMPOSITION: For n_way=2, always select Normal (0) and Attack samples
+        # HYBRID APPROACH: If include_all_attack_types_in_support=True, sample from ALL attack types
+        if n_way == 2 and enforce_equal_support_composition:
+            # Normal (0) is always selected, Attack samples will be added
+            selected_labels = torch.tensor([0], dtype=available_labels.dtype, device=available_labels.device)  # Start with Normal
             
-            # Shuffle and select samples for support set
-            shuffled_indices = class_indices[torch.randperm(len(class_indices))]
-            support_indices = shuffled_indices[:k_shot]
+            # 1. Add Normal samples (k_shot)
+            normal_mask = data_y == 0
+            normal_indices = torch.where(normal_mask)[0]
+            if len(normal_indices) >= k_shot:
+                shuffled_normal = normal_indices[torch.randperm(len(normal_indices))][:k_shot]
+                support_x_list.append(data_x[shuffled_normal])
+                support_y_list.append(data_y[shuffled_normal])
+            else:
+                support_x_list.append(data_x[normal_indices])
+                support_y_list.append(data_y[normal_indices])
             
-            support_x_list.append(data_x[support_indices])
-            support_y_list.append(data_y[support_indices])
+            # 2. Add Attack samples
+            # Get available attack labels (exclude Normal=0 and zero-day if specified)
+            # Use multiclass labels if available for attack type distinction
+            if include_all_attack_types_in_support and labels_for_attack_types is not None:
+                # Use multiclass labels to get all attack types
+                unique_multiclass_labels = torch.unique(labels_for_attack_types)
+                if zero_day_attack_label is not None:
+                    all_attack_labels = unique_multiclass_labels[(unique_multiclass_labels != 0) & (unique_multiclass_labels != zero_day_attack_label)]
+                else:
+                    all_attack_labels = unique_multiclass_labels[unique_multiclass_labels != 0]
+            else:
+                # Use binary labels (fallback)
+                if zero_day_attack_label is not None:
+                    all_attack_labels = available_labels[(available_labels != 0) & (available_labels != zero_day_attack_label)]
+                else:
+                    all_attack_labels = available_labels[available_labels != 0]
             
+            if len(all_attack_labels) > 0:
+                if include_all_attack_types_in_support and labels_for_attack_types is not None:
+                    # HYBRID APPROACH: Sample k_shot attack samples uniformly from ALL attack types
+                    num_attack_types = len(all_attack_labels)
+                    samples_per_type = k_shot // num_attack_types  # Uniform distribution per type
+                    remaining_samples = k_shot % num_attack_types  # Extra samples to distribute
+                    
+                    attack_x_list = []
+                    attack_y_list = []
+                    attack_types_used = []
+                    
+                    for i, attack_label in enumerate(all_attack_labels):
+                        # Add one extra sample to first 'remaining_samples' attack types for balance
+                        samples_needed = samples_per_type + (1 if i < remaining_samples else 0)
+                        
+                        # Use multiclass labels to find attack samples
+                        attack_mask = labels_for_attack_types == attack_label
+                        attack_indices = torch.where(attack_mask)[0]
+                        
+                        if len(attack_indices) >= samples_needed:
+                            shuffled = attack_indices[torch.randperm(len(attack_indices))][:samples_needed]
+                            attack_x_list.append(data_x[shuffled])
+                            # IMPORTANT: Remap all attack labels to 1 for binary classification
+                            attack_y_list.append(torch.ones(samples_needed, dtype=data_y.dtype, device=data_y.device))
+                            attack_types_used.append(attack_label.item())
+                        elif len(attack_indices) > 0:
+                            # Use all available samples if less than needed
+                            attack_x_list.append(data_x[attack_indices])
+                            attack_y_list.append(torch.ones(len(attack_indices), dtype=data_y.dtype, device=data_y.device))
+                            attack_types_used.append(attack_label.item())
+                    
+                    # Combine all attack samples
+                    if attack_x_list:
+                        support_x_list.append(torch.cat(attack_x_list, dim=0))
+                        support_y_list.append(torch.cat(attack_y_list, dim=0))
+                        # Update selected_labels to include attack label (1 for binary classification)
+                        selected_labels = torch.cat([selected_labels, torch.tensor([1], dtype=selected_labels.dtype, device=selected_labels.device)])
+                        if len(attack_types_used) > 0 and _ == 0:  # Log only for first task to avoid spam
+                            logger.info(f"✅ Support set includes samples from {len(attack_types_used)} attack types: {sorted(set(attack_types_used))}")
+                else:
+                    # ORIGINAL APPROACH: Select one random attack class
+                    attack_label_idx = torch.randint(0, len(all_attack_labels), (1,))
+                    selected_attack_label = all_attack_labels[attack_label_idx]
+                    # Update selected_labels to include the selected attack label
+                    if selected_attack_label.dim() == 0:
+                        selected_attack_label = selected_attack_label.unsqueeze(0)
+                    selected_labels = torch.cat([selected_labels, selected_attack_label])
+                    
+                    attack_mask = data_y == selected_attack_label
+                    attack_indices = torch.where(attack_mask)[0]
+                    
+                    if len(attack_indices) >= k_shot:
+                        shuffled_attack = attack_indices[torch.randperm(len(attack_indices))][:k_shot]
+                        support_x_list.append(data_x[shuffled_attack])
+                        support_y_list.append(data_y[shuffled_attack])
+                    else:
+                        support_x_list.append(data_x[attack_indices])
+                        support_y_list.append(data_y[attack_indices])
+            else:
+                logger.warning(f"⚠️  No attack labels available (excluding zero-day). Skipping attack samples.")
+                # Only Normal samples will be in support set
+        
+        else:
+            # For n_way != 2, use original random selection
+            if len(available_labels) >= n_way:
+                task_classes = torch.randperm(len(available_labels))[:n_way]
+                selected_labels = available_labels[task_classes]
+            else:
+                # Fallback if not enough labels available
+                selected_labels = available_labels
+            
+            for label in selected_labels:
+                # Get samples for this class
+                class_mask = data_y == label
+                class_indices = torch.where(class_mask)[0]
+                
+                # Check if we have enough samples for k_shot
+                if len(class_indices) < k_shot:
+                    logger.warning(f"⚠️  Class {label.item()} has only {len(class_indices)} samples, but k_shot={k_shot}. Using all available samples.")
+                    support_indices = class_indices
+                else:
+                    # Shuffle and select samples for support set
+                    shuffled_indices = class_indices[torch.randperm(len(class_indices))]
+                    support_indices = shuffled_indices[:k_shot]
+                
+                support_x_list.append(data_x[support_indices])
+                # Ensure labels are 1D before appending
+                labels = data_y[support_indices]
+                if labels.dim() > 1:
+                    labels = labels.squeeze()
+                support_y_list.append(labels)
+        
         # Combine support sets
         support_x = torch.cat(support_x_list, dim=0)
+        # Ensure all labels in list have same dimensions before concatenating
+        support_y_list = [y.squeeze() if y.dim() > 1 else y for y in support_y_list]
         support_y = torch.cat(support_y_list, dim=0)
+        
+        # Verify support set composition (for n_way=2 with equal composition enforcement)
+        if n_way == 2 and enforce_equal_support_composition:
+            support_normal_count = (support_y == 0).sum().item()
+            # For hybrid approach, attacks are remapped to 1; for original, they keep original labels (non-zero)
+            support_attack_count = (support_y != 0).sum().item() if not include_all_attack_types_in_support else (support_y == 1).sum().item()
+            total_support = len(support_y)
+            if support_normal_count != support_attack_count:
+                logger.warning(f"⚠️  Unequal support set composition: {support_normal_count} Normal vs {support_attack_count} Attack (expected equal)")
+            else:
+                if include_all_attack_types_in_support and _ == 0:  # Log only for first task
+                    logger.info(f"✅ Equal support set composition: {support_normal_count} Normal, {support_attack_count} Attack (from ALL attack types)")
+                else:
+                    logger.debug(f"✅ Equal support set composition: {support_normal_count} Normal, {support_attack_count} Attack")
         
         # SCIENTIFIC FIX: Use natural class distribution instead of artificial ratios
         # Sample query set with realistic distribution based on available data
@@ -1420,6 +1707,9 @@ def create_meta_tasks(data_x, data_y, n_way: int = 2, k_shot: int = 5, n_query: 
         # Create query set
         query_x = data_x[query_indices]
         query_y = data_y[query_indices]
+        # Ensure labels are 1D
+        if query_y.dim() > 1:
+            query_y = query_y.squeeze()
         
         # Verify query set distribution
         query_normal_count = (query_y == 0).sum().item()

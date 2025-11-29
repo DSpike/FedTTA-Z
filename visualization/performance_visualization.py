@@ -1428,6 +1428,122 @@ class PerformanceVisualizer:
         plt.close()  # Close figure instead of showing it
         return plot_path if save else ""
 
+    def plot_base_model_performance_barchart(self, base_results: Dict, save: bool = True) -> str:
+        """
+        Plot overall performance evaluation of base model (FedProx aggregated) as a bar chart
+        
+        NOTE: This function plots the performance of the FedProx aggregated global model
+        evaluated on the TEST SET (not validation set, not client performance metrics).
+        
+        The base_results come from evaluate_base_model_only() which:
+        - Uses self.coordinator.model (FedProx aggregated global model after all rounds)
+        - Evaluates on X_test, y_test (test set, not validation set)
+        - Calculates metrics: Accuracy, F1-Score, Precision, Recall
+        
+        Args:
+            base_results: Base model results dictionary from evaluate_base_model_only()
+            save: Whether to save the plot
+            
+        Returns:
+            plot_path: Path to saved plot
+        """
+        if not base_results:
+            logger.warning("No base model results provided for bar chart plotting")
+            return ""
+        
+        try:
+            # Extract metrics from base_results
+            # Handle both direct metrics and confusion matrix-based calculation
+            base_cm = base_results.get('confusion_matrix', [[0, 0], [0, 0]])
+            
+            # Extract Accuracy
+            accuracy = base_results.get('accuracy', 0.0)
+            
+            # Extract/Calculate Precision
+            if len(base_cm) == 2 and len(base_cm[0]) == 2:
+                tp, fp = base_cm[1][1], base_cm[0][1]
+                precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+            else:
+                precision = base_results.get('precision', base_results.get('precision_weighted', 0.0))
+            
+            # Extract/Calculate Recall
+            if len(base_cm) == 2 and len(base_cm[0]) == 2:
+                tp, fn = base_cm[1][1], base_cm[1][0]
+                recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+            else:
+                recall = base_results.get('recall', base_results.get('recall_weighted', 0.0))
+            
+            # Extract F1-Score
+            f1_score = base_results.get('f1_score', 
+                                       base_results.get('f1_score_weighted',
+                                       base_results.get('macro_f1', 0.0)))
+            
+            # Prepare data for bar chart
+            metrics = ['Accuracy', 'F1-Score', 'Precision', 'Recall']
+            values = [accuracy, f1_score, precision, recall]
+            
+            # Create bar chart
+            fig, ax = plt.subplots(figsize=(10, 6))
+            
+            # Create bars with different colors
+            colors = ['#2E86AB', '#A23B72', '#F18F01', '#C73E1D']
+            bars = ax.bar(metrics, values, color=colors, alpha=0.8, edgecolor='black', linewidth=1.5)
+            
+            # Add value labels on top of bars
+            for i, (bar, val) in enumerate(zip(bars, values)):
+                height = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width()/2., height + 0.01,
+                       f'{val:.4f}',
+                       ha='center', va='bottom', fontsize=12, fontweight='bold')
+            
+            # Set y-axis limits and labels
+            ax.set_ylim([0, 1.1])
+            ax.set_ylabel('Performance Score', fontsize=12, fontweight='bold')
+            ax.set_xlabel('Metrics', fontsize=12, fontweight='bold')
+            
+            # Set title
+            title = f'Base Model Overall Performance (FedProx Aggregated)'
+            if self.attack_name:
+                title += f' - {self.attack_name}'
+            ax.set_title(title, fontsize=14, fontweight='bold', pad=20)
+            
+            # Add grid for better readability
+            ax.grid(axis='y', alpha=0.3, linestyle='--')
+            ax.set_axisbelow(True)
+            
+            # Add horizontal line at 1.0 for reference
+            ax.axhline(y=1.0, color='gray', linestyle=':', linewidth=1, alpha=0.5)
+            
+            # Format y-axis as percentage
+            ax.set_yticks([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+            ax.set_yticklabels(['0%', '20%', '40%', '60%', '80%', '100%'])
+            
+            # Rotate x-axis labels if needed
+            plt.xticks(rotation=0, fontsize=11)
+            plt.yticks(fontsize=11)
+            
+            # Adjust layout
+            plt.tight_layout()
+            
+            # Save plot
+            if save:
+                plot_path = os.path.join(self.output_dir, self._get_filename("base_model_performance_barchart"))
+                plt.savefig(plot_path, dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
+                logger.info(f"Base model performance bar chart saved: {plot_path}")
+                plt.close()
+                return plot_path
+            else:
+                plt.show()
+                return ""
+                
+        except Exception as e:
+            logger.error(f"Failed to create base model performance bar chart: {str(e)}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            if 'fig' in locals():
+                plt.close(fig)
+            return ""
+
 def main():
     """Main function for performance visualizer - uses real data from system"""
     logger.info("Performance visualizer initialized. Use with real system data only.")
