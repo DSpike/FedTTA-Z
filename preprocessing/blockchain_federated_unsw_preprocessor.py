@@ -860,42 +860,51 @@ class UNSWPreprocessor:
         val_data = val_data.sample(frac=1, random_state=43).reset_index(drop=True)
         
         # Create test data with BALANCED distribution for better evaluation
-        # Target: 30% Normal + 70% Attacks (including zero-day) for realistic evaluation
+        # Target: 40% Normal + 60% Attacks (35% Non-zero-day + 25% Zero-day)
         
         # Calculate target sample sizes for balanced evaluation
-        # Use full available test data (no cap) while maintaining 30% normal / 70% attack ratio
+        # Use full available test data (no cap) while maintaining 40% normal / 60% attack ratio
         total_test_samples = len(zero_day_test) + len(test_attacks[test_attacks['attack_cat'] != zero_day_attack]) + len(test_normal)
-        target_normal_samples = int(total_test_samples * 0.3)  # 30% Normal
-        target_attack_samples = int(total_test_samples * 0.7)  # 70% Attacks
+        target_normal_samples = int(total_test_samples * 0.40)  # 40% Normal
+        target_attack_samples = int(total_test_samples * 0.60)  # 60% Attacks
+        target_zero_day_samples = int(total_test_samples * 0.25)  # 25% Zero-day (adjusted from 20% to total 100%)
+        target_non_zero_day_samples = int(total_test_samples * 0.35)  # 35% Non-zero-day attacks
         
-        logger.info(f"  Test set composition target: {target_normal_samples} normal, {target_attack_samples} attacks")
+        logger.info(f"  Test set composition target: {target_normal_samples} normal (40%), {target_non_zero_day_samples} non-zero-day attacks (35%), {target_zero_day_samples} zero-day attacks (25%)")
         logger.info(f"  Available in test data: {len(test_normal)} normal, {len(zero_day_test)} zero-day, {len(test_attacks[test_attacks['attack_cat'] != zero_day_attack])} other attacks")
         
         # Sample Normal samples for test data - PREVENT DATA LEAKAGE
         # Only use normal samples from test_df to prevent leakage from training data
         if len(test_normal) >= target_normal_samples:
             test_normal_sample = test_normal.sample(n=target_normal_samples, random_state=42)
-            logger.info(f"Normal samples for test set sourced exclusively from test_df: {len(test_normal_sample)} samples")
+            logger.info(f"Normal samples for test set sourced exclusively from test_df: {len(test_normal_sample)} samples (40% target)")
         elif len(test_normal) > 0:
             # Use all available normal samples from test data if insufficient for target
             test_normal_sample = test_normal.sample(n=len(test_normal), random_state=42)
-            logger.warning(f"Insufficient normal samples in test_df for 30% target: {len(test_normal)} < {target_normal_samples} required")
+            logger.warning(f"Insufficient normal samples in test_df for 40% target: {len(test_normal)} < {target_normal_samples} required")
             logger.info(f"Using all available normal samples from test_df: {len(test_normal_sample)} samples")
         else:
             # No normal samples in test data - raise error to prevent data leakage
             raise ValueError("No normal samples available in test_df for test set. Cannot use training data to prevent data leakage.")
         
-        # Sample attack types for test data (including zero-day)
-        # IMPORTANT: For zero-day detection evaluation, use ALL available zero-day samples
-        # This ensures we test on the maximum number of unseen attack samples
-        zero_day_sample = zero_day_test.copy()  # Use ALL zero-day samples for evaluation
+        # Sample zero-day attacks for test data - use target percentage (25%)
+        if len(zero_day_test) >= target_zero_day_samples:
+            zero_day_sample = zero_day_test.sample(n=target_zero_day_samples, random_state=42)
+            logger.info(f"Zero-day samples selected: {len(zero_day_sample)} samples (25% target)")
+        elif len(zero_day_test) > 0:
+            zero_day_sample = zero_day_test.copy()
+            logger.warning(f"Insufficient zero-day samples for 25% target: {len(zero_day_test)} < {target_zero_day_samples} required, using all available")
+        else:
+            zero_day_sample = pd.DataFrame()
+            logger.warning("No zero-day attack samples found in test data")
         
-        # Get other attack types from test data only (excluding zero-day attack)
+        # Sample non-zero-day attacks for test data (35% target)
         test_other_attacks = test_attacks[test_attacks['attack_cat'] != zero_day_attack].copy()
         if len(test_other_attacks) > 0:
-            other_attacks_sample = test_other_attacks.sample(n=min(target_attack_samples // 3, len(test_other_attacks)), random_state=42)  # Changed: // 2 → // 3
+            other_attacks_sample = test_other_attacks.sample(n=min(target_non_zero_day_samples, len(test_other_attacks)), random_state=42)
+            logger.info(f"Non-zero-day attack samples selected: {len(other_attacks_sample)} samples (35% target)")
         else:
-            # Fallback: if no other attacks in test data, use zero-day only
+            # Fallback: if no other attacks in test data
             logger.warning("No other attack types found in test data, using only zero-day attacks")
             other_attacks_sample = pd.DataFrame()
         
@@ -911,9 +920,13 @@ class UNSWPreprocessor:
         logger.info(f"    Other attacks (excluding zero-day): {len(val_data[val_data['binary_label'] == 1])}")
         
         logger.info(f"  Test data: {len(test_data)} samples")
-        logger.info(f"    Normal (30%): {len(test_data[test_data['binary_label'] == 0])}")
-        logger.info(f"    Zero-day attacks (50% of attacks): {len(test_data[test_data['label'] == self.attack_types[zero_day_attack]])}")
-        logger.info(f"    Other attacks from test data (50% of attacks): {len(test_data[(test_data['label'] != 0) & (test_data['label'] != self.attack_types[zero_day_attack])])}")
+        actual_normal_count = len(test_data[test_data['binary_label'] == 0])
+        actual_zero_day_count = len(test_data[test_data['label'] == self.attack_types[zero_day_attack]]) if zero_day_attack in self.attack_types else 0
+        actual_non_zero_day_count = len(test_data[(test_data['label'] != 0) & (test_data['label'] != self.attack_types.get(zero_day_attack, -1))])
+        total_test_count = len(test_data)
+        logger.info(f"    Normal (40% target): {actual_normal_count} ({100*actual_normal_count/total_test_count:.1f}%)")
+        logger.info(f"    Zero-day attacks (25% target): {actual_zero_day_count} ({100*actual_zero_day_count/total_test_count:.1f}%)")
+        logger.info(f"    Non-zero-day attacks (35% target): {actual_non_zero_day_count} ({100*actual_non_zero_day_count/total_test_count:.1f}%)")
         logger.info(f"    Test binary labels: {sorted(test_data['binary_label'].unique())}")
         logger.info(f"    Test multi-class labels: {sorted(test_data['label'].unique())}")
         

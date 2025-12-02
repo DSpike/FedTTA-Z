@@ -917,6 +917,22 @@ class PerformanceVisualizer:
                 base_val = base_results.get(metric, 0)
                 ttt_val = ttt_results.get(metric, 0)
             
+            # CRITICAL FIX: Handle None values explicitly (prevent TypeError in plotting)
+            # Convert None to 0.0 for all metrics to ensure type consistency
+            if base_val is None:
+                base_val = 0.0
+            if ttt_val is None:
+                ttt_val = 0.0
+            
+            # Ensure values are floats (handle numpy types, etc.)
+            try:
+                base_val = float(base_val)
+                ttt_val = float(ttt_val)
+            except (TypeError, ValueError) as e:
+                logger.warning(f"Could not convert metric '{metric}' to float: base_val={base_val}, ttt_val={ttt_val}, error={e}")
+                base_val = 0.0
+                ttt_val = 0.0
+            
             base_values.append(base_val)
             ttt_values.append(ttt_val)
         
@@ -1168,8 +1184,10 @@ class PerformanceVisualizer:
         
         # Add note about zero-day specific evaluation
         note_text = ("Note: Metrics calculated on ZERO-DAY SAMPLES ONLY (all samples are attacks).\n"
-                    "ZDR (Zero-Day Detection Rate) is the critical metric for zero-day attack detection.\n"
-                    "AUC-PR excluded: Not meaningful when all samples are attacks (no normal samples for PR curve).")
+                    "ZDR (Zero-Day Detection Rate) and Recall are the primary meaningful metrics.\n"
+                    "Precision may be degenerate (FP=0 when only attack samples are present).\n"
+                    "AUC-PR and FAR excluded: Not meaningful when all samples are attacks.\n"
+                    "For overall system performance, see Performance Comparison plot.")
         fig.text(0.5, 0.02, note_text, ha='center', fontsize=9, 
                 fontfamily='Times New Roman', style='italic',
                 bbox=dict(boxstyle='round,pad=0.5', facecolor='lightyellow', alpha=0.8, 

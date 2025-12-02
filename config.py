@@ -14,12 +14,12 @@ class SystemConfig:
     """Centralized system configuration - single source of truth"""
     
     # === FEDERATED LEARNING CONFIGURATION ===
-    num_clients: int = 10  # Optimized: 10 clients (from Multi-Objective Optuna Trial 6)
-    num_rounds: int = 13  # Optimized: 13 rounds (from Multi-Objective Optuna Trial 6)
+    num_clients: int = 5  # Optimized: 5 clients (from Balanced Base+TTT Optuna Trial 1)
+    num_rounds: int = 15  # Optimized: 15 rounds (from Balanced Base+TTT Optuna Trial 1)
     local_epochs: int = 10  # Balanced epochs per round for better federated learning
-    learning_rate: float = 0.002540786469371161  # Optimized meta-learning rate (from Multi-Objective Optuna Trial 6)
+    learning_rate: float = 0.001096821720752952  # Optimized meta-learning rate (from Balanced Base+TTT Optuna Trial 1)
     batch_size: int = 16  # Optimal batch size (validated in hyperparameter tuning)
-    dirichlet_alpha: float = 4.034673453372198  # Optimized: 4.035 (from Multi-Objective Optuna Trial 6)
+    dirichlet_alpha: float = 1.272083045469184  # Optimized: 1.272 (from Balanced Base+TTT Optuna Trial 1)
                                    # CHANGED from 10.0 to 1.0: With α=10 (near IID), results are identical for 2 vs 10 clients
                                    # α = 0.5: Very high heterogeneity (extreme non-IID) - can create clients with <1% of data
                                    # α = 1.0: Moderate heterogeneity (balanced non-IID) - RECOMMENDED for 10 clients ✅
@@ -27,7 +27,7 @@ class SystemConfig:
     
     # === FEDPROX CONFIGURATION ===
     use_fedprox: bool = True  # Enable FedProx aggregation algorithm (adds proximal term for better non-IID handling)
-    fedprox_mu: float = 0.004424996646298212  # Optimized: 0.0044 (from Multi-Objective Optuna Trial 6)
+    fedprox_mu: float = 0.018841476921545086  # Optimized: 0.019 (from Balanced Base+TTT Optuna Trial 1)
    
     # === QUICK VERIFICATION MODE ===
     quick_verify: bool = False  # When True, run a fast built-in self-check path
@@ -35,7 +35,7 @@ class SystemConfig:
     # === DATA CONFIGURATION ===
     data_path: str = "UNSW_NB15_training-set.csv"
     test_path: str = "UNSW_NB15_testing-set.csv"
-    zero_day_attack: str = "Exploits"  # UNSW-NB15 attack type (label 5)
+    zero_day_attack: str = "Backdoor"  # UNSW-NB15 attack type (label 3)
     
     # Attack type mapping (UNSW-NB15 dataset)
     attack_types = {
@@ -79,8 +79,8 @@ class SystemConfig:
     
     # === MODEL CONFIGURATION ===
     input_dim: int = 43  # Updated after IGRF-RFE feature selection (43 features selected)
-    hidden_dim: int = 512  # Optimized: 512 (from Multi-Objective Optuna Trial 6)
-    embedding_dim: int = 256  # Optimized: 256 (from Multi-Objective Optuna Trial 6)
+    hidden_dim: int = 256  # Optimized: 256 (from Balanced Base+TTT Optuna Trial 1)
+    embedding_dim: int = 128  # Optimized: 128 (from Balanced Base+TTT Optuna Trial 1)
     num_classes: int = 2  # Binary classification (Normal vs Attack) for zero-day detection
     
     # === FEATURE SELECTION CONFIGURATION ===
@@ -90,19 +90,20 @@ class SystemConfig:
     # === TCN CONFIGURATION ===
     use_tcn: bool = True  # Enable/disable TCN feature extraction
     disable_tcn_feature_extraction: bool = False  # If True, replace TCN with simple pooling (for testing)
-    sequence_length: int = 47  # Optimized: 47 (from Multi-Objective Optuna Trial 6)
-    sequence_stride: int = 13  # Optimized: 13 (from Multi-Objective Optuna Trial 6)
-    tcn_kernel_sizes: tuple = (3, 2, 4)  # Optimized kernel sizes for TCN branches (from Multi-Objective Optuna Trial 6)
-    meta_epochs: int = 3  # Optimized: 3 (from Multi-Objective Optuna Trial 6)
+    sequence_length: int = 21  # Optimized: 21 (from Balanced Base+TTT Optuna Trial 1)
+    sequence_stride: int = 13  # Optimized: 13 (from Balanced Base+TTT Optuna Trial 1)
+    tcn_kernel_sizes: tuple = (3, 3, 6)  # Optimized kernel sizes for TCN branches (from Balanced Base+TTT Optuna Trial 1)
+    use_residual_connections: bool = True  # Optimized: True (from Balanced Base+TTT Optuna Trial 1)
+    meta_epochs: int = 18  # Optimized: 18 (from Balanced Base+TTT Optuna Trial 1)
     transductive_steps: int = 20
     transductive_lr: float = 0.0007
     
     # === TEST-TIME TRAINING (TTT) CONFIGURATION ===
-    ttt_base_steps: int = 293  # Optimized: 293 steps (from Multi-Objective Optuna Trial 6)
+    ttt_base_steps: int = 228  # Optimized: 228 steps (from Balanced Base+TTT Optuna Trial 1)
     ttt_max_steps: int = 500  # Maximum TTT steps (safety limit)
-    ttt_adaptation_query_size: int = 1037  # Optimized: 1037 (from Multi-Objective Optuna Trial 6)
-    ttt_batch_size: int = 16  # Optimized: 16 (from Multi-Objective Optuna Trial 6)
-    ttt_lr: float = 0.00011136839897653453  # Optimized: 0.000111 (from Multi-Objective Optuna Trial 6)
+    ttt_adaptation_query_size: int = 1198  # Optimized: 1198 (from Balanced Base+TTT Optuna Trial 1)
+    ttt_batch_size: int = 16  # Optimized: 16 (from Balanced Base+TTT Optuna Trial 1)
+    ttt_lr: float = 0.0005082341959721457  # Optimized: 0.000508 (from Balanced Base+TTT Optuna Trial 1)
     
     # === ATTACK PROTOTYPE DISCOVERY TTT ===
     use_attack_prototype_ttt: bool = False  # Enable attack prototype discovery TTT (+5-8% improvement)
@@ -123,31 +124,31 @@ class SystemConfig:
     ttt_consistency_weight: float = 0.10  # Weight for prototype consistency in unsupervised TTT
     ttt_mixup_alpha: float = 0.20       # DISABLED: MixUp inappropriate for TTT with unlabeled data
     # Temperature scaling for probability calibration after TTT (improves AUC-PR calibration)
-    ttt_temperature: float = 1.5406351216101064  # Optimized: 1.541 (from Multi-Objective Optuna Trial 6)
+    ttt_temperature: float = 1.3308980248526492  # Optimized: 1.331 (from Balanced Base+TTT Optuna Trial 1)
     use_semisupervised_ttt: bool = False  # When True, use new semi-supervised TTT instead of legacy TENT+pseudo
 
     # === TENT + PSEUDO-LABELS CONFIGURATION ===
-    # Optimized hyperparameters from Multi-Objective Optuna (100% ZDR + Balanced Performance)
-    # FIXED: Lowered thresholds to increase pseudo-label ratio from 1.7% to 25-40% for better loss decrease
-    use_pseudo_labels: bool = True  # Optimized: True (from Multi-Objective Optuna Trial 6)
-    pseudo_threshold: float = 0.75  # FIXED: Lowered from 0.950 (allows ~25% of samples vs 1.7%)
-    pseudo_min_threshold: float = 0.60  # FIXED: Lowered from 0.732 (allows ~40% of samples vs 1.7%)
-    pseudo_weight: float = 1.7541210253037696  # Optimized: 1.754 (from Multi-Objective Optuna Trial 6)
-    entropy_weight: float = 1.0222432600548044  # Optimized: 1.022 (from Multi-Objective Optuna Trial 6)
-    use_teacher: bool = True  # Optimized: True (from Multi-Objective Optuna Trial 6)
-    ema_decay: float = 0.9525324043372617  # Optimized: 0.953 (from Multi-Objective Optuna Trial 6)
+    # Optimized hyperparameters from Balanced Base+TTT Optuna (Balanced Base Model + TTT Performance)
+    # Optimized for balanced_base_ttt metric: 40% base F1 + 30% TTT ZDR + 30% TTT F1
+    use_pseudo_labels: bool = False  # Optimized: False (from Balanced Base+TTT Optuna Trial 1)
+    pseudo_threshold: float = 0.9502651450691729  # Optimized: 0.950 (from Balanced Base+TTT Optuna Trial 1)
+    pseudo_min_threshold: float = 0.7111066977601135  # Optimized: 0.711 (from Balanced Base+TTT Optuna Trial 1)
+    pseudo_weight: float = 2.9137146876952342  # Optimized: 2.914 (from Balanced Base+TTT Optuna Trial 1)
+    entropy_weight: float = 1.2290071680409873  # Optimized: 1.229 (from Balanced Base+TTT Optuna Trial 1)
+    use_teacher: bool = True  # Optimized: True (from Balanced Base+TTT Optuna Trial 1)
+    ema_decay: float = 0.992292067867904  # Optimized: 0.992 (from Balanced Base+TTT Optuna Trial 1)
     
     # === ADVANCED TTT TECHNIQUES FOR SOTA PERFORMANCE ===
-    use_focal_loss: bool = False  # Optimized: False (from Multi-Objective Optuna Trial 6)
-    focal_gamma: float = 2.963778119193802  # Optimized: 2.964 (from Multi-Objective Optuna Trial 6)
-    focal_alpha: float = 0.25326006966023906  # Optimized: 0.253 (from Multi-Objective Optuna Trial 6)
+    use_focal_loss: bool = False  # Optimized: False (from Balanced Base+TTT Optuna Trial 1)
+    focal_gamma: float = 1.9877749830401206  # Optimized: 1.988 (from Balanced Base+TTT Optuna Trial 1)
+    focal_alpha: float = 0.2959212356676128  # Optimized: 0.296 (from Balanced Base+TTT Optuna Trial 1)
     use_mixup_ttt: bool = False  # DISABLED: Mixup inappropriate for TTT - requires labels, mixes noisy pseudo-labels, destroys network flow semantics
     mixup_alpha: float = 0.2  # Not used when use_mixup_ttt=False
     use_label_smoothing: bool = False  # DISABLED: Conflicts with focal loss (focal focuses on hard examples, smoothing softens all labels equally)
     label_smoothing: float = 0.1  # Not used when use_label_smoothing=False
     
     # === CLASS WEIGHT AND MAGIC NUMBERS ===
-    pseudo_label_temperature: float = 0.565677315784074  # Optimized: 0.566 (from Multi-Objective Optuna Trial 6)
+    pseudo_label_temperature: float = 0.611649063413779  # Optimized: 0.612 (from Balanced Base+TTT Optuna Trial 1)
     transductive_patience: int = 8  # Early stopping patience for transductive optimization (number of steps without improvement)
     missing_class_weight_multiplier: float = 2.0  # Weight multiplier for missing classes in class weight calculation (encourages learning rare classes)
     class_weight_normalization_multiplier: float = 2.0  # Multiplier for class weight normalization (keeps weights strong after normalization)
@@ -219,14 +220,14 @@ class SystemConfig:
     
     # === EVALUATION CONFIGURATION ===
     support_size: int = 20
-    num_meta_tasks: int = 35  # Optimized: 35 (from Multi-Objective Optuna Trial 6)
+    num_meta_tasks: int = 34  # Optimized: 34 (from Balanced Base+TTT Optuna Trial 1)
     
     # === FEW-SHOT LEARNING CONFIGURATION ===
     n_way: int = 2  # Number of classes per task
-    k_shot: int = 129  # Optimized: 129 (from Multi-Objective Optuna Trial 6)
-    n_query: int = 18  # Optimized: 18 (from Multi-Objective Optuna Trial 6)
+    k_shot: int = 118  # Optimized: 118 (from Balanced Base+TTT Optuna Trial 1)
+    n_query: int = 20  # Optimized: 20 (from Balanced Base+TTT Optuna Trial 1)
     enforce_equal_support_composition: bool = False  # Optimized: False (from Multi-Objective Optuna Trial 6)
-    include_all_attack_types_in_support: bool = True  # If True, sample attack support set from ALL attack types (uniformly distributed) instead of one random type
+    include_all_attack_types_in_support: bool = False  # If True, sample attack support set from ALL attack types (uniformly distributed) instead of one random type
     
     # === VALIDATION CONFIGURATION ===
     max_val_samples: int = 1000  # Limit validation samples for memory efficiency

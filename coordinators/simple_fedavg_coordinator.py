@@ -36,6 +36,9 @@ else:
             optimizer.step()
         def update(self):
             pass
+        def unscale_(self, optimizer):
+            """Compatibility method for CPU fallback"""
+            pass
 
 from visualization.performance_visualization import PerformanceVisualizer
 
@@ -122,13 +125,23 @@ class FlowLevelTTTWrapper:
         logger.info("FLOW-LEVEL EVALUATION")
         logger.info("=" * 80)
         
-        # Get packet-level predictions
+        # Get packet-level predictions (prototype-based)
         adapted_model.eval()
         with torch.no_grad():
-            logits = adapted_model(query_x)
-            probs = torch.softmax(logits, dim=1)
-            packet_preds = torch.argmax(logits, dim=1).cpu().numpy()
-            packet_probs = probs[:, 1].cpu().numpy()  # Attack probability
+            # Get embeddings and compute prototype-based predictions
+            query_embeddings = adapted_model(query_x)  # Model returns embeddings now
+            # Use TENT adapter's prototypes for prediction
+            if hasattr(self.tent_adapter, 'prototypes') and self.tent_adapter.prototypes is not None:
+                distances = self.tent_adapter.compute_prototype_distances(query_embeddings, self.tent_adapter.prototypes)
+                logits = -distances  # Negative distances as logits
+                probs = torch.softmax(logits, dim=1)
+                packet_preds = torch.argmin(distances, dim=1).cpu().numpy()  # Nearest prototype
+                packet_probs = probs[:, 1].cpu().numpy() if probs.shape[1] > 1 else probs.cpu().numpy()  # Attack probability
+            else:
+                # Fallback: if no prototypes, use uniform predictions
+                logger.warning("⚠️  No prototypes available in TENT adapter, using uniform predictions")
+                packet_preds = np.zeros(len(query_x))
+                packet_probs = np.ones(len(query_x)) * 0.5
             packet_labels = query_y.cpu().numpy()
         
         # Group packets by flow_id
@@ -368,8 +381,11 @@ class AttackPrototypeTTT:
             # Compute alignment loss (embeddings -> prototypes)
             alignment_loss = self.align_to_nearest_prototype(embeddings, learnable_prototypes)
             
-            # Entropy minimization (standard TENT)
-            logits = adapted_model(query_x.to(self.device))
+            # Entropy minimization (prototype-based TENT)
+            # Compute prototype-based logits from embeddings
+            query_embeddings = adapted_model(query_x.to(self.device))  # Get embeddings (model now returns embeddings)
+            distances = self.compute_prototype_distances(query_embeddings, learnable_prototypes)  # (N, n_prot)
+            logits = -distances  # Negative distances as logits (closer = higher logit)
             probs = F.softmax(logits, dim=1)
             entropy = -(probs * torch.log(probs + 1e-8)).sum(dim=1).mean()
             entropy_loss = entropy
@@ -1612,8 +1628,11 @@ class AttackPrototypeTTT:
             # Compute alignment loss (embeddings -> prototypes)
             alignment_loss = self.align_to_nearest_prototype(embeddings, learnable_prototypes)
             
-            # Entropy minimization (standard TENT)
-            logits = adapted_model(query_x.to(self.device))
+            # Entropy minimization (prototype-based TENT)
+            # Compute prototype-based logits from embeddings
+            query_embeddings = adapted_model(query_x.to(self.device))  # Get embeddings (model now returns embeddings)
+            distances = self.compute_prototype_distances(query_embeddings, learnable_prototypes)  # (N, n_prot)
+            logits = -distances  # Negative distances as logits (closer = higher logit)
             probs = F.softmax(logits, dim=1)
             entropy = -(probs * torch.log(probs + 1e-8)).sum(dim=1).mean()
             entropy_loss = entropy

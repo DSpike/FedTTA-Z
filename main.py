@@ -555,10 +555,10 @@ class BlockchainFederatedIncentiveSystem:
         
         n_samples = min(n_samples, len(X_test))
         
-        # TARGET: Use temp override if set (for pre-sequence sampling), otherwise default to 30%
-        # Pre-sequence target can be higher (e.g., 40%) to compensate for sequence creation dilution
-        # Final target after post-sequence filtering will be 30%
-        zero_day_target_percentage = getattr(self, '_temp_zero_day_target', 0.30)
+        # TARGET: 40% Normal, 35% Non-zero-day attacks, 25% Zero-day attacks
+        # Use temp override if set (for pre-sequence sampling), otherwise use 25% zero-day target
+        # Pre-sequence target can be higher to compensate for sequence creation dilution
+        zero_day_target_percentage = getattr(self, '_temp_zero_day_target', 0.25)  # 25% zero-day target
         
         # CRITICAL FIX: Check availability FIRST before calculating target count
         # This prevents warnings when target exceeds available samples
@@ -902,7 +902,7 @@ class BlockchainFederatedIncentiveSystem:
                     logger.info(f"🔍 Using stratified sampling with 35% zero-day target BEFORE sequence creation (will dilute to ~20% after sequences)...")
                     # Temporarily override target percentage for pre-sequence sampling to 35%
                     # This ensures we get enough zero-day sequences after sequence creation (target is now 20% post-sequence)
-                    self._temp_zero_day_target = 0.35  # Target 35% before sequences (will become ~20% after)
+                    self._temp_zero_day_target = 0.30  # Target 30% before sequences (will become ~25% after, accounting for dilution)
                     X_test_subset, y_test_subset, y_test_multiclass_original, test_attack_cat_original = self._stratified_test_subset(
                         self.preprocessed_data['X_test'],
                         self.preprocessed_data['y_test'],
@@ -960,7 +960,7 @@ class BlockchainFederatedIncentiveSystem:
                             logger.info(f"🔍 DEBUG: Unique labels in mapped sequences: {set(y_test_multiclass_seq.numpy() if torch.is_tensor(y_test_multiclass_seq) else y_test_multiclass_seq)}")
                             
                             # POST-SEQUENCE FILTERING: Adjust to achieve target zero-day percentage (reduced from 30% to 20% for more test samples)
-                            target_zero_day_percentage = 0.20  # Reduced from 0.30 to 0.20 for more total test samples
+                            target_zero_day_percentage = 0.25  # Target 25% zero-day (40% Normal, 35% Non-zero-day, 25% Zero-day)
                             
                             # Get zero-day and non-zero-day sequence indices
                             zero_day_mask = (y_test_multiclass_seq == self.config.zero_day_attack_label)
@@ -1061,16 +1061,55 @@ class BlockchainFederatedIncentiveSystem:
                         saved_y_len = len(saved_y_test) if saved_y_test is not None else 0
                         saved_multiclass_len = len(saved_multiclass) if saved_multiclass is not None else 0
                         
+                        # CRITICAL: Check if zero-day attack matches current config
+                        saved_zero_day_attack = saved_test_set.get('zero_day_attack', None)
+                        current_zero_day_attack = self.config.zero_day_attack
+                        
+                        if saved_zero_day_attack is not None and saved_zero_day_attack != current_zero_day_attack:
+                            logger.warning(f"⚠️ Saved test set has different zero-day attack: '{saved_zero_day_attack}' (saved) vs '{current_zero_day_attack}' (current)")
+                            logger.warning(f"⚠️ Skipping saved test set - zero-day attack mismatch. Will use newly created test set.")
+                            use_saved_test_set = False
                         # Verify alignment in saved test set
-                        if saved_x_len != saved_y_len:
+                        elif saved_x_len != saved_y_len:
                             logger.error(f"❌ Saved test set has mismatched X_test ({saved_x_len}) and y_test ({saved_y_len}) sizes! Skipping saved test set.")
+                            use_saved_test_set = False
                         elif saved_multiclass is not None and saved_multiclass_len != saved_x_len:
                             logger.error(f"❌ Saved test set has mismatched sizes: X_test={saved_x_len}, multiclass={saved_multiclass_len}! This will cause zero-day detection to fail.")
                             logger.warning(f"⚠️ Keeping current filtered test set instead of saved one to maintain size alignment.")
+                            use_saved_test_set = False
+                        elif saved_x_len != len(X_test_seq):
+                            # CRITICAL: Check if saved test set size matches newly created sequences
+                            logger.warning(f"⚠️ Saved test set size ({saved_x_len}) doesn't match newly created test sequences ({len(X_test_seq)})!")
+                            logger.warning(f"⚠️ Skipping saved test set - size mismatch. Will use newly created test set with correct composition (40% Normal, 35% Non-zero-day, 25% Zero-day).")
+                            use_saved_test_set = False
+                        # Additional check: Verify saved test set has correct zero-day composition (not 100% zero-day)
+                        elif saved_multiclass is not None:
+                            # Check zero-day composition in saved test set
+                            # Note: torch and numpy are already imported at module level
+                            if torch.is_tensor(saved_multiclass):
+                                saved_multiclass_np = saved_multiclass.cpu().numpy()
+                            else:
+                                saved_multiclass_np = np.array(saved_multiclass)
+                            
+                            zero_day_label = self.config.zero_day_attack_label
+                            zero_day_count = (saved_multiclass_np == zero_day_label).sum()
+                            zero_day_percentage = 100 * zero_day_count / len(saved_multiclass_np) if len(saved_multiclass_np) > 0 else 0
+                            
+                            # Expected: ~25% zero-day (40% Normal, 35% Non-zero-day, 25% Zero-day)
+                            # Reject if it's clearly wrong (e.g., 100% or 0% zero-day, or way off target)
+                            if zero_day_percentage > 80.0 or zero_day_percentage < 5.0:
+                                logger.warning(f"⚠️ Saved test set has incorrect zero-day composition: {zero_day_percentage:.1f}% zero-day (expected ~25%)!")
+                                logger.warning(f"⚠️ Skipping saved test set - wrong composition. Will use newly created test set with correct composition.")
+                                use_saved_test_set = False
+                            else:
+                                logger.info(f"✅ Saved test set composition verified: {zero_day_percentage:.1f}% zero-day (acceptable range)")
+                                # Composition is acceptable - safe to use saved test set
+                                use_saved_test_set = True
+                                logger.info(f"✅ Saved test set verified: {saved_x_len} sequences, {saved_multiclass_len} multiclass labels, zero-day attack: '{saved_zero_day_attack}'")
                         else:
-                            # All sizes match - safe to use saved test set
+                            # No multiclass labels available, but sizes match and zero-day attack matches - safe to use saved test set
                             use_saved_test_set = True
-                            logger.info(f"✅ Saved test set sizes verified: {saved_x_len} sequences, {saved_multiclass_len} multiclass labels")
+                            logger.info(f"✅ Saved test set verified: {saved_x_len} sequences, {saved_multiclass_len} multiclass labels, zero-day attack: '{saved_zero_day_attack}' (no multiclass labels - using anyway)")
                     
                     if use_saved_test_set:
                         # All sizes match - safe to overwrite
@@ -1134,14 +1173,30 @@ class BlockchainFederatedIncentiveSystem:
                     else:
                         logger.info(f"✅ Verified test set alignment before storing: {test_seq_len} sequences and {multiclass_len} multiclass labels")
                 
-                self.preprocessed_data.update({
-                    'X_train': X_train_seq,
-                    'y_train': y_train_seq,
-                    'X_val': X_val_seq,
-                    'y_val': y_val_seq,
-                    'X_test': X_test_seq,
-                    'y_test': y_test_seq
-                })
+                # Update preprocessed data with sequences
+                # CRITICAL: If saved test set was used, don't overwrite X_test/y_test with X_test_seq
+                # (saved test set already set X_test/y_test to the correct values)
+                if use_saved_test_set:
+                    # Saved test set already set X_test, y_test, y_test_multiclass correctly
+                    # Only update train/val sequences, keep test from saved set
+                    self.preprocessed_data.update({
+                        'X_train': X_train_seq,
+                        'y_train': y_train_seq,
+                        'X_val': X_val_seq,
+                        'y_val': y_val_seq,
+                        # Don't overwrite X_test/y_test - already set by saved test set
+                    })
+                    logger.info(f"✅ Using saved test set - keeping X_test/y_test from saved set, not overwriting with X_test_seq")
+                else:
+                    # No saved test set used - use newly created sequences
+                    self.preprocessed_data.update({
+                        'X_train': X_train_seq,
+                        'y_train': y_train_seq,
+                        'X_val': X_val_seq,
+                        'y_val': y_val_seq,
+                        'X_test': X_test_seq,
+                        'y_test': y_test_seq
+                    })
                 
                 logger.info(
                     f"Created sequences - Training: {X_train_seq.shape}, Validation: {X_val_seq.shape}, Test: {X_test_seq.shape}")
@@ -1574,28 +1629,42 @@ class BlockchainFederatedIncentiveSystem:
             
             # Evaluate on validation set
             with torch.no_grad():
-                # Forward pass
-                outputs = global_model(X_val_tensor)
+                # Prototype-based evaluation: Create support set from validation data
+                val_support_size = min(100, len(X_val_tensor) // 2)
+                val_query_size = len(X_val_tensor) - val_support_size
+                # Use fixed seed for reproducible evaluation
+                perm = torch.randperm(len(X_val_tensor))
+                val_support_indices = perm[:val_support_size]
+                val_query_indices = perm[val_support_size:val_support_size + val_query_size]
+                
+                val_support_x = X_val_tensor[val_support_indices]
+                val_support_y = y_val_tensor[val_support_indices]
+                val_query_x = X_val_tensor[val_query_indices]
+                val_query_y = y_val_tensor[val_query_indices]
+                
+                # Compute prototypes and get logits
+                prototypes_val, unique_labels_val = global_model.compute_prototypes(val_support_x, val_support_y)
+                outputs = global_model.forward_with_prototypes(val_query_x, prototypes_val)  # Prototype-based logits
                 
                 # Calculate loss
                 criterion = torch.nn.CrossEntropyLoss()
-                validation_loss = criterion(outputs, y_val_tensor).item()
+                validation_loss = criterion(outputs, val_query_y).item()
                 
                 # Calculate predictions using threshold-based binary classification
                 probabilities = torch.softmax(outputs, dim=1)
-                attack_probabilities = probabilities[:, 1]  # P(Attack)
+                attack_probabilities = probabilities[:, 1] if probabilities.shape[1] > 1 else probabilities.squeeze(1)  # P(Attack)
                 predictions = (attack_probabilities >= 0.5).long()
                 
                 # Calculate accuracy
-                correct = (predictions == y_val_tensor).sum().item()
-                total = y_val_tensor.size(0)
+                correct = (predictions == val_query_y).sum().item()
+                total = val_query_y.size(0)
                 validation_accuracy = correct / total
 
                 # Debug: Log prediction distribution
                 unique_preds, pred_counts = torch.unique(
                     predictions, return_counts=True)
                 unique_labels, label_counts = torch.unique(
-                    y_val_tensor, return_counts=True)
+                    val_query_y, return_counts=True)  # Fixed: use val_query_y instead of y_val_tensor
                 logger.info(
                     f"🔍 DEBUG: Predictions distribution: {dict(zip(unique_preds.cpu().numpy(), pred_counts.cpu().numpy()))}")
                 logger.info(
@@ -1605,9 +1674,9 @@ class BlockchainFederatedIncentiveSystem:
                 # Calculate F1-score
                 from sklearn.metrics import f1_score
                 predictions_np = predictions.cpu().numpy()
-                y_val_np = y_val_tensor.cpu().numpy()
+                val_query_y_np = val_query_y.cpu().numpy()  # Fixed: use val_query_y instead of y_val_tensor
                 validation_f1 = f1_score(
-    y_val_np, predictions_np, average='weighted')
+                    val_query_y_np, predictions_np, average='weighted')
                 
                 # Log validation metrics
                 logger.info(
@@ -1943,10 +2012,26 @@ class BlockchainFederatedIncentiveSystem:
                         try:
 
 
-                            outputs = self.model(batch_data)
-                            probabilities = torch.softmax(outputs, dim=1)
-                            attack_probabilities = probabilities[:, 1]  # P(Attack)
-                            predictions = (attack_probabilities >= 0.5).long()
+                            # Prototype-based prediction: need support set
+                            # Use validation data as support if available, otherwise skip
+                            if hasattr(self, 'preprocessed_data') and 'X_val' in self.preprocessed_data:
+                                X_val_batch = torch.FloatTensor(self.preprocessed_data['X_val']).to(self.device)
+                                y_val_batch = torch.LongTensor(self.preprocessed_data['y_val']).to(self.device)
+                                y_val_binary_batch = (y_val_batch != 0).long()
+                                support_size_batch = min(50, len(X_val_batch))
+                                support_indices_batch = torch.randperm(len(X_val_batch))[:support_size_batch]
+                                support_x_batch = X_val_batch[support_indices_batch]
+                                support_y_batch = y_val_binary_batch[support_indices_batch]
+                                
+                                prototypes_batch, _ = self.model.compute_prototypes(support_x_batch, support_y_batch)
+                                outputs = self.model.forward_with_prototypes(batch_data, prototypes_batch)
+                                probabilities = torch.softmax(outputs, dim=1)
+                                attack_probabilities = probabilities[:, 1] if probabilities.shape[1] > 1 else probabilities.squeeze(1)  # P(Attack)
+                                predictions = (attack_probabilities >= 0.5).long()
+                            else:
+                                # Fallback: skip if no support data available
+                                logger.warning("⚠️  No validation data available for prototype computation, skipping batch")
+                                continue
                             correct += (predictions ==
                                         batch_labels).sum().item()
                             total += len(batch_labels)
@@ -2594,15 +2679,20 @@ class BlockchainFederatedIncentiveSystem:
             try:
                 # Base model overall performance bar chart (FedProx aggregated global model evaluated on TEST SET)
                 # NOTE: Uses self.coordinator.model (FedProx aggregated) evaluated on X_test, y_test (test set)
+                # NEW: Excludes zero-day samples - evaluates only on Normal + Known Attacks (what base model was trained on)
                 # This is NOT client performance aggregation, NOT validation set evaluation
                 if evaluation_results and 'base_model' in evaluation_results:
-                    base_results = evaluation_results['base_model']
+                    # Re-evaluate base model EXCLUDING zero-day samples for fair evaluation
+                    # Base model was trained on Normal + Known Attacks, so evaluation should match this
+                    logger.info("🔍 Re-evaluating base model EXCLUDING zero-day samples for base model performance plot...")
+                    logger.info("   (Evaluating on Normal + Known Attacks only, excluding zero-day samples)")
+                    base_results_no_zeroday = self.evaluate_base_model_only(exclude_zero_day=True)
                     
                     plot_paths['base_model_performance_barchart'] = self.visualizer.plot_base_model_performance_barchart(
-                        base_results
+                        base_results_no_zeroday
                     )
                     logger.info(
-                        "✅ Base model overall performance bar chart completed (FedProx aggregated global model on test set)")
+                        "✅ Base model overall performance bar chart completed (FedProx aggregated global model on Normal + Known Attacks only)")
                 else:
                     logger.warning(
                         "Base model results not available - skipping base model performance bar chart")
@@ -2743,9 +2833,14 @@ class BlockchainFederatedIncentiveSystem:
                 f"❌ Performance visualization generation failed: {str(e)}")
             raise e
     
-    def evaluate_base_model_only(self) -> Dict[str, Any]:
+    def evaluate_base_model_only(self, exclude_zero_day: bool = False) -> Dict[str, Any]:
         """
         Evaluate ONLY the base model (transductive meta-learning) without TTT adaptation
+        
+        Args:
+            exclude_zero_day: If True, evaluate only on Normal + Known Attacks (excludes zero-day samples).
+                              If False, evaluate on all test samples including zero-day.
+                              Default: False (evaluate on all samples for backward compatibility)
         
         Returns:
             base_evaluation_results: Base model performance metrics
@@ -2844,31 +2939,68 @@ class BlockchainFederatedIncentiveSystem:
             
             logger.info(f"Evaluating base model on {len(X_test)} test samples with {num_zero_day} zero-day samples and {num_non_zero_day} non-zero-day samples")
             
+            # NEW: Filter out zero-day samples if requested (for base model performance plot)
+            if exclude_zero_day:
+                non_zero_day_mask = ~zero_day_mask
+                if non_zero_day_mask.sum().item() == 0:
+                    logger.warning("⚠️ No non-zero-day samples available after filtering. Using all samples.")
+                    X_test_filtered = X_test_tensor
+                    y_test_filtered = y_test_tensor
+                    zero_day_mask_filtered = zero_day_mask
+                    logger.info(f"🔍 Base model evaluation mode: EXCLUDING zero-day samples (evaluating on Normal + Known Attacks only)")
+                    logger.info(f"   Original test set: {len(X_test_tensor)} samples")
+                    logger.info(f"   Filtered test set: {len(X_test_filtered)} samples (excluded {num_zero_day} zero-day samples)")
+                else:
+                    X_test_filtered = X_test_tensor[non_zero_day_mask]
+                    y_test_filtered = y_test_tensor[non_zero_day_mask]
+                    zero_day_mask_filtered = torch.zeros(len(X_test_filtered), dtype=torch.bool, device=self.device)
+                    logger.info(f"🔍 Base model evaluation mode: EXCLUDING zero-day samples (evaluating on Normal + Known Attacks only)")
+                    logger.info(f"   Original test set: {len(X_test_tensor)} samples ({num_zero_day} zero-day, {num_non_zero_day} non-zero-day)")
+                    logger.info(f"   Filtered test set: {len(X_test_filtered)} samples (excluded {num_zero_day} zero-day samples)")
+            else:
+                X_test_filtered = X_test_tensor
+                y_test_filtered = y_test_tensor
+                zero_day_mask_filtered = zero_day_mask
+                logger.info(f"🔍 Base model evaluation mode: INCLUDING all test samples (Normal + Known Attacks + Zero-Day)")
+            
             # Use the global model from coordinator (no TTT adaptation)
             # NOTE: self.coordinator.model is the FedProx aggregated global model after all federated learning rounds
             # This is the FINAL global model that will be evaluated on the TEST SET (not validation set)
             global_model = self.coordinator.model
             
-            # Evaluate base model performance
+            # Evaluate base model performance (prototype-based)
             with torch.no_grad():
                 global_model.eval()
-                base_logits = global_model(X_test_tensor)
+                # Create support set from validation data for prototype computation
+                X_val_tensor = torch.FloatTensor(self.preprocessed_data['X_val']).to(self.device)
+                y_val_tensor = torch.LongTensor(self.preprocessed_data['y_val']).to(self.device)
+                y_val_binary = (y_val_tensor != 0).long()
+                
+                support_size = min(200, len(X_val_tensor))
+                support_indices = torch.randperm(len(X_val_tensor))[:support_size]
+                support_x = X_val_tensor[support_indices]
+                support_y = y_val_binary[support_indices]
+                
+                # Compute prototypes and get prototype-based logits (on filtered test set if exclude_zero_day=True)
+                prototypes, unique_labels = global_model.compute_prototypes(support_x, support_y)
+                base_logits = global_model.forward_with_prototypes(X_test_filtered, prototypes)  # Prototype-based logits
                 base_predictions = torch.argmax(base_logits, dim=1)
                 base_probabilities = torch.softmax(base_logits, dim=1)
             
-            # Calculate metrics
+            # Calculate metrics (using filtered test set if exclude_zero_day=True)
             # CRITICAL FIX: Convert multiclass predictions to binary for comparison with binary labels
             base_predictions_binary = (base_predictions != 0).long()  # Normal=0, Attack=1
-            y_test_binary = (y_test_tensor != 0).long()  # Normal=0, Attack=1
+            y_test_binary = (y_test_filtered != 0).long()  # Normal=0, Attack=1
             base_accuracy = (base_predictions_binary == y_test_binary).float().mean().item()
             
             # Calculate detailed metrics
             from sklearn.metrics import accuracy_score, precision_recall_fscore_support, roc_auc_score, confusion_matrix, matthews_corrcoef
             
-            base_accuracy_sklearn = accuracy_score(y_test_tensor.cpu().numpy(), base_predictions.cpu().numpy())
+            # Use filtered test set for metrics calculation (if exclude_zero_day=True)
+            base_accuracy_sklearn = accuracy_score(y_test_filtered.cpu().numpy(), base_predictions.cpu().numpy())
             # Conventional (binary) metrics using Attack=1 vs Normal=0
             from sklearn.metrics import f1_score as _f1, precision_score as _prec, recall_score as _rec
-            y_true_bin = (y_test_tensor.cpu().numpy() != 0).astype(int)
+            y_true_bin = (y_test_filtered.cpu().numpy() != 0).astype(int)
             y_pred_bin = (base_predictions.cpu().numpy() != 0).astype(int)
             base_precision_conventional = _prec(y_true_bin, y_pred_bin, zero_division=0)
             base_recall_conventional = _rec(y_true_bin, y_pred_bin, zero_division=0)
@@ -2876,15 +3008,15 @@ class BlockchainFederatedIncentiveSystem:
 
             # Also compute macro/weighted for reference if needed
             base_precision, base_recall, base_f1, _ = precision_recall_fscore_support(
-                y_test_tensor.cpu().numpy(), base_predictions.cpu().numpy(), average='macro', zero_division=0
+                y_test_filtered.cpu().numpy(), base_predictions.cpu().numpy(), average='macro', zero_division=0
             )
             base_precision_weighted, base_recall_weighted, base_f1_weighted, _ = precision_recall_fscore_support(
-                y_test_tensor.cpu().numpy(), base_predictions.cpu().numpy(), average='weighted', zero_division=0
+                y_test_filtered.cpu().numpy(), base_predictions.cpu().numpy(), average='weighted', zero_division=0
             )
             
-            # ROC AUC and ROC curve for binary classification
+            # ROC AUC and ROC curve for binary classification (using filtered test set)
             try:
-                y_true_np = y_test_tensor.cpu().numpy()
+                y_true_np = y_test_filtered.cpu().numpy()
                 # Convert multiclass to binary labels: Attack=1 (not Normal)
                 y_true_binary = (y_true_np != 0).astype(int)
                 # Attack probability: P(attack) = 1 - P(normal)
@@ -2951,11 +3083,11 @@ class BlockchainFederatedIncentiveSystem:
                 base_roc_curve = None
                 base_pr_curve = None
             
-            # Matthews Correlation Coefficient
-            base_mcc = matthews_corrcoef(y_test_tensor.cpu().numpy(), base_predictions.cpu().numpy())
+            # Matthews Correlation Coefficient (using filtered test set)
+            base_mcc = matthews_corrcoef(y_test_filtered.cpu().numpy(), base_predictions.cpu().numpy())
             
-            # Confusion Matrix
-            base_cm = confusion_matrix(y_test_tensor.cpu().numpy(), base_predictions.cpu().numpy())
+            # Confusion Matrix (using filtered test set)
+            base_cm = confusion_matrix(y_test_filtered.cpu().numpy(), base_predictions.cpu().numpy())
             base_cm_binary = confusion_matrix(y_true_bin, y_pred_bin)
             if base_cm_binary.shape == (2, 2):
                 tn, fp = base_cm_binary[0][0], base_cm_binary[0][1]
@@ -2964,12 +3096,21 @@ class BlockchainFederatedIncentiveSystem:
                 base_far = 0.0
             
             # STEP 2: Calculate separate metrics for zero-day and non-zero-day samples
-            zero_day_predictions = base_predictions[zero_day_mask]
-            zero_day_actual = y_test_tensor[zero_day_mask]
-            
-            non_zero_day_mask = ~zero_day_mask
-            non_zero_day_predictions = base_predictions[non_zero_day_mask]
-            non_zero_day_actual = y_test_tensor[non_zero_day_mask]
+            # Note: If exclude_zero_day=True, zero_day_mask_filtered will be all False (no zero-day samples)
+            if exclude_zero_day:
+                # No zero-day samples in filtered test set
+                zero_day_predictions = torch.tensor([], dtype=torch.long, device=self.device)
+                zero_day_actual = torch.tensor([], dtype=torch.long, device=self.device)
+                non_zero_day_predictions = base_predictions
+                non_zero_day_actual = y_test_filtered
+            else:
+                # Use original zero_day_mask to identify zero-day samples in predictions
+                zero_day_predictions = base_predictions[zero_day_mask_filtered]
+                zero_day_actual = y_test_filtered[zero_day_mask_filtered]
+                
+                non_zero_day_mask = ~zero_day_mask_filtered
+                non_zero_day_predictions = base_predictions[non_zero_day_mask]
+                non_zero_day_actual = y_test_filtered[non_zero_day_mask]
             
             # Zero-day only metrics
             if len(zero_day_actual) > 0:
@@ -3117,9 +3258,9 @@ class BlockchainFederatedIncentiveSystem:
                 'pr_curve': base_pr_curve,  # Precision-Recall curve data
                 'mcc': base_mcc,
                 'far': base_far,
-                'far': base_far,
                 'confusion_matrix': base_cm.tolist(),
-                'zero_day_detection_rate': zero_day_detection_rate,
+                'zero_day_detection_rate': zero_day_detection_rate if not exclude_zero_day else 0.0,  # No zero-day samples if excluded
+                'evaluation_mode': 'exclude_zero_day' if exclude_zero_day else 'include_all',  # Track evaluation mode
                 'predictions': base_predictions.cpu().numpy().tolist(),
                 'probabilities': base_probabilities.cpu().numpy().tolist(),
                 
@@ -3162,7 +3303,8 @@ class BlockchainFederatedIncentiveSystem:
             else:
                 logger.warning(f"      ROC AUC: Not available (calculation failed)")
             logger.info(f"      MCC: {base_mcc:.4f}")
-            logger.info(f"\n   🔴 Zero-Day Attacks Only ({len(zero_day_actual)} samples, {len(zero_day_actual)/len(y_test_tensor)*100:.1f}% of test set):")
+            test_set_size = len(y_test_filtered) if exclude_zero_day else len(y_test_tensor)
+            logger.info(f"\n   🔴 Zero-Day Attacks Only ({len(zero_day_actual)} samples, {len(zero_day_actual)/test_set_size*100:.1f}% of {'filtered ' if exclude_zero_day else ''}test set):")
             logger.info(f"      Accuracy: {zero_day_accuracy:.4f}")
             logger.info(f"      F1-Score: {zero_day_f1:.4f}")
             logger.info(f"      Precision: {zero_day_precision:.4f}")
@@ -3172,7 +3314,7 @@ class BlockchainFederatedIncentiveSystem:
                 logger.info(f"      Zero-Day-Specific AUC-PR: {zero_day_auc_pr:.4f} ⭐ (calculated on zero-day samples only, should match detection rate if perfect)")
             else:
                 logger.warning(f"      Zero-Day-Specific AUC-PR: Not available")
-            logger.info(f"\n   🟢 Non-Zero-Day Samples ({len(non_zero_day_actual)} samples, {len(non_zero_day_actual)/len(y_test_tensor)*100:.1f}% of test set):")
+            logger.info(f"\n   🟢 Non-Zero-Day Samples ({len(non_zero_day_actual)} samples, {len(non_zero_day_actual)/test_set_size*100:.1f}% of {'filtered ' if exclude_zero_day else ''}test set):")
             logger.info(f"      Accuracy: {non_zero_day_accuracy:.4f}")
             logger.info(f"      F1-Score: {non_zero_day_f1:.4f}")
             logger.info(f"      Precision: {non_zero_day_precision:.4f}")
@@ -3362,13 +3504,35 @@ class BlockchainFederatedIncentiveSystem:
                 if len(y_test_multiclass_seq) == len(y_test_tensor):
                     zero_day_mask = (y_test_multiclass_seq == zero_day_attack_label)
                     zero_day_count = zero_day_mask.sum().item()
+                    logger.info(f"🔍 Using sequence-level multiclass labels (preserves 30% zero-day distribution from stratified sampling)")
+                    logger.info(f"🔍 Identified {zero_day_count} zero-day sequences from {len(y_test_multiclass_seq)} sequences ({100*zero_day_count/len(y_test_multiclass_seq):.1f}%)")
                 else:
                     logger.warning(f"⚠️ Mismatch: {len(y_test_multiclass_seq)} multiclass labels vs {len(y_test_tensor)} sequences")
-                    zero_day_mask = torch.zeros(len(y_test_tensor), dtype=torch.bool, device=self.device)
-                    zero_day_count = 0
-                
-                logger.info(f"🔍 Using sequence-level multiclass labels (preserves 30% zero-day distribution from stratified sampling)")
-                logger.info(f"🔍 Identified {zero_day_count} zero-day sequences from {len(y_test_multiclass_seq)} sequences ({100*zero_day_count/len(y_test_multiclass_seq):.1f}%)")
+                    logger.warning(f"   Attempting to use test_attack_cat_original as fallback...")
+                    # Try to use test_attack_cat_original to identify zero-day samples
+                    if 'test_attack_cat_original' in self.preprocessed_data:
+                        test_attack_cat_original = self.preprocessed_data['test_attack_cat_original']
+                        # Map sequences to original samples to identify zero-day
+                        sequence_length = self.config.sequence_length
+                        sequence_stride = self.config.sequence_stride
+                        zero_day_mask = torch.zeros(len(y_test_tensor), dtype=torch.bool, device=self.device)
+                        zero_day_count = 0
+                        
+                        for seq_idx in range(len(y_test_tensor)):
+                            start_idx = seq_idx * sequence_stride
+                            end_idx = min(start_idx + sequence_length, len(test_attack_cat_original))
+                            # Check if any sample in this sequence is zero-day
+                            for orig_idx in range(start_idx, end_idx):
+                                if orig_idx < len(test_attack_cat_original):
+                                    if test_attack_cat_original[orig_idx] == zero_day_attack:
+                                        zero_day_mask[seq_idx] = True
+                                        zero_day_count += 1
+                                        break
+                        logger.info(f"🔍 Identified {zero_day_count} zero-day sequences using test_attack_cat_original fallback")
+                    else:
+                        zero_day_mask = torch.zeros(len(y_test_tensor), dtype=torch.bool, device=self.device)
+                        zero_day_count = 0
+                        logger.error(f"❌ Cannot identify zero-day samples: size mismatch and no test_attack_cat_original available")
             elif 'test_attack_cat_original' in self.preprocessed_data:
                 # Fallback: Check ALL timesteps (may overcount due to sequence overlaps)
                 test_attack_cat_original = self.preprocessed_data['test_attack_cat_original']
@@ -3420,10 +3584,21 @@ class BlockchainFederatedIncentiveSystem:
                 # Get base model predictions
                 base_model = self.coordinator.model
                 base_model.eval()
-                base_logits_sample = base_model(X_test_tensor[:100])
+                # Get base model predictions (prototype-based)
+                # Create support set from validation data
+                X_val_sample = torch.FloatTensor(self.preprocessed_data['X_val']).to(self.device)
+                y_val_sample = torch.LongTensor(self.preprocessed_data['y_val']).to(self.device)
+                y_val_binary_sample = (y_val_sample != 0).long()
+                support_size_sample = min(100, len(X_val_sample))
+                support_indices_sample = torch.randperm(len(X_val_sample))[:support_size_sample]
+                support_x_sample = X_val_sample[support_indices_sample]
+                support_y_sample = y_val_binary_sample[support_indices_sample]
+                
+                prototypes_sample, _ = base_model.compute_prototypes(support_x_sample, support_y_sample)
+                base_logits_sample = base_model.forward_with_prototypes(X_test_tensor[:100], prototypes_sample)
                 base_preds_sample = base_logits_sample.argmax(dim=1)
                 
-                # Get adapted model predictions
+                # Get adapted model predictions (prototype-based)
                 adapted_model.eval()
                 adapted_logits_sample = adapted_model(X_test_tensor[:100])
                 adapted_preds_sample = adapted_logits_sample.argmax(dim=1)
@@ -3443,10 +3618,29 @@ class BlockchainFederatedIncentiveSystem:
                 else:
                     logger.info(f"  ✅ Adapted model predictions differ from base: {1-prediction_match:.1%} changed")
             
-            # Evaluate adapted model performance
+            # CRITICAL FIX: Use prototype-based prediction (model now returns embeddings, not logits)
+            # Create support set from validation data for prototype computation
+            logger.info("🎯 TTT Adapted Model: Using prototype-based evaluation")
+            device = next(adapted_model.parameters()).device  # Get device from model
+            X_val_tensor = torch.FloatTensor(self.preprocessed_data['X_val']).to(device)
+            y_val_tensor = torch.LongTensor(self.preprocessed_data['y_val']).to(device)
+            y_val_binary = (y_val_tensor != 0).long()  # Convert to binary
+            
+            # Use validation data as support set for prototype computation (same as base model)
+            support_size = min(200, len(X_val_tensor))
+            support_indices = torch.randperm(len(X_val_tensor))[:support_size]
+            support_x = X_val_tensor[support_indices]
+            support_y = y_val_binary[support_indices]
+            
+            # Evaluate adapted model performance using prototype-based prediction
             with torch.no_grad():
                 adapted_model.eval()
-                adapted_logits = adapted_model(X_test_tensor)
+                
+                # Compute prototypes from support set
+                prototypes, unique_labels = adapted_model.compute_prototypes(support_x, support_y)
+                
+                # Get prototype-based logits for test set (negative distances as logits)
+                adapted_logits = adapted_model.forward_with_prototypes(X_test_tensor, prototypes)
                 
                 # Apply temperature scaling for probability calibration (improves AUC-PR ranking)
                 # Temperature > 1.0 softens overconfident predictions from entropy minimization
@@ -3462,10 +3656,11 @@ class BlockchainFederatedIncentiveSystem:
             y_test_np = y_test_tensor.cpu().numpy()
             y_test_binary = (y_test_np != 0).astype(int)  # Normal=0, Attack=1
             
-            # Get attack probabilities for threshold optimization
+            # Get attack probabilities for threshold optimization (prototype-based)
             if adapted_logits.shape[1] == 2:
                 attack_probs = adapted_probabilities[:, 1].cpu().numpy()
             else:
+                # For binary classification, attack = 1 - normal
                 attack_probs = (1.0 - adapted_probabilities[:, 0]).cpu().numpy()
             
             # Analyze probability distribution to understand TTT adaptation effects
@@ -3918,6 +4113,67 @@ class BlockchainFederatedIncentiveSystem:
             logger.info(f"      Precision: {adapted_non_zero_day_precision:.4f}")
             logger.info(f"      Recall: {adapted_non_zero_day_recall:.4f}")
             
+            # Check for TTT overfitting (compare with base model)
+            try:
+                import sys
+                import os
+                sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+                from check_ttt_overfitting import check_ttt_overfitting, print_overfitting_report
+                
+                # Get base model results for comparison
+                base_results = self.evaluate_base_model_only()
+                
+                # Check overfitting
+                overfitting_analysis = check_ttt_overfitting(
+                    base_results=base_results,
+                    ttt_results=adapted_results,
+                    X_test=X_test_tensor.cpu().numpy(),
+                    y_test=y_test_tensor.cpu().numpy(),
+                    zero_day_mask=zero_day_mask.cpu().numpy() if torch.is_tensor(zero_day_mask) else zero_day_mask,
+                    threshold=0.05  # 5% performance drop threshold
+                )
+                
+                # Add overfitting analysis to results
+                adapted_results['overfitting_analysis'] = overfitting_analysis
+                
+                # Print diagnostic report
+                logger.info("\n" + "="*80)
+                logger.info("TTT OVERFITTING DIAGNOSTIC")
+                logger.info("="*80)
+                
+                status_symbol = "⚠️" if overfitting_analysis['status'] == 'overfitting' else "✅"
+                logger.info(f"{status_symbol} Status: {overfitting_analysis['status'].upper()}")
+                logger.info(f"   Severity: {overfitting_analysis['severity'].upper()}")
+                
+                if overfitting_analysis['flags']:
+                    logger.warning(f"⚠️ Overfitting Flags Detected:")
+                    for flag in overfitting_analysis['flags']:
+                        logger.warning(f"   - {flag.replace('_', ' ').title()}")
+                
+                if overfitting_analysis['normal_performance']:
+                    normal_perf = overfitting_analysis['normal_performance']
+                    logger.info(f"\n📊 Normal Sample Performance:")
+                    logger.info(f"   Base Model Accuracy: {normal_perf['base_accuracy']:.2%}")
+                    logger.info(f"   TTT Model Accuracy:  {normal_perf['ttt_accuracy']:.2%}")
+                    logger.info(f"   Accuracy Drop:       {normal_perf['accuracy_drop']:.2%} {'⚠️' if normal_perf['accuracy_drop'] > 0.05 else ''}")
+                    logger.info(f"   Base FP Rate:        {normal_perf['base_fp_rate']:.2%}")
+                    logger.info(f"   TTT FP Rate:         {normal_perf['ttt_fp_rate']:.2%}")
+                    logger.info(f"   FP Rate Increase:    {normal_perf['fp_rate_increase']:.2%} {'⚠️' if normal_perf['fp_rate_increase'] > 0.05 else ''}")
+                
+                if overfitting_analysis['recommendations']:
+                    logger.info(f"\n💡 Recommendations:")
+                    for i, rec in enumerate(overfitting_analysis['recommendations'], 1):
+                        logger.info(f"   {i}. {rec}")
+                
+                logger.info("="*80 + "\n")
+                
+            except ImportError:
+                logger.warning("⚠️ TTT overfitting check not available (check_ttt_overfitting.py not found)")
+            except Exception as e:
+                logger.warning(f"⚠️ TTT overfitting check failed: {str(e)}")
+                import traceback
+                logger.debug(traceback.format_exc())
+            
             return adapted_results
         except Exception as e:
             logger.error(f"Adapted model evaluation failed: {str(e)}")
@@ -4238,27 +4494,37 @@ class BlockchainFederatedIncentiveSystem:
                     # Convert to binary classification for consistency with TTT model
                     y_test_binary = (y_test_tensor != 0).long()  # Normal=0, Attack=1
                     
-                    # Direct evaluation without meta-tasks to match TTT sample size
+                    # Pure prototype-based evaluation: Create support set from validation data
+                    logger.info("🎯 Base Model: Using pure prototype-based evaluation")
+                    X_val_tensor = torch.FloatTensor(self.preprocessed_data['X_val']).to(device)
+                    y_val_tensor = torch.LongTensor(self.preprocessed_data['y_val']).to(device)
+                    y_val_binary = (y_val_tensor != 0).long()  # Convert to binary
+                    
+                    # Use validation data as support set for prototype computation
+                    support_size = min(200, len(X_val_tensor))
+                    support_indices = torch.randperm(len(X_val_tensor))[:support_size]
+                    support_x = X_val_tensor[support_indices]
+                    support_y = y_val_binary[support_indices]
+                    
                     with torch.no_grad():
-                        # Get model predictions directly
-                        outputs = final_model(X_test_tensor)
+                        # Compute prototypes from support set
+                        prototypes, unique_labels = final_model.compute_prototypes(support_x, support_y)
+                        
+                        # Get prototype-based logits for test set
+                        outputs = final_model.forward_with_prototypes(X_test_tensor, prototypes)  # Returns logits from distances
                         probabilities = torch.softmax(outputs, dim=1)
                         
                         # 🔍 DEBUG: Check model outputs and probabilities
-                        logger.info(f"🔍 DEBUG BASE MODEL - Output shape: {outputs.shape}")
-                        logger.info(f"🔍 DEBUG BASE MODEL - Output range: [{outputs.min():.4f}, {outputs.max():.4f}]")
-                        logger.info(f"🔍 DEBUG BASE MODEL - Output std: {outputs.std():.4f}")
-                        logger.info(f"🔍 DEBUG BASE MODEL - Unique outputs: {len(torch.unique(outputs))}")
-                        logger.info(f"🔍 DEBUG BASE MODEL - Probability range: [{probabilities.min():.4f}, {probabilities.max():.4f}]")
-                        logger.info(f"🔍 DEBUG BASE MODEL - Probability std: {probabilities.std():.4f}")
-                        logger.info(f"🔍 DEBUG BASE MODEL - Unique probabilities: {len(torch.unique(probabilities))}")
+                        logger.info(f"🔍 DEBUG BASE MODEL - Prototype-based logits shape: {outputs.shape}")
+                        logger.info(f"🔍 DEBUG BASE MODEL - Prototypes computed from {len(support_x)} support samples")
                         
-                        # Convert to binary predictions (same as TTT model)
-                        if outputs.shape[1] == 2:
-                            predictions = torch.argmax(outputs, dim=1)
-                        else:
+                        # Convert to binary predictions (prototype-based)
+                        # outputs are already logits from forward_with_prototypes
+                        predictions = torch.argmax(outputs, dim=1)
+                        # Ensure binary: Normal=0, Attack=1
+                        if len(unique_labels) > 2:
                             # For multiclass, convert to binary: Normal=0, Attack=1
-                            predictions = (torch.argmax(outputs, dim=1) != 0).long()
+                            predictions = (predictions != 0).long()
                         
                         # 🔍 DEBUG: Check predictions
                         logger.info(f"🔍 DEBUG BASE MODEL - Predictions shape: {predictions.shape}")

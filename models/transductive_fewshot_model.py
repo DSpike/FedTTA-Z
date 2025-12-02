@@ -11,6 +11,29 @@ import copy
 import math
 import random
 
+# Mixed precision training for 40-70% speedup and 50% memory reduction
+if torch.cuda.is_available():
+    from torch.cuda.amp import autocast, GradScaler
+else:
+    # Fallback for CPU (autocast becomes no-op)
+    class autocast:
+        def __init__(self, *args, **kwargs):
+            pass
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+    
+    class GradScaler:
+        def __init__(self):
+            pass
+        def scale(self, loss):
+            return loss
+        def step(self, optimizer):
+            optimizer.step()
+        def update(self):
+            pass
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -844,18 +867,9 @@ class TransductiveLearner(nn.Module):
             # Removed excessive 0.5 dropout - causes unstable predictions during TTT
         )
         
-        # Simplified classification network with moderate dropout
-        # Reduced from 4 dropout layers (0.5, 0.3, 0.3, 0.2) to 1 moderate dropout (0.2)
-        self.classifier = nn.Sequential(
-            nn.Linear(embedding_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim // 2),
-            nn.BatchNorm1d(hidden_dim // 2),
-            nn.ReLU(),
-            nn.Dropout(0.2),  # Single moderate dropout for regularization
-            nn.Linear(hidden_dim // 2, num_classes)
-        )
+        # REMOVED: Binary classification head - model is now pure prototype-based
+        # No classifier layer - predictions use nearest prototype only
+        self.num_classes = num_classes  # Store for reference (used in prototype prediction)
         
         # Enhanced transductive learning parameters for better convergence
         self.transductive_lr = 0.01  # Increased learning rate for faster convergence
@@ -874,34 +888,178 @@ class TransductiveLearner(nn.Module):
     
     
     
-    def get_confidence_scores(self, x: torch.Tensor) -> torch.Tensor:
+    def compute_prototypes(self, support_x: torch.Tensor, support_y: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Calculates confidence scores for the input samples.
+        Compute prototypes from support set.
+        
+        Args:
+            support_x: Support set features (batch_size_support, sequence_length, input_dim)
+            support_y: Support set labels (batch_size_support,)
+            
+        Returns:
+            prototypes: Class prototypes (num_classes, embedding_dim)
+            unique_labels: Unique class labels (num_classes,)
+        """
+        device = next(self.parameters()).device
+        support_x = support_x.to(device)
+        support_y = support_y.to(device)
+        
+        # Extract embeddings
+        support_embeddings = self.extract_embeddings(support_x)  # (N_support, embedding_dim)
+        
+        # Compute prototypes as mean embeddings per class
+        unique_labels = torch.unique(support_y)
+        prototypes = []
+        for label in unique_labels:
+            mask = (support_y == label)
+            prototype = support_embeddings[mask].mean(dim=0)  # Mean embedding for this class
+            prototypes.append(prototype)
+        prototypes = torch.stack(prototypes)  # (num_classes, embedding_dim)
+        
+        return prototypes, unique_labels
+    
+    def predict_with_prototypes(self, support_x: torch.Tensor, support_y: torch.Tensor, query_x: torch.Tensor) -> torch.Tensor:
+        """
+        Pure prototype-based prediction: Compute prototypes from support set and predict query samples
+        via nearest prototype (squared Euclidean distance).
+        
+        Args:
+            support_x: Support set features (batch_size_support, sequence_length, input_dim)
+            support_y: Support set labels (batch_size_support,)
+            query_x: Query set features (batch_size_query, sequence_length, input_dim)
+            
+        Returns:
+            predictions: Class predictions for query samples (batch_size_query,)
+        """
+        device = next(self.parameters()).device
+        query_x = query_x.to(device)
+        
+        # Compute prototypes from support set
+        prototypes, unique_labels = self.compute_prototypes(support_x, support_y)
+        
+        # Extract query embeddings
+        query_embeddings = self.extract_embeddings(query_x)  # (N_query, embedding_dim)
+        
+        # Compute squared Euclidean distance from query embeddings to all prototypes
+        distances = torch.cdist(query_embeddings.unsqueeze(0), prototypes.unsqueeze(0), p=2).squeeze(0) ** 2  # (N_query, num_classes)
+        
+        # Predict via nearest prototype (argmin distance)
+        predictions = unique_labels[torch.argmin(distances, dim=1)]
+        
+        return predictions
+    
+    def forward_with_prototypes(self, query_x: torch.Tensor, prototypes: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass that returns prototype-based logits (for backward compatibility during transition).
+        Computes negative squared distances from query embeddings to prototypes as logits.
+        
+        Args:
+            query_x: Query set features (batch_size_query, sequence_length, input_dim)
+            prototypes: Class prototypes (num_classes, embedding_dim)
+            
+        Returns:
+            logits: Prototype-based logits (batch_size_query, num_classes) - negative squared distances
+        """
+        device = next(self.parameters()).device
+        query_x = query_x.to(device)
+        prototypes = prototypes.to(device)
+        
+        # Extract embeddings
+        query_embeddings = self.extract_embeddings(query_x)  # (N_query, embedding_dim)
+        
+        # Compute squared Euclidean distances
+        distances = torch.cdist(query_embeddings.unsqueeze(0), prototypes.unsqueeze(0), p=2).squeeze(0) ** 2  # (N_query, num_classes)
+        
+        # Convert distances to logits (negative squared distances: closer = higher logit)
+        logits = -distances
+        
+        return logits
+    
+    def get_confidence_scores(self, x: torch.Tensor, support_x: torch.Tensor = None, support_y: torch.Tensor = None) -> torch.Tensor:
+        """
+        Calculates confidence scores for the input samples using prototype-based distances.
+        If support_x and support_y are provided, uses them for prototype computation.
+        Otherwise, returns distance-based confidence from embeddings.
+        
         Args:
             x: Input tensor of shape (batch_size, sequence_length, input_dim)
+            support_x: Optional support set for prototype computation
+            support_y: Optional support set labels
         Returns:
-            confidence_scores: Confidence scores for each sample
+            confidence_scores: Confidence scores for each sample (higher = more confident)
         """
         with torch.no_grad():
-            logits = self.forward(x)
-            probabilities = torch.softmax(logits, dim=1)
-            confidence_scores = torch.max(probabilities, dim=1)[0]
+            embeddings = self.forward(x)  # Get embeddings
+            
+            if support_x is not None and support_y is not None:
+                # Use prototype-based confidence
+                device = next(self.parameters()).device
+                support_x = support_x.to(device)
+                support_y = support_y.to(device)
+                support_embeddings = self.extract_embeddings(support_x)
+                
+                # Compute prototypes
+                unique_labels = torch.unique(support_y)
+                prototypes = []
+                for label in unique_labels:
+                    mask = (support_y == label)
+                    prototype = support_embeddings[mask].mean(dim=0)
+                    prototypes.append(prototype)
+                prototypes = torch.stack(prototypes)
+                
+                # Compute distances and use inverse distance as confidence (closer = more confident)
+                distances = torch.cdist(embeddings.unsqueeze(0), prototypes.unsqueeze(0), p=2).squeeze(0)
+                min_distances = torch.min(distances, dim=1)[0]
+                # Convert to confidence: closer distances = higher confidence (inverse, normalized)
+                confidence_scores = 1.0 / (1.0 + min_distances)  # Inverse distance as confidence
+            else:
+                # Fallback: use embedding norm as confidence proxy
+                embedding_norms = torch.norm(embeddings, dim=1)
+                confidence_scores = embedding_norms / (embedding_norms.max() + 1e-8)
         
         return confidence_scores
 
-    def get_confidence_and_probabilities(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def get_confidence_and_probabilities(self, x: torch.Tensor, support_x: torch.Tensor = None, support_y: torch.Tensor = None) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Calculates confidence scores and returns class probabilities.
+        Calculates confidence scores and returns class probabilities using prototype-based distances.
         Args:
             x: Input tensor of shape (batch_size, sequence_length, input_dim)
+            support_x: Optional support set for prototype computation
+            support_y: Optional support set labels
         Returns:
             confidence_scores: Confidence scores for each sample
-            probabilities: Probabilities per class (batch_size, num_classes)
+            probabilities: Probabilities per class based on distances to prototypes (batch_size, num_classes)
         """
         with torch.no_grad():
-            logits = self.forward(x)
-            probabilities = torch.softmax(logits, dim=1)
-            confidence_scores = torch.max(probabilities, dim=1)[0]
+            embeddings = self.forward(x)  # Get embeddings
+            
+            if support_x is not None and support_y is not None:
+                # Use prototype-based probabilities
+                device = next(self.parameters()).device
+                support_x = support_x.to(device)
+                support_y = support_y.to(device)
+                support_embeddings = self.extract_embeddings(support_x)
+                
+                # Compute prototypes
+                unique_labels = torch.unique(support_y)
+                prototypes = []
+                for label in unique_labels:
+                    mask = (support_y == label)
+                    prototype = support_embeddings[mask].mean(dim=0)
+                    prototypes.append(prototype)
+                prototypes = torch.stack(prototypes)
+                
+                # Compute distances and convert to probabilities using softmax over negative distances
+                distances = torch.cdist(embeddings.unsqueeze(0), prototypes.unsqueeze(0), p=2).squeeze(0)
+                # Convert distances to probabilities: closer = higher probability
+                logits = -distances  # Negative distances (closer = higher logit)
+                probabilities = torch.softmax(logits, dim=1)
+                confidence_scores = torch.max(probabilities, dim=1)[0]
+            else:
+                # Fallback: uniform probabilities if no support set
+                probabilities = torch.ones((embeddings.shape[0], self.num_classes), device=embeddings.device) / self.num_classes
+                confidence_scores = torch.ones(embeddings.shape[0], device=embeddings.device) / self.num_classes
+                
         return confidence_scores, probabilities
     
     def get_embeddings(self, x: torch.Tensor) -> torch.Tensor:
@@ -940,11 +1098,11 @@ class TransductiveLearner(nn.Module):
         
     def forward(self, x):
         """
-        Forward pass: Extract embeddings and get logits
+        Forward pass: Extract embeddings only (pure prototype-based model)
+        Returns embeddings instead of logits
         """
         embeddings = self.extract_embeddings(x)
-        logits = self.classifier(embeddings)
-        return logits
+        return embeddings
     
     def extract_embeddings(self, x):
         """
@@ -1090,13 +1248,34 @@ class TransductiveLearner(nn.Module):
     
     def compute_loss(self, support_embeddings, support_y, test_embeddings, test_predictions, prototypes):
         """
-        Unified loss computation method combining all loss components
-        Now uses centralized utility for consistency
+        Pure prototype-based loss computation (no classifier head)
+        Uses distance-based cross-entropy loss on prototype distances
         """
-        return LossUtils.compute_total_loss(
-            support_embeddings, support_y, test_embeddings, test_predictions, 
-            prototypes, self.classifier, consistency_weight=0.1, smoothness_weight=0.01
-        )
+        # Compute prototypes from support set
+        unique_labels = torch.unique(support_y)
+        support_prototypes = []
+        for label in unique_labels:
+            mask = (support_y == label)
+            prototype = support_embeddings[mask].mean(dim=0)
+            support_prototypes.append(prototype)
+        support_prototypes = torch.stack(support_prototypes)  # (num_classes, embedding_dim)
+        
+        # Support loss: Cross-entropy on distances from support embeddings to prototypes
+        support_distances = torch.cdist(support_embeddings.unsqueeze(0), support_prototypes.unsqueeze(0), p=2).squeeze(0) ** 2  # (N_support, num_classes)
+        support_logits = -support_distances  # Negative squared distances (closer = higher logit)
+        support_loss = F.cross_entropy(support_logits, support_y)
+        
+        # Query/Test loss: Cross-entropy on distances from test embeddings to prototypes
+        test_distances = torch.cdist(test_embeddings.unsqueeze(0), support_prototypes.unsqueeze(0), p=2).squeeze(0) ** 2  # (N_test, num_classes)
+        test_logits = -test_distances  # Negative squared distances
+        # Convert test_predictions (probabilities) to class labels for loss computation
+        test_labels = torch.argmax(test_predictions, dim=1) if test_predictions.dim() > 1 else test_predictions
+        test_loss = F.cross_entropy(test_logits, test_labels)
+        
+        # Total loss: weighted combination
+        total_loss = support_loss + test_loss
+        
+        return total_loss
     
     def update_test_predictions(self, test_embeddings, prototypes):
         """
@@ -1133,6 +1312,18 @@ class TransductiveLearner(nn.Module):
         # Enhanced optimizer for better convergence on imbalanced data
         meta_optimizer = optim.AdamW(self.parameters(), lr=0.01, weight_decay=1e-4)
         
+        # Mixed precision training: 40-70% faster, 50% less memory on modern GPUs (Volta+)
+        # FP16 uses tensor cores for 2-4x speedup while maintaining FP32 precision for critical ops
+        # Check if model is on GPU (more reliable than just checking CUDA availability)
+        device = next(self.parameters()).device
+        is_cuda_device = device.type == 'cuda' and torch.cuda.is_available()
+        scaler = GradScaler() if is_cuda_device else GradScaler()
+        use_mixed_precision = is_cuda_device
+        
+        if use_mixed_precision:
+            logger.info(f"✅ Mixed precision FP16 enabled for meta-training on {device} (40-70% faster, 50% less memory)")
+        else:
+            logger.info(f"⚠️ Mixed precision disabled ({device.type.upper()} mode) - using FP32")
         
         # Initialize focal loss function (will create per-task instances with class weights)
         for epoch in range(meta_epochs):
@@ -1162,55 +1353,54 @@ class TransductiveLearner(nn.Module):
                     bn_modules = []
                     bn_was_training = []
                 
-                # Forward pass on support set
-                support_logits = self(support_x)
-                num_classes = support_logits.size(1)
-                
-                # Compute effective class weights using the new method
-                support_class_weights = compute_effective_class_weights(
-                    labels=support_y,
-                    num_classes=num_classes,
-                    beta=0.9999  # Extreme imbalance setting
-                ).to(support_logits.device)
-                
-                # Create FocalLoss instance with computed weights for support set
-                support_focal_loss = FocalLoss(alpha=support_class_weights, gamma=2.0, reduction='mean')
-                support_loss = support_focal_loss(support_logits, support_y)
-                
-                # Forward pass on query set
-                query_logits = self(query_x)
-                
-                # Compute effective class weights for query set
-                query_class_weights = compute_effective_class_weights(
-                    labels=query_y,
-                    num_classes=num_classes,
-                    beta=0.9999  # Extreme imbalance setting
-                ).to(query_logits.device)
-                
-                # Create FocalLoss instance with computed weights for query set
-                query_focal_loss = FocalLoss(alpha=query_class_weights, gamma=2.0, reduction='mean')
-                query_loss = query_focal_loss(query_logits, query_y)
-                
-                # Total loss
-                total_loss = support_loss + query_loss
-                
-                # Add FedProx proximal term if enabled and global_params provided
-                if global_params is not None and hasattr(config, 'use_fedprox') and config.use_fedprox:
-                    fedprox_mu = getattr(config, 'fedprox_mu', 0.01)
-                    proximal_term = 0.0
-                    device = next(self.parameters()).device
+                # MIXED PRECISION: Forward pass in FP16 for 2-4x speedup on tensor cores
+                with autocast(enabled=use_mixed_precision):
+                    # Pure prototype-based training: Extract embeddings
+                    support_embeddings = self(support_x)  # (N_support, embedding_dim)
+                    query_embeddings = self(query_x)  # (N_query, embedding_dim)
                     
-                    # Compute ||w - w_global||² for all parameters
-                    for name, param in self.named_parameters():
-                        if name in global_params:
-                            global_param = global_params[name].to(device)
-                            proximal_term += torch.sum((param - global_param) ** 2)
+                    # Compute prototypes from support set (mean embedding per class)
+                    unique_labels = torch.unique(support_y)
+                    num_classes = len(unique_labels)
+                    prototypes = []
+                    for label in unique_labels:
+                        mask = (support_y == label)
+                        prototype = support_embeddings[mask].mean(dim=0)
+                        prototypes.append(prototype)
+                    prototypes = torch.stack(prototypes)  # (num_classes, embedding_dim)
                     
-                    # Add proximal term: (μ/2) * ||w - w_global||²
-                    total_loss = total_loss + (fedprox_mu / 2.0) * proximal_term
+                    # Compute squared Euclidean distances
+                    support_distances = torch.cdist(support_embeddings.unsqueeze(0), prototypes.unsqueeze(0), p=2).squeeze(0) ** 2  # (N_support, num_classes)
+                    query_distances = torch.cdist(query_embeddings.unsqueeze(0), prototypes.unsqueeze(0), p=2).squeeze(0) ** 2  # (N_query, num_classes)
+                    
+                    # Convert distances to logits (negative squared distances)
+                    support_logits = -support_distances
+                    query_logits = -query_distances
+                    
+                    # Cross-entropy loss on distance-based logits
+                    support_loss = F.cross_entropy(support_logits, support_y)
+                    query_loss = F.cross_entropy(query_logits, query_y)
+                    
+                    # Total loss
+                    total_loss = support_loss + query_loss
+                    
+                    # Add FedProx proximal term if enabled and global_params provided
+                    if global_params is not None and hasattr(config, 'use_fedprox') and config.use_fedprox:
+                        fedprox_mu = getattr(config, 'fedprox_mu', 0.01)
+                        proximal_term = 0.0
+                        device = next(self.parameters()).device
+                        
+                        # Compute ||w - w_global||² for all parameters
+                        for name, param in self.named_parameters():
+                            if name in global_params:
+                                global_param = global_params[name].to(device)
+                                proximal_term += torch.sum((param - global_param) ** 2)
+                        
+                        # Add proximal term: (μ/2) * ||w - w_global||²
+                        total_loss = total_loss + (fedprox_mu / 2.0) * proximal_term
                 
-                # Compute accuracy
-                predictions = torch.argmax(query_logits, dim=1)
+                # Compute accuracy (prototype-based predictions) - outside autocast for evaluation
+                predictions = unique_labels[torch.argmin(query_distances, dim=1)]  # Nearest prototype
                 accuracy = (predictions == query_y).float().mean().item()
                 
                 # Restore BatchNorm training mode if it was temporarily changed
@@ -1219,10 +1409,17 @@ class TransductiveLearner(nn.Module):
                         if was_training:
                             m.train()
                 
-                # Backward pass
+                # MIXED PRECISION: Backward pass with GradScaler (FP16/FP32 mixed)
+                # This enables FP16 backward pass while maintaining FP32 precision for critical operations
                 meta_optimizer.zero_grad()
-                total_loss.backward()
-                meta_optimizer.step()
+                
+                # Scale loss for mixed precision training (prevents underflow in FP16)
+                scaled_loss = scaler.scale(total_loss)
+                scaled_loss.backward()
+                
+                # Optimizer step with scaler (handles FP16/FP32 conversion automatically)
+                scaler.step(meta_optimizer)
+                scaler.update()  # Update scaler state for next iteration
                 
                 epoch_losses.append(total_loss.item())
                 epoch_accuracies.append(accuracy)
@@ -1446,8 +1643,8 @@ def create_meta_tasks(data_x, data_y, n_way: int = 2, k_shot: int = 5, n_query: 
         phase: Phase of learning ("training", "validation", "testing")
         normal_query_ratio: Ratio of normal samples in query set (0.8 for training/validation, 0.9 for testing)
         zero_day_attack_label: Label of zero-day attack to exclude from training (None for testing phase)
-        enforce_equal_support_composition: If True, for n_way=2, ensures support set has equal Normal/Attack (excluding zero-day)
-        include_all_attack_types_in_support: If True, sample attack support set from ALL attack types uniformly (instead of one random type)
+        enforce_equal_support_composition: DEPRECATED for binary tasks. For n_way=2, always uses ProtoNets-style (64-100 Normal shots, ONE attack type per task)
+        include_all_attack_types_in_support: DEPRECATED for binary tasks. For n_way=2, always uses ONE attack type per task (preserves clean attack prototype)
         data_y_multiclass: Optional multiclass labels (0-9) for attack type distinction. If None, uses data_y (binary labels)
         
     Returns:
@@ -1516,100 +1713,82 @@ def create_meta_tasks(data_x, data_y, n_way: int = 2, k_shot: int = 5, n_query: 
         support_y_list = []
         selected_labels = None  # Initialize for later use in logging
         
-        # ENSURE EQUAL COMPOSITION: For n_way=2, always select Normal (0) and Attack samples
-        # HYBRID APPROACH: If include_all_attack_types_in_support=True, sample from ALL attack types
-        if n_way == 2 and enforce_equal_support_composition:
-            # Normal (0) is always selected, Attack samples will be added
-            selected_labels = torch.tensor([0], dtype=available_labels.dtype, device=available_labels.device)  # Start with Normal
+        # BINARY CLASSIFICATION (ProtoNets-style): For n_way=2, use standard few-shot approach
+        # - Normal class: 64-100 shots (many samples to establish strong prototype)
+        # - Attack class: ONE randomly chosen known attack type (not zero-day) with k_shot samples
+        # - NEVER include multiple attack types in the same task (preserves attack prototype)
+        if n_way == 2:
+            # Normal (0) is always selected, Attack samples will be added from ONE attack type
+            selected_labels = torch.tensor([0], dtype=available_labels.dtype, device=available_labels.device)
             
-            # 1. Add Normal samples (k_shot)
+            # 1. Add Normal samples (64-100 shots for strong prototype)
             normal_mask = data_y == 0
             normal_indices = torch.where(normal_mask)[0]
-            if len(normal_indices) >= k_shot:
-                shuffled_normal = normal_indices[torch.randperm(len(normal_indices))][:k_shot]
+            # Target: 64-100 shots for Normal class (more than k_shot to establish strong prototype)
+            normal_shot_target = min(100, max(64, k_shot * 2))  # Aim for 64-100, or 2x k_shot if k_shot < 32
+            normal_shot_actual = min(normal_shot_target, len(normal_indices))  # Use available samples
+            
+            if len(normal_indices) >= normal_shot_actual:
+                shuffled_normal = normal_indices[torch.randperm(len(normal_indices))][:normal_shot_actual]
                 support_x_list.append(data_x[shuffled_normal])
                 support_y_list.append(data_y[shuffled_normal])
-            else:
+            elif len(normal_indices) > 0:
+                # Use all available normal samples
                 support_x_list.append(data_x[normal_indices])
                 support_y_list.append(data_y[normal_indices])
+            else:
+                logger.warning(f"⚠️  No Normal samples available. Skipping Normal class.")
             
-            # 2. Add Attack samples
-            # Get available attack labels (exclude Normal=0 and zero-day if specified)
-            # Use multiclass labels if available for attack type distinction
-            if include_all_attack_types_in_support and labels_for_attack_types is not None:
-                # Use multiclass labels to get all attack types
+            # 2. Add Attack samples from ONE randomly chosen known attack type (not zero-day)
+            # Use multiclass labels if available to distinguish attack types
+            if labels_for_attack_types is not None:
+                # Use multiclass labels to get all known attack types (exclude Normal=0 and zero-day)
                 unique_multiclass_labels = torch.unique(labels_for_attack_types)
                 if zero_day_attack_label is not None:
                     all_attack_labels = unique_multiclass_labels[(unique_multiclass_labels != 0) & (unique_multiclass_labels != zero_day_attack_label)]
                 else:
                     all_attack_labels = unique_multiclass_labels[unique_multiclass_labels != 0]
             else:
-                # Use binary labels (fallback)
+                # Fallback to binary labels (only one attack class available)
                 if zero_day_attack_label is not None:
                     all_attack_labels = available_labels[(available_labels != 0) & (available_labels != zero_day_attack_label)]
                 else:
                     all_attack_labels = available_labels[available_labels != 0]
             
             if len(all_attack_labels) > 0:
-                if include_all_attack_types_in_support and labels_for_attack_types is not None:
-                    # HYBRID APPROACH: Sample k_shot attack samples uniformly from ALL attack types
-                    num_attack_types = len(all_attack_labels)
-                    samples_per_type = k_shot // num_attack_types  # Uniform distribution per type
-                    remaining_samples = k_shot % num_attack_types  # Extra samples to distribute
-                    
-                    attack_x_list = []
-                    attack_y_list = []
-                    attack_types_used = []
-                    
-                    for i, attack_label in enumerate(all_attack_labels):
-                        # Add one extra sample to first 'remaining_samples' attack types for balance
-                        samples_needed = samples_per_type + (1 if i < remaining_samples else 0)
-                        
-                        # Use multiclass labels to find attack samples
-                        attack_mask = labels_for_attack_types == attack_label
-                        attack_indices = torch.where(attack_mask)[0]
-                        
-                        if len(attack_indices) >= samples_needed:
-                            shuffled = attack_indices[torch.randperm(len(attack_indices))][:samples_needed]
-                            attack_x_list.append(data_x[shuffled])
-                            # IMPORTANT: Remap all attack labels to 1 for binary classification
-                            attack_y_list.append(torch.ones(samples_needed, dtype=data_y.dtype, device=data_y.device))
-                            attack_types_used.append(attack_label.item())
-                        elif len(attack_indices) > 0:
-                            # Use all available samples if less than needed
-                            attack_x_list.append(data_x[attack_indices])
-                            attack_y_list.append(torch.ones(len(attack_indices), dtype=data_y.dtype, device=data_y.device))
-                            attack_types_used.append(attack_label.item())
-                    
-                    # Combine all attack samples
-                    if attack_x_list:
-                        support_x_list.append(torch.cat(attack_x_list, dim=0))
-                        support_y_list.append(torch.cat(attack_y_list, dim=0))
-                        # Update selected_labels to include attack label (1 for binary classification)
-                        selected_labels = torch.cat([selected_labels, torch.tensor([1], dtype=selected_labels.dtype, device=selected_labels.device)])
-                        if len(attack_types_used) > 0 and _ == 0:  # Log only for first task to avoid spam
-                            logger.info(f"✅ Support set includes samples from {len(attack_types_used)} attack types: {sorted(set(attack_types_used))}")
+                # Select ONE random attack type for this task (ProtoNets-style: clean prototype per task)
+                attack_label_idx = torch.randint(0, len(all_attack_labels), (1,))
+                selected_attack_label = all_attack_labels[attack_label_idx]
+                
+                # Find samples for this specific attack type
+                if labels_for_attack_types is not None:
+                    # Use multiclass labels to find samples of this specific attack type
+                    attack_mask = labels_for_attack_types == selected_attack_label
                 else:
-                    # ORIGINAL APPROACH: Select one random attack class
-                    attack_label_idx = torch.randint(0, len(all_attack_labels), (1,))
-                    selected_attack_label = all_attack_labels[attack_label_idx]
-                    # Update selected_labels to include the selected attack label
-                    if selected_attack_label.dim() == 0:
-                        selected_attack_label = selected_attack_label.unsqueeze(0)
-                    selected_labels = torch.cat([selected_labels, selected_attack_label])
-                    
+                    # Fallback: use binary labels (all attacks are label 1)
                     attack_mask = data_y == selected_attack_label
-                    attack_indices = torch.where(attack_mask)[0]
-                    
-                    if len(attack_indices) >= k_shot:
-                        shuffled_attack = attack_indices[torch.randperm(len(attack_indices))][:k_shot]
-                        support_x_list.append(data_x[shuffled_attack])
-                        support_y_list.append(data_y[shuffled_attack])
-                    else:
-                        support_x_list.append(data_x[attack_indices])
-                        support_y_list.append(data_y[attack_indices])
+                
+                attack_indices = torch.where(attack_mask)[0]
+                
+                # Sample k_shot attack samples from this ONE attack type
+                if len(attack_indices) >= k_shot:
+                    shuffled_attack = attack_indices[torch.randperm(len(attack_indices))][:k_shot]
+                    support_x_list.append(data_x[shuffled_attack])
+                    # Remap to binary label 1 (Attack class)
+                    support_y_list.append(torch.ones(k_shot, dtype=data_y.dtype, device=data_y.device))
+                elif len(attack_indices) > 0:
+                    # Use all available samples if less than k_shot
+                    support_x_list.append(data_x[attack_indices])
+                    support_y_list.append(torch.ones(len(attack_indices), dtype=data_y.dtype, device=data_y.device))
+                
+                # Update selected_labels to include attack label (1 for binary classification)
+                selected_labels = torch.cat([selected_labels, torch.tensor([1], dtype=selected_labels.dtype, device=selected_labels.device)])
+                
+                # Log attack type used (only for first task to avoid spam)
+                if _ == 0:
+                    logger.info(f"✅ Binary task support set: Normal ({normal_shot_actual} shots), Attack type {selected_attack_label.item()} ({min(k_shot, len(attack_indices))} shots)")
             else:
-                logger.warning(f"⚠️  No attack labels available (excluding zero-day). Skipping attack samples.")
+                logger.warning(f"⚠️  No known attack labels available (excluding zero-day). Skipping attack samples.")
                 # Only Normal samples will be in support set
         
         else:
@@ -1648,19 +1827,16 @@ def create_meta_tasks(data_x, data_y, n_way: int = 2, k_shot: int = 5, n_query: 
         support_y_list = [y.squeeze() if y.dim() > 1 else y for y in support_y_list]
         support_y = torch.cat(support_y_list, dim=0)
         
-        # Verify support set composition (for n_way=2 with equal composition enforcement)
-        if n_way == 2 and enforce_equal_support_composition:
+        # Verify support set composition (for n_way=2 binary classification)
+        if n_way == 2:
             support_normal_count = (support_y == 0).sum().item()
-            # For hybrid approach, attacks are remapped to 1; for original, they keep original labels (non-zero)
-            support_attack_count = (support_y != 0).sum().item() if not include_all_attack_types_in_support else (support_y == 1).sum().item()
+            support_attack_count = (support_y == 1).sum().item()  # All attacks remapped to 1
             total_support = len(support_y)
-            if support_normal_count != support_attack_count:
-                logger.warning(f"⚠️  Unequal support set composition: {support_normal_count} Normal vs {support_attack_count} Attack (expected equal)")
-            else:
-                if include_all_attack_types_in_support and _ == 0:  # Log only for first task
-                    logger.info(f"✅ Equal support set composition: {support_normal_count} Normal, {support_attack_count} Attack (from ALL attack types)")
-                else:
-                    logger.debug(f"✅ Equal support set composition: {support_normal_count} Normal, {support_attack_count} Attack")
+            
+            # For binary ProtoNets-style: Normal should have 64-100 shots, Attack should have k_shot
+            # Log composition (only for first task to avoid spam)
+            if _ == 0:
+                logger.info(f"✅ Binary support set composition: {support_normal_count} Normal, {support_attack_count} Attack (from ONE attack type per task)")
         
         # SCIENTIFIC FIX: Use natural class distribution instead of artificial ratios
         # Sample query set with realistic distribution based on available data
