@@ -35,7 +35,7 @@ class SystemConfig:
     # === DATA CONFIGURATION ===
     data_path: str = "UNSW_NB15_training-set.csv"
     test_path: str = "UNSW_NB15_testing-set.csv"
-    zero_day_attack: str = "Backdoor"  # UNSW-NB15 attack type (label 3)
+    zero_day_attack: str = "Analysis"  # UNSW-NB15 attack type (label 3)
     
     # Attack type mapping (UNSW-NB15 dataset)
     attack_types = {

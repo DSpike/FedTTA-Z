@@ -230,6 +230,11 @@ class PerformanceVisualizer:
         
         logger.info(f"TTT adaptation plot: Using {min_length} data points (steps: {len(ttt_adaptation_data['steps'])}, losses: {len(ttt_adaptation_data['total_losses'])})")
         
+        # Handle case with very few data points (e.g., early stopping after 1-2 steps)
+        if min_length <= 3:
+            logger.warning(f"⚠️ Only {min_length} TTT step(s) recorded! Early stopping may have triggered very early, or TTT completed too quickly.")
+            logger.warning(f"   This suggests TTT converged very fast or early stopping patience ({ttt_adaptation_data.get('early_stopping_patience', 'unknown')}) was too low.")
+        
         # Adaptive scale selection: Use log scale only if loss range spans >2 orders of magnitude (100x)
         # Collect all positive loss values for range calculation
         all_positive_losses = []
@@ -251,8 +256,12 @@ class PerformanceVisualizer:
         
         # Plot 1: Total Loss Evolution
         # Use consistent styling with Plot 2 for same visual pattern
-        ax1.plot(steps, total_losses, 'b-', linewidth=2, marker='o', markersize=6, label='Total Loss', alpha=0.9)
-        ax1.set_title('TTT Adaptation: Total Loss Evolution', fontweight='bold', fontfamily='Times New Roman')
+        ax1.plot(steps, total_losses, 'b-', linewidth=2, marker='o', markersize=8 if len(steps) <= 3 else 6, 
+                 label='Total Loss', alpha=0.9)
+        title = 'TTT Adaptation: Total Loss Evolution'
+        if min_length <= 3:
+            title += f' ({min_length} step{"s" if min_length > 1 else ""} - Early Stopping)'
+        ax1.set_title(title, fontweight='bold', fontfamily='Times New Roman', fontsize=12 if min_length <= 3 else 11)
         ax1.set_xlabel('TTT Step', fontfamily='Times New Roman')
         ax1.set_ylabel(f'Loss Value ({"log" if use_log_scale else "linear"} scale)', fontfamily='Times New Roman')
         ax1.grid(True, alpha=0.3)
@@ -260,17 +269,20 @@ class PerformanceVisualizer:
             ax1.set_yscale('log')
         ax1.legend(prop={'family': 'Times New Roman'})
         
-        # Add value labels for key points (less frequent to avoid clutter)
+        # Add value labels for key points (less frequent to avoid clutter, but always show for few points)
         # Format depends on scale: scientific notation for log, decimal for linear
+        annotation_interval = max(1, min(10, len(total_losses) // 3)) if len(total_losses) > 3 else 1
         for i, loss in enumerate(total_losses):
-            if i % 10 == 0 and i < len(total_losses):  # Show every 10th point to avoid clutter
+            # Always annotate if few points (<10), or every N-th point for many points
+            if i % annotation_interval == 0 or len(total_losses) <= 10:
                 if use_log_scale:
                     label_text = f'{loss:.2e}'
                 else:
                     label_text = f'{loss:.4f}'
                 ax1.annotate(label_text, (steps[i], loss), 
                             textcoords="offset points", xytext=(0,10), ha='center',
-                            fontsize=7, fontfamily='Times New Roman', alpha=0.7)
+                            fontsize=8 if len(total_losses) <= 5 else 7, 
+                            fontfamily='Times New Roman', alpha=0.7, fontweight='bold' if len(total_losses) == 1 else 'normal')
         
         # Plot 2: Loss Components (Simplified: Total, Entropy, Pseudo-label only)
         ax2.plot(steps, total_losses, 'b-', linewidth=2, marker='o', markersize=6,

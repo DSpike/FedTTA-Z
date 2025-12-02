@@ -1043,11 +1043,14 @@ class SimpleFedAVGCoordinator:
                 adaptation_data["learning_rates"].append(current_lr)
                 adaptation_data["gradient_norms"].append(avg_grad_norm)
                 
-                if normalized_entropy < diversity_threshold:
+                # Only check diversity threshold after at least 5 steps to prevent premature stopping
+                # Early steps may have low diversity as the model is still adapting
+                if step >= 5 and normalized_entropy < diversity_threshold:
                     logger.warning(
                         f"⚠️ Diversity below threshold ({normalized_entropy:.4f} < {diversity_threshold:.2f}) - "
-                        f"stopping adaptation to prevent collapse"
+                        f"stopping adaptation to prevent collapse (after {step + 1} steps)"
                     )
+                    logger.info(f"📊 Collected {len(adaptation_data['steps'])} data points before early stopping")
                     break
                 
                 if step % 10 == 0 or step == ttt_steps - 1:
@@ -2336,7 +2339,26 @@ class TENTPseudoLabels:
                 smoothed_total_loss = ema_total_loss
                 smoothed_pseudo_loss = ema_pseudo_loss
 
-                # Early stopping check
+                current_lr = optimizer.param_groups[0]["lr"]
+                
+                self.stats["pseudo_labels_generated"].append(int(confident_mask.sum().item()))
+                self.stats["confidence_threshold"].append(threshold)
+                self.stats["entropy_history"].append(entropy_loss_value)
+                
+                # Store simplified loss tracking data BEFORE early stopping check
+                # This ensures we always capture data even if early stopping triggers
+                adaptation_data["steps"].append(step)
+                adaptation_data["total_losses"].append(smoothed_total_loss)
+                adaptation_data["pseudo_losses"].append(smoothed_pseudo_loss)
+                adaptation_data["entropy_losses"].append(entropy_loss_value)
+                adaptation_data["weighted_pseudo"].append(self.pseudo_label_weight * smoothed_pseudo_loss)
+                adaptation_data["weighted_entropy"].append(self.entropy_weight * entropy_loss_value)
+                adaptation_data["pseudo_ratios"].append(pseudo_ratio)
+                adaptation_data["learning_rates"].append(current_lr)
+                adaptation_data["gradient_norms"].append(grad_norm_value)
+                adaptation_data["confidence_thresholds"].append(threshold)
+
+                # Early stopping check (AFTER data collection to ensure we capture this step)
                 if self.early_stopping:
                     current_loss = smoothed_total_loss
                     if current_loss < best_loss - self.early_stopping_min_delta:
@@ -2351,6 +2373,7 @@ class TENTPseudoLabels:
                             f"Loss hasn't improved for {no_improve_count} steps "
                             f"(best_loss={best_loss:.6f}, current_loss={current_loss:.6f})"
                         )
+                        logger.info(f"📊 Collected {len(adaptation_data['steps'])} data points for visualization")
                         early_stopped = True
                         break
 
@@ -2364,24 +2387,6 @@ class TENTPseudoLabels:
                         self.checkpoint_models.append(checkpoint_model)
                         if len(self.checkpoint_models) > self.ensemble_checkpoints:
                             self.checkpoint_models.pop(0)  # Keep only the most recent checkpoints
-                
-                current_lr = optimizer.param_groups[0]["lr"]
-                
-                self.stats["pseudo_labels_generated"].append(int(confident_mask.sum().item()))
-                self.stats["confidence_threshold"].append(threshold)
-                self.stats["entropy_history"].append(entropy_loss_value)
-                
-                # Store simplified loss tracking data
-                adaptation_data["steps"].append(step)
-                adaptation_data["total_losses"].append(smoothed_total_loss)
-                adaptation_data["pseudo_losses"].append(smoothed_pseudo_loss)
-                adaptation_data["entropy_losses"].append(entropy_loss_value)
-                adaptation_data["weighted_pseudo"].append(self.pseudo_label_weight * smoothed_pseudo_loss)
-                adaptation_data["weighted_entropy"].append(self.entropy_weight * entropy_loss_value)
-                adaptation_data["pseudo_ratios"].append(pseudo_ratio)
-                adaptation_data["learning_rates"].append(current_lr)
-                adaptation_data["gradient_norms"].append(grad_norm_value)
-                adaptation_data["confidence_thresholds"].append(threshold)
                 
                 if step % 10 == 0 and len(adaptation_data["total_losses"]) > 1:
                     loss_change = adaptation_data["total_losses"][-1] - adaptation_data["total_losses"][0]
@@ -2434,6 +2439,9 @@ class TENTPseudoLabels:
                         self.models = models
                         # Store the final model for parameter access
                         self.final_model = models[-1] if models else None
+                        # Preserve ttt_adaptation_data from final model for visualization
+                        if self.final_model is not None and hasattr(self.final_model, 'ttt_adaptation_data'):
+                            self.ttt_adaptation_data = self.final_model.ttt_adaptation_data
                     
                     def __call__(self, x):
                         outputs_list = []
