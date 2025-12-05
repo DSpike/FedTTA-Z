@@ -340,9 +340,21 @@ class EnhancedBinaryClassifier(nn.Module):
             if attack_mask.sum() > 0:
                 prototype_loss += attack_distances[attack_mask].mean()
             
-            # Add query set loss for better adaptation
+            # Add query set loss for better adaptation (TRANSDUCTIVE: Use pseudo-labels, not query_y)
             query_logits = self.forward(query_x)
-            query_loss = self.compute_enhanced_loss(query_logits, query_y, class_weights) if query_y is not None else 0
+            
+            # TRANSDUCTIVE LEARNING: Use pseudo-labels from predictions instead of ground truth query_y
+            # This allows training with unlabeled query sets (true transductive learning)
+            if query_y is not None:
+                # Generate pseudo-labels from model predictions (nearest prototype)
+                query_probs = torch.softmax(query_logits, dim=1)
+                query_pseudo_labels = torch.argmax(query_probs, dim=1).detach()  # Detach to treat as fixed targets
+                query_loss = self.compute_enhanced_loss(query_logits, query_pseudo_labels, class_weights)
+            else:
+                # If query_y is None, compute entropy loss (unsupervised)
+                query_probs = torch.softmax(query_logits, dim=1)
+                entropy = -(query_probs * torch.log(query_probs + 1e-8)).sum(dim=1).mean()
+                query_loss = -entropy  # Minimize entropy (maximize confidence)
             
             # Total loss with query adaptation
             total_loss = support_loss + 0.1 * prototype_loss + 0.1 * query_loss
