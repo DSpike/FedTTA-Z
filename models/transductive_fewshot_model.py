@@ -1664,8 +1664,11 @@ def create_meta_tasks(data_x, data_y, n_way: int = 2, k_shot: int = 5, n_query: 
         phase: Phase of learning ("training", "validation", "testing")
         normal_query_ratio: Ratio of normal samples in query set (0.8 for training/validation, 0.9 for testing)
         zero_day_attack_label: Label of zero-day attack to exclude from training (None for testing phase)
-        enforce_equal_support_composition: DEPRECATED for binary tasks. For n_way=2, always uses ProtoNets-style (64-100 Normal shots, ONE attack type per task)
-        include_all_attack_types_in_support: DEPRECATED for binary tasks. For n_way=2, always uses ONE attack type per task (preserves clean attack prototype)
+        enforce_equal_support_composition: DEPRECATED for binary tasks. For n_way=2, uses Balanced Multi-Attack Support Sets:
+            - Normal: k_shot samples
+            - Attack: 3-5 attack types per task (balanced distribution across all tasks)
+            - Each attack type gets k_shot // num_attacks_per_task samples
+        include_all_attack_types_in_support: DEPRECATED for binary tasks. For n_way=2, uses 3-5 attack types per task (balanced distribution, not all types)
         data_y_multiclass: Optional multiclass labels (0-9) for attack type distinction. If None, uses data_y (binary labels)
         
     Returns:
@@ -1787,11 +1790,14 @@ def create_meta_tasks(data_x, data_y, n_way: int = 2, k_shot: int = 5, n_query: 
         selected_labels = None  # Initialize for later use in logging
         
         # BINARY CLASSIFICATION with Balanced Multi-Attack Support Sets
-        # Requirements:
-        # 1. Balance 8 known attack types equally across tasks
-        # 2. Include 3-5 known attacks per task (support set)
-        # 3. Match query set to support set attack types
-        # 4. Zero-day NEVER appears in support sets (only in test query sets)
+        # UNIQUE COMPOSITION (different from standard ProtoNets):
+        # 1. Normal samples: k_shot samples (not 64-100 as in some ProtoNets variants)
+        # 2. Attack samples: 3-5 attack types per task (not ONE as in standard ProtoNets)
+        #    - k_shot samples divided among 3-5 attack types
+        #    - Each attack type gets k_shot // num_attacks_per_task samples
+        # 3. Balanced distribution: All known attack types appear equally across all tasks (using pre-shuffled pool)
+        # 4. Query set matches support set attack types (same 3-5 attack types)
+        # 5. Zero-day NEVER appears in support sets (only in test query sets)
         if n_way == 2:
             # Normal (0) is always selected
             selected_labels = torch.tensor([0], dtype=available_labels.dtype, device=available_labels.device)
