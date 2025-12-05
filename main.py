@@ -25,8 +25,6 @@ from concurrent.futures import ThreadPoolExecutor
 from sklearn.metrics import roc_curve, roc_auc_score, precision_recall_curve, average_precision_score
 
 # Import our components
-#from preprocessing.blockchain_federated_unsw_preprocessor import UNSWPreprocessor
-from blockchain_federated_cicids_preprocessor import CICIDSPreprocessor
 from models.transductive_fewshot_model import TransductiveFewShotModel, create_meta_tasks, TransductiveLearner
 from config import get_config, update_config, SystemConfig
 from coordinators.simple_fedavg_coordinator import SimpleFedAVGCoordinator
@@ -449,18 +447,17 @@ class BlockchainFederatedIncentiveSystem:
             logger.info("Initializing enhanced system components...")
             
             # 1. Initialize preprocessor
-            logger.info("Initializing UNSW preprocessor...")
-            from preprocessing.blockchain_federated_unsw_preprocessor import UNSWPreprocessor
-            self.preprocessor = UNSWPreprocessor(
-                data_path=self.config.data_path,
-                test_path=self.config.test_path
-            )
-            '''
+            logger.info("Initializing CICIDS2017 preprocessor...")
+            # from preprocessing.blockchain_federated_unsw_preprocessor import UNSWPreprocessor
+            # self.preprocessor = UNSWPreprocessor(
+            #     data_path=self.config.data_path,
+            #     test_path=self.config.test_path
+            # )
+            from blockchain_federated_cicids_preprocessor import CICIDSPreprocessor
             self.preprocessor = CICIDSPreprocessor(
                 data_path=self.config.data_path,
                 test_path=self.config.test_path
             )
-            '''
             
             
             # 2. Initialize transductive few-shot model (will be updated after
@@ -538,7 +535,7 @@ class BlockchainFederatedIncentiveSystem:
     
     def _stratified_test_subset(self, X_test, y_test, y_test_multiclass, test_attack_cat, n_samples):
         """
-        Create a stratified subset of test data with target zero-day samples (default 30%, can be overridden)
+        Create a stratified subset of test data with target composition: 60% Normal, 30% Known attacks, 10% Zero-day (defaults, can be overridden)
         
         Args:
             X_test: Test features tensor
@@ -555,10 +552,12 @@ class BlockchainFederatedIncentiveSystem:
         
         n_samples = min(n_samples, len(X_test))
         
-        # TARGET: 40% Normal, 35% Non-zero-day attacks, 25% Zero-day attacks
-        # Use temp override if set (for pre-sequence sampling), otherwise use 25% zero-day target
+        # TARGET: 60% Normal, 30% Known attacks (non-zero-day), 10% Zero-day attacks
+        # Use temp override if set (for pre-sequence sampling), otherwise use 10% zero-day target
         # Pre-sequence target can be higher to compensate for sequence creation dilution
-        zero_day_target_percentage = getattr(self, '_temp_zero_day_target', 0.25)  # 25% zero-day target
+        zero_day_target_percentage = getattr(self, '_temp_zero_day_target', 0.10)  # 10% zero-day target
+        normal_target_percentage = getattr(self, '_temp_normal_target', 0.60)  # 60% Normal target
+        known_attack_target_percentage = getattr(self, '_temp_known_attack_target', 0.30)  # 30% Known attack target
         
         # CRITICAL FIX: Check availability FIRST before calculating target count
         # This prevents warnings when target exceeds available samples
@@ -621,8 +620,24 @@ class BlockchainFederatedIncentiveSystem:
         else:
             y_multiclass_np = None
         
-        # Convert attack categories to numpy array if list
-        attack_cat_np = np.array(test_attack_cat) if isinstance(test_attack_cat, list) else test_attack_cat
+        # Convert attack categories to numpy array if list or pandas Series
+        if test_attack_cat is not None:
+            if isinstance(test_attack_cat, list):
+                attack_cat_np = np.asarray(test_attack_cat, dtype=object)
+            elif isinstance(test_attack_cat, np.ndarray):
+                attack_cat_np = np.asarray(test_attack_cat, dtype=object)
+            else:
+                # Handle pandas Series or other types
+                attack_cat_np = np.asarray(test_attack_cat, dtype=object)
+        else:
+            attack_cat_np = None
+        
+        # Ensure all indices are integer arrays
+        def ensure_int_indices(indices):
+            """Ensure indices are integer numpy array for proper indexing"""
+            if isinstance(indices, np.ndarray):
+                return indices.astype(np.int64)
+            return np.array(indices, dtype=np.int64)
         
         if n_samples >= len(X_np):
             # If we want all samples, just return the original data
@@ -637,17 +652,27 @@ class BlockchainFederatedIncentiveSystem:
             
             # Get indices of zero-day and non-zero-day samples
             if y_multiclass_np is not None:
-                zero_day_indices = np.where(y_multiclass_np == zero_day_label)[0]
-                non_zero_day_indices = np.where(y_multiclass_np != zero_day_label)[0]
+                zero_day_indices = ensure_int_indices(np.where(y_multiclass_np == zero_day_label)[0])
+                non_zero_day_indices = ensure_int_indices(np.where(y_multiclass_np != zero_day_label)[0])
             else:
                 # Fallback: use binary labels or attack_cat if available
-                if attack_cat_np is not None and self.config.zero_day_attack in attack_cat_np:
-                    zero_day_indices = np.where(attack_cat_np == self.config.zero_day_attack)[0]
-                    non_zero_day_indices = np.where(attack_cat_np != self.config.zero_day_attack)[0]
+                if attack_cat_np is not None:
+                    # Debug: Check if zero-day attack exists in attack_cat
+                    unique_attacks = np.unique(attack_cat_np)
+                    logger.info(f"🔍 Available attack types in test data: {unique_attacks}")
+                    logger.info(f"🔍 Looking for zero-day attack: '{self.config.zero_day_attack}'")
+                    
+                    if self.config.zero_day_attack in attack_cat_np:
+                        zero_day_indices = ensure_int_indices(np.where(attack_cat_np == self.config.zero_day_attack)[0])
+                        non_zero_day_indices = ensure_int_indices(np.where(attack_cat_np != self.config.zero_day_attack)[0])
+                    else:
+                        logger.warning(f"⚠️  Zero-day attack '{self.config.zero_day_attack}' not found in attack_cat. Available: {unique_attacks}")
+                        zero_day_indices = np.array([], dtype=np.int64)
+                        non_zero_day_indices = ensure_int_indices(np.arange(len(X_np)))
                 else:
                     # Last resort: use binary labels (less accurate)
-                    zero_day_indices = np.array([])
-                    non_zero_day_indices = np.arange(len(X_np))
+                    zero_day_indices = np.array([], dtype=np.int64)
+                    non_zero_day_indices = ensure_int_indices(np.arange(len(X_np)))
             
             # Calculate how many zero-day and non-zero-day samples to select
             available_zero_day = len(zero_day_indices)
@@ -661,40 +686,143 @@ class BlockchainFederatedIncentiveSystem:
                 
                 # Randomly select zero-day samples
                 np.random.seed(42)
-                selected_zero_day_indices = np.random.choice(zero_day_indices, size=actual_zero_day_count, replace=False)
+                selected_zero_day_indices = ensure_int_indices(np.random.choice(zero_day_indices, size=actual_zero_day_count, replace=False))
             else:
-                selected_zero_day_indices = np.array([])
+                selected_zero_day_indices = np.array([], dtype=np.int64)
                 logger.warning(f"⚠️  No zero-day samples found in test data!")
             
-            # Select non-zero-day samples to fill the rest
-            remaining_samples = n_samples - len(selected_zero_day_indices)
-            
-            if remaining_samples > 0 and available_non_zero_day > 0:
-                # Use stratified sampling for non-zero-day samples to preserve their distribution
-                if y_multiclass_np is not None:
-                    non_zero_day_labels = y_multiclass_np[non_zero_day_indices]
-                    stratify_by = non_zero_day_labels
-                else:
-                    non_zero_day_labels = y_np[non_zero_day_indices]
-                    stratify_by = non_zero_day_labels
-                
-                # Stratified sampling of non-zero-day samples
-                actual_remaining = min(remaining_samples, available_non_zero_day)
-                if actual_remaining < remaining_samples:
-                    logger.warning(f"⚠️  Only {available_non_zero_day} non-zero-day samples available, targeting {remaining_samples}.")
-                
-                non_zero_day_subset_indices, _ = train_test_split(
-                    np.arange(len(non_zero_day_indices)),
-                    train_size=actual_remaining,
-                stratify=stratify_by,
-                random_state=42
-            )
-                selected_non_zero_day_indices = non_zero_day_indices[non_zero_day_subset_indices]
+            # Separate Normal samples from known attack samples
+            # Normal samples have label 0 (binary) or multiclass label 0
+            normal_label = 0
+            if y_multiclass_np is not None:
+                normal_mask = (y_multiclass_np == normal_label)
             else:
-                selected_non_zero_day_indices = np.array([])
+                normal_mask = (y_np == normal_label)
             
-            # Combine indices
-            all_selected_indices = np.concatenate([selected_zero_day_indices, selected_non_zero_day_indices])
+            normal_indices = ensure_int_indices(np.where(normal_mask)[0])
+            # Known attack indices = non-zero-day AND non-normal
+            known_attack_indices = ensure_int_indices(
+                np.setdiff1d(non_zero_day_indices, normal_indices, assume_unique=True)
+            )
+            
+            available_normal = len(normal_indices)
+            available_known_attack = len(known_attack_indices)
+            
+            # Calculate target counts for each category
+            normal_target_count = int(n_samples * normal_target_percentage)
+            known_attack_target_count = int(n_samples * known_attack_target_percentage)
+            zero_day_target_count = int(n_samples * zero_day_target_percentage)
+            
+            # ENHANCED: Ensure minimum samples per known attack type for better sequence coverage
+            # Goal: Ensure all known attack types have enough samples to appear in sequences
+            # With stride=13, length=21: ~30 samples per attack type ensures ~2-3 sequences per type
+            min_samples_per_attack_type_test = 30  # Same as validation set
+            num_known_attack_types_test = 0
+            if available_known_attack > 0 and y_multiclass_np is not None:
+                known_attack_labels_unique = np.unique(y_multiclass_np[known_attack_indices])
+                num_known_attack_types_test = len(known_attack_labels_unique)
+                
+                # Calculate minimum required known attack samples
+                min_required_known_attack = min_samples_per_attack_type_test * num_known_attack_types_test
+                
+                # Adjust known_attack_target_count if below minimum
+                if known_attack_target_count < min_required_known_attack:
+                    logger.info(f"📊 Adjusting known attack count for better sequence coverage:")
+                    logger.info(f"   Current target: {known_attack_target_count} samples")
+                    logger.info(f"   Minimum required: {min_required_known_attack} samples ({min_samples_per_attack_type_test} per type × {num_known_attack_types_test} types)")
+                    known_attack_target_count = min(min_required_known_attack, available_known_attack)
+                    
+                    # Adjust total n_samples to maintain ratio (if possible)
+                    # New total = known_attack / known_attack_percentage
+                    new_total_estimate = int(known_attack_target_count / known_attack_target_percentage)
+                    if new_total_estimate <= n_samples:
+                        # Can maintain ratio by adjusting zero-day and normal
+                        zero_day_target_count = int(new_total_estimate * zero_day_target_percentage)
+                        normal_target_count = int(new_total_estimate * normal_target_percentage)
+                        logger.info(f"   Adjusted: Normal={normal_target_count}, Known={known_attack_target_count}, Zero-day={zero_day_target_count}")
+            
+            # Adjust if we don't have enough samples of a particular type
+            actual_normal_count = min(normal_target_count, available_normal)
+            actual_known_attack_count = min(known_attack_target_count, available_known_attack)
+            actual_zero_day_count = len(selected_zero_day_indices)  # Already selected above
+            
+            # Log any adjustments
+            if actual_normal_count < normal_target_count:
+                logger.info(f"📊 Adjusted normal count: {actual_normal_count} (from {normal_target_count}) - only {available_normal} available")
+            if actual_known_attack_count < known_attack_target_count:
+                logger.info(f"📊 Adjusted known attack count: {actual_known_attack_count} (from {known_attack_target_count}) - only {available_known_attack} available")
+            
+            # Select Normal samples
+            if actual_normal_count > 0 and available_normal > 0:
+                np.random.seed(42)
+                selected_normal_indices = ensure_int_indices(np.random.choice(normal_indices, size=actual_normal_count, replace=False))
+            else:
+                selected_normal_indices = np.array([], dtype=np.int64)
+                if actual_normal_count > 0:
+                    logger.warning(f"⚠️  No Normal samples found in test data!")
+            
+            # ENHANCED: Select known attack samples with equal distribution per attack type
+            if actual_known_attack_count > 0 and available_known_attack > 0:
+                if y_multiclass_np is not None:
+                    known_attack_labels_unique = np.unique(y_multiclass_np[known_attack_indices])
+                    num_known_attack_types_test = len(known_attack_labels_unique)
+                    
+                    # Calculate samples per attack type (equal distribution)
+                    target_per_attack_type_test = actual_known_attack_count // num_known_attack_types_test if num_known_attack_types_test > 0 else 0
+                    
+                    # Ensure minimum samples per attack type
+                    if target_per_attack_type_test < min_samples_per_attack_type_test:
+                        target_per_attack_type_test = min_samples_per_attack_type_test
+                        actual_known_attack_count = target_per_attack_type_test * num_known_attack_types_test
+                        actual_known_attack_count = min(actual_known_attack_count, available_known_attack)
+                        target_per_attack_type_test = actual_known_attack_count // num_known_attack_types_test if num_known_attack_types_test > 0 else 0
+                        logger.info(f"   ✅ Test set - Adjusted to {target_per_attack_type_test} samples per attack type (minimum {min_samples_per_attack_type_test})")
+                    
+                    # Sample equally from each attack type
+                    selected_known_list = []
+                    for attack_label in known_attack_labels_unique:
+                        attack_mask = (y_multiclass_np[known_attack_indices] == attack_label)
+                        attack_indices = known_attack_indices[np.where(attack_mask)[0]]
+                        
+                        if len(attack_indices) >= target_per_attack_type_test:
+                            np.random.seed(42 + int(attack_label))  # Different seed per attack type
+                            selected_attack = np.random.choice(attack_indices, size=target_per_attack_type_test, replace=False)
+                            selected_known_list.append(selected_attack)
+                        elif len(attack_indices) > 0:
+                            # Use all available if less than target
+                            selected_known_list.append(attack_indices)
+                            logger.info(f"   ⚠️  Test set - Attack type {attack_label}: Only {len(attack_indices)} samples available (target: {target_per_attack_type_test})")
+                    
+                    if selected_known_list:
+                        selected_known_attack_indices = ensure_int_indices(np.concatenate(selected_known_list))
+                        logger.info(f"   ✅ Test set - Selected {len(selected_known_attack_indices)} known attack samples from {num_known_attack_types_test} attack types ({target_per_attack_type_test} per type)")
+                    else:
+                        selected_known_attack_indices = np.array([], dtype=np.int64)
+                else:
+                    # Fallback: use stratified sampling if multiclass labels not available
+                    known_attack_labels = y_np[known_attack_indices]
+                    stratify_by = known_attack_labels
+                    
+                    actual_known_attack_final = min(actual_known_attack_count, available_known_attack)
+                    if actual_known_attack_final < actual_known_attack_count:
+                        logger.warning(f"⚠️  Only {available_known_attack} known attack samples available, targeting {actual_known_attack_count}.")
+                    
+                    known_attack_subset_indices, _ = train_test_split(
+                        np.arange(len(known_attack_indices)),
+                        train_size=actual_known_attack_final,
+                        stratify=stratify_by,
+                        random_state=42
+                    )
+                    selected_known_attack_indices = ensure_int_indices(known_attack_indices[ensure_int_indices(known_attack_subset_indices)])
+            else:
+                selected_known_attack_indices = np.array([], dtype=np.int64)
+                if actual_known_attack_count > 0:
+                    logger.warning(f"⚠️  No known attack samples found in test data!")
+            
+            # Combine indices: Normal + Known Attacks + Zero-day
+            all_selected_indices = ensure_int_indices(
+                np.concatenate([selected_normal_indices, selected_known_attack_indices, selected_zero_day_indices])
+            )
             
             # Shuffle to mix zero-day and non-zero-day samples
             np.random.seed(42)
@@ -718,8 +846,14 @@ class BlockchainFederatedIncentiveSystem:
             logger.info(f"   Class distribution: {dict(zip(unique, counts))}")
             zero_day_label = self.config.zero_day_attack_label
             zero_day_count = counts[unique == zero_day_label].sum() if zero_day_label in unique else 0
-            actual_percentage = 100*zero_day_count/len(X_subset) if len(X_subset) > 0 else 0
-            logger.info(f"   Zero-day samples: {zero_day_count}/{len(X_subset)} ({actual_percentage:.1f}%) [TARGET: {100*zero_day_target_percentage:.1f}%]")
+            normal_count = counts[unique == 0].sum() if 0 in unique else 0
+            known_attack_count = len(X_subset) - zero_day_count - normal_count
+            zero_day_percentage = 100*zero_day_count/len(X_subset) if len(X_subset) > 0 else 0
+            normal_percentage = 100*normal_count/len(X_subset) if len(X_subset) > 0 else 0
+            known_attack_percentage = 100*known_attack_count/len(X_subset) if len(X_subset) > 0 else 0
+            logger.info(f"   Normal samples: {normal_count}/{len(X_subset)} ({normal_percentage:.1f}%) [TARGET: {100*normal_target_percentage:.1f}%]")
+            logger.info(f"   Known attack samples: {known_attack_count}/{len(X_subset)} ({known_attack_percentage:.1f}%) [TARGET: {100*known_attack_target_percentage:.1f}%]")
+            logger.info(f"   Zero-day samples: {zero_day_count}/{len(X_subset)} ({zero_day_percentage:.1f}%) [TARGET: {100*zero_day_target_percentage:.1f}%]")
         
         return X_subset, y_subset, y_multiclass_subset, attack_cat_subset
     
@@ -756,6 +890,14 @@ class BlockchainFederatedIncentiveSystem:
             self.preprocessed_data = self.preprocessor.preprocess_unsw_dataset(
                 zero_day_attack=self.config.zero_day_attack
             )
+            
+            # DEBUG: Check if y_val_multiclass is immediately available after preprocessing
+            if 'y_val_multiclass' in self.preprocessed_data:
+                val_mc_debug = self.preprocessed_data['y_val_multiclass']
+                logger.info(f"✅ DEBUG: y_val_multiclass available immediately after preprocessing: {len(val_mc_debug) if hasattr(val_mc_debug, '__len__') else 'N/A'} samples")
+            else:
+                logger.warning(f"⚠️  DEBUG: y_val_multiclass NOT in preprocessed_data immediately after preprocessing!")
+                logger.warning(f"   Available keys: {list(self.preprocessed_data.keys())}")
             
             # Update model architecture based on actual feature count after
             # IGRF-RFE selection
@@ -851,13 +993,232 @@ class BlockchainFederatedIncentiveSystem:
                     zero_pad=True
                 )
 
-                # Create sequences for validation data (use smaller subset to
-                # avoid memory issues)
+                # Create sequences for validation data (use larger subset to ensure enough samples after filtering)
+                # FIRST: Filter validation set to achieve 60% Normal, 40% Known attacks
+                # with equal samples per attack type BEFORE sequence creation
+                # Use larger subset (20k) to ensure we have enough samples after filtering to 60/40
                 val_subset_size = min(
-    10000, len(
-        self.preprocessed_data['X_val']))  # Limit to 10k samples
-                X_val_subset = self.preprocessed_data['X_val'][:val_subset_size]
-                y_val_subset = self.preprocessed_data['y_val'][:val_subset_size]
+    20000, len(
+        self.preprocessed_data['X_val']))  # Increased to 20k samples to ensure enough after filtering
+                X_val_full = self.preprocessed_data['X_val'][:val_subset_size]
+                y_val_full = self.preprocessed_data['y_val'][:val_subset_size]
+                
+                # DEBUG: Check preprocessed_data keys before getting y_val_multiclass
+                logger.info(f"🔍 DEBUG: Checking for y_val_multiclass before validation filtering...")
+                logger.info(f"   Available keys in preprocessed_data: {list(self.preprocessed_data.keys())}")
+                
+                y_val_multiclass_full = self.preprocessed_data.get('y_val_multiclass', None)
+                
+                if y_val_multiclass_full is not None:
+                    logger.info(f"✅ DEBUG: y_val_multiclass found! Type: {type(y_val_multiclass_full)}, Length: {len(y_val_multiclass_full) if hasattr(y_val_multiclass_full, '__len__') else 'N/A'}")
+                    if torch.is_tensor(y_val_multiclass_full):
+                        y_val_multiclass_full = y_val_multiclass_full[:val_subset_size]
+                        logger.info(f"   After subsetting: {len(y_val_multiclass_full)} samples")
+                    else:
+                        y_val_multiclass_full = y_val_multiclass_full[:val_subset_size]
+                        logger.info(f"   After subsetting (numpy/list): {len(y_val_multiclass_full)} samples")
+                else:
+                    logger.warning(f"⚠️  DEBUG: y_val_multiclass is None! This is why filtering is skipped.")
+                    logger.warning(f"   Check if preprocessor returned y_val_multiclass in the dictionary.")
+                
+                # Filter validation set to achieve 60% Normal, 40% Known attacks (equal per attack type)
+                if y_val_multiclass_full is not None:
+                    logger.info(f"\n🔍 Filtering validation set to achieve 60% Normal, 40% Known attacks (equal per attack type)...")
+                    logger.info(f"   Input: {len(X_val_full)} validation samples")
+                    logger.info(f"   Multiclass labels available: {len(y_val_multiclass_full)}")
+                    
+                    # Convert to numpy for easier manipulation
+                    if torch.is_tensor(X_val_full):
+                        X_val_np = X_val_full.cpu().numpy()
+                    else:
+                        X_val_np = X_val_full
+                    if torch.is_tensor(y_val_full):
+                        y_val_np = y_val_full.cpu().numpy()
+                    else:
+                        y_val_np = np.array(y_val_full)
+                    if torch.is_tensor(y_val_multiclass_full):
+                        y_val_mc_np = y_val_multiclass_full.cpu().numpy()
+                    else:
+                        y_val_mc_np = np.array(y_val_multiclass_full)
+                    
+                    # Separate Normal and Known attacks (zero-day should already be excluded)
+                    normal_label = 0
+                    zero_day_label = self.config.zero_day_attack_label
+                    normal_mask = (y_val_mc_np == normal_label)
+                    zero_day_mask = (y_val_mc_np == zero_day_label)
+                    known_attack_mask = (~normal_mask) & (~zero_day_mask)
+                    
+                    normal_indices = np.where(normal_mask)[0]
+                    known_attack_indices = np.where(known_attack_mask)[0]
+                    zero_day_indices_val = np.where(zero_day_mask)[0]
+                    
+                    available_normal = len(normal_indices)
+                    available_known_attack = len(known_attack_indices)
+                    available_zero_day_val = len(zero_day_indices_val)
+                    
+                    if available_zero_day_val > 0:
+                        logger.warning(f"⚠️  Found {available_zero_day_val} zero-day samples in validation set - removing them")
+                        # Remove zero-day from validation
+                        valid_mask = ~zero_day_mask
+                        X_val_np = X_val_np[valid_mask]
+                        y_val_np = y_val_np[valid_mask]
+                        y_val_mc_np = y_val_mc_np[valid_mask]
+                        normal_indices = np.where(y_val_mc_np == normal_label)[0]
+                        known_attack_indices = np.where((y_val_mc_np != normal_label) & (y_val_mc_np != zero_day_label))[0]
+                        available_normal = len(normal_indices)
+                        available_known_attack = len(known_attack_indices)
+                    
+                    # Get unique known attack types
+                    known_attack_labels = np.unique(y_val_mc_np[known_attack_indices])
+                    num_known_attack_types = len(known_attack_labels)
+                    
+                    logger.info(f"   Available: {available_normal} Normal, {available_known_attack} Known attacks ({num_known_attack_types} types)")
+                    
+                    # Target: 60% Normal, 40% Known attacks (equal per attack type)
+                    target_normal_percentage = 0.60
+                    target_known_attack_percentage = 0.40
+                    
+                    # Calculate maximum total we can achieve
+                    # From normal: total_max = available_normal / 0.60
+                    max_total_from_normal = available_normal / target_normal_percentage
+                    # From known attacks: total_max = available_known_attack / 0.40
+                    max_total_from_known = available_known_attack / target_known_attack_percentage
+                    
+                    # Use the minimum (bottleneck)
+                    max_total = int(min(max_total_from_normal, max_total_from_known))
+                    
+                    # Calculate target counts
+                    target_normal_count = int(max_total * target_normal_percentage)
+                    target_known_attack_count = int(max_total * target_known_attack_percentage)
+                    
+                    # ENHANCED: Calculate samples per attack type to ensure enough sequences
+                    # Goal: Create enough sequences to capture all attack types at sequence boundaries
+                    # Estimate: With stride=13, length=21, we get ~1 sequence per 13 samples
+                    # To ensure all 9 attack types appear, we need at least ~50-100 sequences
+                    # This requires ~650-1300 samples total, so ~29-57 samples per attack type
+                    # Use minimum 30 samples per attack type to ensure good sequence coverage
+                    min_samples_per_attack_type = 30  # Increased from dynamic calculation
+                    target_per_attack_type = target_known_attack_count // num_known_attack_types if num_known_attack_types > 0 else 0
+                    
+                    # Ensure minimum samples per attack type for better sequence coverage
+                    if target_per_attack_type < min_samples_per_attack_type:
+                        target_per_attack_type = min_samples_per_attack_type
+                        target_known_attack_count = target_per_attack_type * num_known_attack_types
+                        # Recalculate total based on new known attack count
+                        target_normal_count = int(target_known_attack_count / target_known_attack_percentage * target_normal_percentage)
+                        target_normal_count = min(target_normal_count, available_normal)
+                        
+                        # Recalculate final total
+                        final_total = target_normal_count + target_known_attack_count
+                        if final_total > 0:
+                            actual_normal_pct = 100 * target_normal_count / final_total
+                            actual_known_pct = 100 * target_known_attack_count / final_total
+                            logger.info(f"   ✅ Adjusted composition for better sequence coverage:")
+                            logger.info(f"      Normal: {target_normal_count} ({actual_normal_pct:.1f}%), Known: {target_known_attack_count} ({actual_known_pct:.1f}%)")
+                            logger.info(f"      Each attack type: {target_per_attack_type} samples (minimum for sequence coverage)")
+                    
+                    # Adjust if we don't have enough samples for equal distribution
+                    if target_per_attack_type > 0:
+                        # Count available samples per attack type
+                        attack_type_counts = {}
+                        for attack_label in known_attack_labels:
+                            attack_mask = (y_val_mc_np == attack_label)
+                            attack_type_counts[attack_label] = np.sum(attack_mask)
+                        
+                        # Find minimum available samples per attack type
+                        min_available_per_type = min(attack_type_counts.values()) if attack_type_counts else 0
+                        
+                        # Adjust target_per_attack_type if needed (but don't go below 20)
+                        if min_available_per_type < target_per_attack_type:
+                            if min_available_per_type >= 20:
+                                target_per_attack_type = min_available_per_type
+                                logger.info(f"   ⚠️  Reduced to {target_per_attack_type} samples per attack type (limited by availability)")
+                            else:
+                                logger.warning(f"   ⚠️  Only {min_available_per_type} samples available per attack type (below minimum 20)")
+                                target_per_attack_type = min_available_per_type
+                        
+                        target_known_attack_count = target_per_attack_type * num_known_attack_types
+                        
+                        # Recalculate total and normal count
+                        target_normal_count = int(target_known_attack_count / target_known_attack_percentage * target_normal_percentage)
+                        target_normal_count = min(target_normal_count, available_normal)
+                        
+                        # Recalculate total from actual counts
+                        final_total = target_normal_count + target_known_attack_count
+                        if final_total > 0:
+                            actual_normal_pct = 100 * target_normal_count / final_total
+                            actual_known_pct = 100 * target_known_attack_count / final_total
+                            logger.info(f"   ✅ Final target composition: {target_normal_count} Normal ({actual_normal_pct:.1f}%) + {target_known_attack_count} Known ({actual_known_pct:.1f}%)")
+                            logger.info(f"   ✅ Each attack type: {target_per_attack_type} samples (estimated ~{target_per_attack_type // 13} sequences per type)")
+                    
+                    # Sample Normal and Known attacks
+                    selected_indices_list = []
+                    
+                    if target_normal_count > 0 and available_normal > 0:
+                        np.random.seed(42)
+                        selected_normal = np.random.choice(normal_indices, size=min(target_normal_count, available_normal), replace=False)
+                        selected_indices_list.append(selected_normal)
+                    
+                    if target_per_attack_type > 0 and num_known_attack_types > 0:
+                        selected_known_list = []
+                        for attack_label in known_attack_labels:
+                            attack_mask = (y_val_mc_np == attack_label)
+                            attack_indices = np.where(attack_mask)[0]
+                            if len(attack_indices) >= target_per_attack_type:
+                                np.random.seed(42 + int(attack_label))  # Different seed per attack type
+                                selected_attack = np.random.choice(attack_indices, size=target_per_attack_type, replace=False)
+                                selected_known_list.append(selected_attack)
+                        
+                        if selected_known_list:
+                            selected_known_all = np.concatenate(selected_known_list)
+                            selected_indices_list.append(selected_known_all)
+                    
+                    # Combine and shuffle
+                    if selected_indices_list:
+                        selected_indices = np.concatenate(selected_indices_list)
+                        np.random.seed(42)
+                        np.random.shuffle(selected_indices)
+                        
+                        # Filter validation data
+                        X_val_subset = X_val_np[selected_indices]
+                        y_val_subset = y_val_np[selected_indices]
+                        
+                        # Convert back to tensors
+                        X_val_subset = torch.FloatTensor(X_val_subset)
+                        y_val_subset = torch.LongTensor(y_val_subset)
+                        
+                        # Verify composition
+                        if y_val_multiclass_full is not None:
+                            y_val_mc_subset = y_val_mc_np[selected_indices]
+                            unique_labels, counts = np.unique(y_val_mc_subset, return_counts=True)
+                            normal_count = counts[unique_labels == normal_label].sum() if normal_label in unique_labels else 0
+                            known_attack_count = len(y_val_mc_subset) - normal_count
+                            
+                            logger.info(f"   ✅ Validation subset composition:")
+                            logger.info(f"      Total: {len(X_val_subset):,} samples")
+                            logger.info(f"      Normal: {normal_count:,} ({100*normal_count/len(X_val_subset):.1f}%)")
+                            logger.info(f"      Known attacks: {known_attack_count:,} ({100*known_attack_count/len(X_val_subset):.1f}%)")
+                            
+                            # Log attack type distribution
+                            attack_type_dist = {}
+                            for label in known_attack_labels:
+                                count = counts[unique_labels == label].sum() if label in unique_labels else 0
+                                attack_type_dist[label] = count
+                            
+                            logger.info(f"      Attack type distribution: {attack_type_dist}")
+                            
+                            # Store filtered multiclass labels for later use
+                            self.preprocessed_data['y_val_multiclass_filtered'] = torch.LongTensor(y_val_mc_subset)
+                    else:
+                        # Fallback: use original subset
+                        X_val_subset = X_val_full[:val_subset_size]
+                        y_val_subset = y_val_full[:val_subset_size]
+                else:
+                    # No multiclass labels available, log warning and use original subset
+                    logger.warning(f"⚠️  y_val_multiclass not available in preprocessed_data. Available keys: {list(self.preprocessed_data.keys())}")
+                    logger.warning(f"⚠️  Skipping validation filtering - using original subset without balancing")
+                    X_val_subset = self.preprocessed_data['X_val'][:val_subset_size]
+                    y_val_subset = self.preprocessed_data['y_val'][:val_subset_size]
 
                 try:
                     X_val_seq, y_val_seq = self.preprocessor.create_sequences(
@@ -869,6 +1230,254 @@ class BlockchainFederatedIncentiveSystem:
                     )
                     logger.info(
                         f"✅ Validation sequences created: {X_val_seq.shape}")
+                    
+                    # Map multiclass labels to validation sequences (similar to test set)
+                    if 'y_val_multiclass_filtered' in self.preprocessed_data:
+                        y_val_mc_filtered = self.preprocessed_data['y_val_multiclass_filtered']
+                        if torch.is_tensor(y_val_mc_filtered):
+                            y_val_mc_filtered_np = y_val_mc_filtered.cpu().numpy()
+                        else:
+                            y_val_mc_filtered_np = np.array(y_val_mc_filtered)
+                        
+                        # Map to sequences: Use last timestep (standard approach) to preserve Normal sequences
+                        # CRITICAL: Using last timestep preserves Normal sequences which are needed for 60/40 ratio
+                        # Alternative: Check all timesteps, but this may label mixed sequences as attacks
+                        sequence_length = self.config.sequence_length
+                        sequence_stride = self.config.sequence_stride
+                        y_val_multiclass_seq = []
+                        
+                        # DEBUG: Track what labels we're mapping
+                        label_counts_in_mapping = {}
+                        
+                        for seq_idx in range(len(X_val_seq)):
+                            last_timestep_idx = seq_idx * sequence_stride + (sequence_length - 1)
+                            if last_timestep_idx < len(y_val_mc_filtered_np):
+                                sequence_label = y_val_mc_filtered_np[last_timestep_idx]
+                                y_val_multiclass_seq.append(sequence_label)
+                                
+                                # Track label distribution
+                                label_counts_in_mapping[sequence_label] = label_counts_in_mapping.get(sequence_label, 0) + 1
+                        
+                        # Log what was mapped
+                        logger.info(f"   🔍 Sequence mapping: {len(y_val_multiclass_seq)} sequences mapped")
+                        logger.info(f"   🔍 Labels in mapped sequences: {label_counts_in_mapping}")
+                        logger.info(f"   🔍 Normal sequences: {label_counts_in_mapping.get(normal_label, 0)}")
+                        logger.info(f"   🔍 Attack sequences: {sum(v for k, v in label_counts_in_mapping.items() if k != normal_label)}")
+                        
+                        if len(y_val_multiclass_seq) > 0:
+                            y_val_multiclass_seq = torch.tensor(y_val_multiclass_seq)
+                            
+                            # POST-SEQUENCE FILTERING: Maintain 60% Normal, 40% Known attacks after sequence creation
+                            logger.info(f"\n🔍 Post-sequence filtering for validation to maintain 60% Normal, 40% Known attacks...")
+                            
+                            # Separate sequences into Normal and Known attacks
+                            normal_mask_seq = (y_val_multiclass_seq == normal_label)
+                            known_attack_mask_seq = (y_val_multiclass_seq != normal_label)
+                            
+                            normal_indices_seq = torch.where(normal_mask_seq)[0].numpy()
+                            known_attack_indices_seq = torch.where(known_attack_mask_seq)[0].numpy()
+                            
+                            available_normal_seq = len(normal_indices_seq)
+                            available_known_attack_seq = len(known_attack_indices_seq)
+                            
+                            # Get unique known attack types in sequences
+                            known_attack_labels_seq = np.unique(y_val_multiclass_seq[known_attack_indices_seq].numpy() if torch.is_tensor(y_val_multiclass_seq) else y_val_multiclass_seq[known_attack_indices_seq])
+                            num_known_attack_types_seq = len(known_attack_labels_seq)
+                            
+                            # CRITICAL: Get ALL known attack types from pre-sequence filtered set to ensure all are represented
+                            # This ensures we don't lose attack types that didn't appear in sequences
+                            if 'y_val_multiclass_filtered' in self.preprocessed_data:
+                                y_val_mc_filtered_all = self.preprocessed_data['y_val_multiclass_filtered']
+                                if torch.is_tensor(y_val_mc_filtered_all):
+                                    y_val_mc_filtered_all_np = y_val_mc_filtered_all.cpu().numpy()
+                                else:
+                                    y_val_mc_filtered_all_np = np.array(y_val_mc_filtered_all)
+                                
+                                # Get all known attack types from pre-sequence filtered set (excluding Normal and zero-day)
+                                all_known_attack_labels_pre_seq = np.unique(y_val_mc_filtered_all_np[(y_val_mc_filtered_all_np != normal_label) & (y_val_mc_filtered_all_np != zero_day_label)])
+                                
+                                # Check which attack types are missing in sequences
+                                missing_attack_types = set(all_known_attack_labels_pre_seq) - set(known_attack_labels_seq)
+                                if len(missing_attack_types) > 0:
+                                    logger.warning(f"⚠️  {len(missing_attack_types)} attack types missing in sequences: {missing_attack_types}")
+                                    logger.warning(f"   Available in sequences: {known_attack_labels_seq}")
+                                    logger.warning(f"   Expected from pre-sequence: {all_known_attack_labels_pre_seq}")
+                                    logger.info(f"   ⚠️  Some attack types may not be represented in final validation set due to sequence creation")
+                                
+                                # Use all known attack types from pre-sequence as target (even if not all appear in sequences)
+                                # This ensures we try to include as many as possible
+                                target_known_attack_types = all_known_attack_labels_pre_seq
+                            else:
+                                # Fallback: use only attack types that appear in sequences
+                                target_known_attack_types = known_attack_labels_seq
+                            
+                            # Target: 60% Normal, 40% Known attacks (equal per attack type)
+                            target_normal_percentage = 0.60
+                            target_known_attack_percentage = 0.40
+                            
+                            # Use ALL known attack types from pre-sequence as target (ensures all are represented if possible)
+                            num_target_attack_types = len(target_known_attack_types)
+                            
+                            # Calculate maximum total we can achieve
+                            # Constraint: We need at least 1 sequence per attack type to represent all types
+                            min_sequences_per_type = 1
+                            min_known_sequences_needed = num_target_attack_types * min_sequences_per_type
+                            
+                            # Calculate based on available sequences
+                            max_total_from_normal_seq = available_normal_seq / target_normal_percentage
+                            # For known attacks: need at least min_known_sequences_needed, but also respect 40% ratio
+                            max_total_from_known_seq = max(
+                                available_known_attack_seq / target_known_attack_percentage,
+                                min_known_sequences_needed / target_known_attack_percentage
+                            )
+                            
+                            max_total_seq = int(min(max_total_from_normal_seq, max_total_from_known_seq))
+                            
+                            # Calculate target counts
+                            target_normal_count_seq = int(max_total_seq * target_normal_percentage)
+                            target_known_attack_count_seq = int(max_total_seq * target_known_attack_percentage)
+                            
+                            # Each known attack type should have equal samples
+                            # Use num_target_attack_types (all types) instead of num_known_attack_types_seq (only those in sequences)
+                            target_per_attack_type_seq = target_known_attack_count_seq // num_target_attack_types if num_target_attack_types > 0 else 0
+                            
+                            # Ensure at least 1 sequence per attack type if possible
+                            if target_per_attack_type_seq == 0 and num_target_attack_types > 0:
+                                # If we can't get equal distribution, try to get at least 1 per type
+                                target_per_attack_type_seq = 1
+                                target_known_attack_count_seq = num_target_attack_types * target_per_attack_type_seq
+                                # Recalculate normal count to maintain ratio
+                                target_normal_count_seq = int(target_known_attack_count_seq / target_known_attack_percentage * target_normal_percentage)
+                                target_normal_count_seq = min(target_normal_count_seq, available_normal_seq)
+                            
+                            # Adjust if we don't have enough samples for equal distribution
+                            if target_per_attack_type_seq > 0:
+                                # Count available samples per attack type
+                                attack_type_counts_seq = {}
+                                for attack_label in known_attack_labels_seq:
+                                    attack_mask_seq = (y_val_multiclass_seq.numpy() if torch.is_tensor(y_val_multiclass_seq) else y_val_multiclass_seq == attack_label)
+                                    attack_type_counts_seq[attack_label] = np.sum(attack_mask_seq)
+                                
+                                # Find minimum available samples per attack type
+                                min_available_per_type_seq = min(attack_type_counts_seq.values()) if attack_type_counts_seq else 0
+                                
+                                # Adjust target_per_attack_type if needed
+                                target_per_attack_type_seq = min(target_per_attack_type_seq, min_available_per_type_seq)
+                                target_known_attack_count_seq = target_per_attack_type_seq * num_known_attack_types_seq
+                                
+                                # Recalculate total and normal count
+                                target_normal_count_seq = int(target_known_attack_count_seq / target_known_attack_percentage * target_normal_percentage)
+                                target_normal_count_seq = min(target_normal_count_seq, available_normal_seq)
+                                
+                                # Recalculate final total
+                                final_total_seq = target_normal_count_seq + target_known_attack_count_seq
+                                if final_total_seq > 0:
+                                    actual_normal_pct_seq = 100 * target_normal_count_seq / final_total_seq
+                                    actual_known_pct_seq = 100 * target_known_attack_count_seq / final_total_seq
+                                    logger.info(f"   ✅ Target composition: {target_normal_count_seq} Normal ({actual_normal_pct_seq:.1f}%) + {target_known_attack_count_seq} Known ({actual_known_pct_seq:.1f}%)")
+                                    logger.info(f"   ✅ Each attack type: {target_per_attack_type_seq} sequences")
+                            
+                            # Sample Normal and Known attacks
+                            selected_indices_seq_list = []
+                            
+                            if target_normal_count_seq > 0 and available_normal_seq > 0:
+                                np.random.seed(42)
+                                selected_normal_seq = np.random.choice(normal_indices_seq, size=min(target_normal_count_seq, available_normal_seq), replace=False)
+                                selected_indices_seq_list.append(selected_normal_seq)
+                            
+                            if target_per_attack_type_seq > 0 and num_target_attack_types > 0:
+                                selected_known_seq_list = []
+                                y_val_mc_seq_np = y_val_multiclass_seq.numpy() if torch.is_tensor(y_val_multiclass_seq) else y_val_multiclass_seq
+                                
+                                # Try to include ALL target attack types (from pre-sequence filtered set)
+                                for attack_label in target_known_attack_types:
+                                    attack_mask_seq = (y_val_mc_seq_np == attack_label)
+                                    attack_indices_seq = np.where(attack_mask_seq)[0]
+                                    
+                                    if len(attack_indices_seq) >= target_per_attack_type_seq:
+                                        # Enough sequences for this attack type - select target_per_attack_type_seq
+                                        np.random.seed(42 + int(attack_label))  # Different seed per attack type
+                                        selected_attack_seq = np.random.choice(attack_indices_seq, size=target_per_attack_type_seq, replace=False)
+                                        selected_known_seq_list.append(selected_attack_seq)
+                                    elif len(attack_indices_seq) > 0:
+                                        # Some sequences exist but not enough - use all available
+                                        logger.info(f"   ⚠️  Attack type {attack_label}: Only {len(attack_indices_seq)} sequences available (target: {target_per_attack_type_seq}), using all available")
+                                        selected_known_seq_list.append(attack_indices_seq)
+                                    else:
+                                        # No sequences for this attack type - log warning
+                                        logger.warning(f"   ⚠️  Attack type {attack_label}: No sequences found after sequence creation (will be missing from final validation set)")
+                                
+                                if selected_known_seq_list:
+                                    selected_known_all_seq = np.concatenate(selected_known_seq_list)
+                                    selected_indices_seq_list.append(selected_known_all_seq)
+                                    
+                                    # Log which attack types are included
+                                    included_types = set()
+                                    for idx in selected_known_all_seq:
+                                        label = y_val_mc_seq_np[idx]
+                                        included_types.add(label)
+                                    logger.info(f"   ✅ Included {len(included_types)}/{num_target_attack_types} attack types in final validation set: {sorted(included_types)}")
+                            
+                            # Combine and shuffle
+                            if selected_indices_seq_list:
+                                selected_indices_seq = np.concatenate(selected_indices_seq_list)
+                                np.random.seed(42)
+                                np.random.shuffle(selected_indices_seq)
+                                
+                                # Filter validation sequences
+                                X_val_seq = X_val_seq[selected_indices_seq]
+                                y_val_seq = y_val_seq[selected_indices_seq]
+                                y_val_multiclass_seq = y_val_multiclass_seq[selected_indices_seq]
+                                
+                                logger.info(f"   ✅ Filtered validation sequences")
+                            
+                            # Store and verify final composition
+                            self.preprocessed_data['y_val_multiclass'] = y_val_multiclass_seq
+                            
+                            # Verify sequence composition
+                            unique_labels_final, counts_final = np.unique(y_val_multiclass_seq.numpy() if torch.is_tensor(y_val_multiclass_seq) else y_val_multiclass_seq, return_counts=True)
+                            normal_count_final = counts_final[unique_labels_final == normal_label].sum() if normal_label in unique_labels_final else 0
+                            known_attack_count_final = len(y_val_multiclass_seq) - normal_count_final
+                            
+                            logger.info(f"   ✅ Final validation sequences composition:")
+                            logger.info(f"      Total: {len(y_val_multiclass_seq):,} sequences")
+                            logger.info(f"      Normal: {normal_count_final:,} ({100*normal_count_final/len(y_val_multiclass_seq):.1f}%)")
+                            logger.info(f"      Known attacks: {known_attack_count_final:,} ({100*known_attack_count_final/len(y_val_multiclass_seq):.1f}%)")
+                            
+                            # Log attack type distribution (check all target attack types, not just those in sequences)
+                            attack_type_dist_final = {}
+                            # Check all target attack types from pre-sequence filtered set
+                            if 'y_val_multiclass_filtered' in self.preprocessed_data:
+                                y_val_mc_filtered_all = self.preprocessed_data['y_val_multiclass_filtered']
+                                if torch.is_tensor(y_val_mc_filtered_all):
+                                    y_val_mc_filtered_all_np = y_val_mc_filtered_all.cpu().numpy()
+                                else:
+                                    y_val_mc_filtered_all_np = np.array(y_val_mc_filtered_all)
+                                
+                                all_known_attack_labels_pre_seq = np.unique(y_val_mc_filtered_all_np[(y_val_mc_filtered_all_np != normal_label) & (y_val_mc_filtered_all_np != zero_day_label)])
+                                
+                                # Log distribution for all expected attack types
+                                for label in all_known_attack_labels_pre_seq:
+                                    count_final = counts_final[unique_labels_final == label].sum() if label in unique_labels_final else 0
+                                    attack_type_dist_final[label] = count_final
+                                    
+                                    if count_final == 0:
+                                        logger.warning(f"      ⚠️  Attack type {label}: 0 sequences (missing from final validation set)")
+                            else:
+                                # Fallback: use only attack types in sequences
+                                for label in known_attack_labels_seq:
+                                    count_final = counts_final[unique_labels_final == label].sum() if label in unique_labels_final else 0
+                                    attack_type_dist_final[label] = count_final
+                            
+                            logger.info(f"      Attack type distribution: {attack_type_dist_final}")
+                            
+                            # Summary: Check if all attack types are represented
+                            missing_types = [label for label, count in attack_type_dist_final.items() if count == 0]
+                            if missing_types:
+                                logger.warning(f"      ⚠️  Missing attack types in final validation set: {missing_types}")
+                                logger.warning(f"      This happens when sequence creation doesn't capture these attack types at sequence boundaries")
+                            else:
+                                logger.info(f"      ✅ All {len(attack_type_dist_final)} attack types represented in final validation set")
                 except Exception as e:
                     logger.error(
                         f"❌ Failed to create validation sequences: {e}")
@@ -899,10 +1508,12 @@ class BlockchainFederatedIncentiveSystem:
                 # Sequence creation dilutes zero-day percentage, so we need higher pre-sequence target
                 # This ensures we get enough zero-day sequences after sequence creation to maximize total
                 if y_test_multiclass_original is not None:
-                    logger.info(f"🔍 Using stratified sampling with 35% zero-day target BEFORE sequence creation (will dilute to ~20% after sequences)...")
-                    # Temporarily override target percentage for pre-sequence sampling to 35%
-                    # This ensures we get enough zero-day sequences after sequence creation (target is now 20% post-sequence)
-                    self._temp_zero_day_target = 0.30  # Target 30% before sequences (will become ~25% after, accounting for dilution)
+                    logger.info(f"🔍 Using stratified sampling with 60% Normal, 30% Known attacks, 10% Zero-day target BEFORE sequence creation...")
+                    # Set target percentages for pre-sequence sampling
+                    # These targets account for sequence creation dilution
+                    self._temp_normal_target = 0.60  # 60% Normal
+                    self._temp_known_attack_target = 0.30  # 30% Known attacks
+                    self._temp_zero_day_target = 0.10  # 10% Zero-day (may need slight adjustment for dilution)
                     X_test_subset, y_test_subset, y_test_multiclass_original, test_attack_cat_original = self._stratified_test_subset(
                         self.preprocessed_data['X_test'],
                         self.preprocessed_data['y_test'],
@@ -910,15 +1521,52 @@ class BlockchainFederatedIncentiveSystem:
                         test_attack_cat_original,
                         test_subset_size
                     )
-                    # Clean up temporary override
+                    
+                    # CRITICAL VERIFICATION: Ensure subset contains zero-day samples
+                    if y_test_multiclass_original is not None:
+                        if torch.is_tensor(y_test_multiclass_original):
+                            y_test_mc_np = y_test_multiclass_original.cpu().numpy()
+                        else:
+                            y_test_mc_np = np.array(y_test_multiclass_original)
+                        
+                        zero_day_in_subset = np.sum(y_test_mc_np == self.config.zero_day_attack_label)
+                        total_subset = len(y_test_mc_np)
+                        logger.info(f"🔍 VERIFICATION: Test subset contains {zero_day_in_subset}/{total_subset} zero-day samples (label {self.config.zero_day_attack_label})")
+                        
+                        if zero_day_in_subset == 0:
+                            logger.error(f"❌ CRITICAL: Test subset has NO zero-day samples after stratified sampling!")
+                            logger.error(f"   This means _stratified_test_subset failed to include zero-day samples")
+                            logger.error(f"   Available labels in subset: {np.unique(y_test_mc_np).tolist()}")
+                            logger.error(f"   Expected label {self.config.zero_day_attack_label} for '{self.config.zero_day_attack}'")
+                            logger.error(f"   Attempting to recover by checking test_attack_cat_original...")
+                            
+                            # Try to recover using attack_cat if available
+                            if test_attack_cat_original is not None:
+                                test_attack_cat_np = np.array(test_attack_cat_original) if not isinstance(test_attack_cat_original, np.ndarray) else test_attack_cat_original
+                                zero_day_in_cat = np.sum(test_attack_cat_np == self.config.zero_day_attack)
+                                logger.info(f"   Found {zero_day_in_cat} zero-day samples in test_attack_cat_original")
+                                if zero_day_in_cat == 0:
+                                    logger.error(f"   ❌ test_attack_cat_original also has NO zero-day samples!")
+                                else:
+                                    logger.warning(f"   ⚠️  Mismatch: test_attack_cat has {zero_day_in_cat} zero-day but multiclass labels have 0")
+                                    logger.warning(f"   This suggests a label mapping issue in _stratified_test_subset")
+                    
+                    # Clean up temporary overrides
                     if hasattr(self, '_temp_zero_day_target'):
                         delattr(self, '_temp_zero_day_target')
+                    if hasattr(self, '_temp_normal_target'):
+                        delattr(self, '_temp_normal_target')
+                    if hasattr(self, '_temp_known_attack_target'):
+                        delattr(self, '_temp_known_attack_target')
                 else:
                     # Fallback to simple slicing if multiclass labels not available
                     logger.warning(f"⚠️  No multiclass labels - using simple slicing (zero-day distribution not guaranteed)")
                     X_test_subset = self.preprocessed_data['X_test'][:test_subset_size]
                     y_test_subset = self.preprocessed_data['y_test'][:test_subset_size]
 
+                # Initialize use_saved_test_set early to prevent undefined variable errors
+                use_saved_test_set = False
+                
                 try:
                     # CRITICAL: Use config stride for evaluation (must match TTT adaptation stride)
                     evaluation_stride = self.config.sequence_stride
@@ -937,71 +1585,195 @@ class BlockchainFederatedIncentiveSystem:
                         f"✅ Test sequences created: {X_test_seq.shape} (stride={evaluation_stride} for evaluation, matching config.sequence_stride={self.config.sequence_stride})")
                     
                     # Create multiclass labels for sequences by mapping back to original data
+                    # CRITICAL FIX: Check ALL timesteps in each sequence for zero-day samples
+                    # Use last timestep for label, but check all timesteps for zero-day detection
                     if y_test_multiclass_original is not None:
                         sequence_length = self.config.sequence_length
                         sequence_stride = self.config.sequence_stride
                         y_test_multiclass_seq = []
                         test_attack_cat_seq = []
                         orig_len = len(y_test_multiclass_original)
+                        
                         for seq_idx in range(len(X_test_seq)):
-                            original_idx = seq_idx * sequence_stride + (sequence_length - 1)
-                            if original_idx < orig_len:
-                                original_label = y_test_multiclass_original[original_idx].item() if torch.is_tensor(y_test_multiclass_original[original_idx]) else y_test_multiclass_original[original_idx]
-                                y_test_multiclass_seq.append(original_label)
-                                if test_attack_cat_original is not None:
-                                    test_attack_cat_seq.append(test_attack_cat_original[original_idx])
+                            # Start and end indices for this sequence
+                            start_idx = seq_idx * sequence_stride
+                            end_idx = start_idx + sequence_length
+                            last_timestep_idx = seq_idx * sequence_stride + (sequence_length - 1)
+                            
+                            # Default: use last timestep label (standard approach)
+                            sequence_label = None
+                            
+                            # Check if last timestep is valid
+                            if last_timestep_idx < orig_len:
+                                sequence_label = y_test_multiclass_original[last_timestep_idx].item() if torch.is_tensor(y_test_multiclass_original[last_timestep_idx]) else y_test_multiclass_original[last_timestep_idx]
+                            else:
+                                # Fallback: use last valid timestep
+                                if end_idx > 0:
+                                    last_valid_idx = min(end_idx - 1, orig_len - 1)
+                                    if last_valid_idx >= 0:
+                                        sequence_label = y_test_multiclass_original[last_valid_idx].item() if torch.is_tensor(y_test_multiclass_original[last_valid_idx]) else y_test_multiclass_original[last_valid_idx]
+                            
+                            # CRITICAL FIX: Check ALL timesteps for zero-day samples
+                            # If ANY timestep contains zero-day, mark the entire sequence as zero-day
+                            # This ensures zero-day samples are detected even if they're in the middle of sequences
+                            if sequence_label is not None:
+                                # Check all timesteps in this sequence for zero-day
+                                for check_idx in range(start_idx, min(end_idx, orig_len)):
+                                    if check_idx < orig_len:
+                                        check_label = y_test_multiclass_original[check_idx].item() if torch.is_tensor(y_test_multiclass_original[check_idx]) else y_test_multiclass_original[check_idx]
+                                        # If we find a zero-day sample at any timestep, use that label
+                                        if check_label == self.config.zero_day_attack_label:
+                                            sequence_label = check_label
+                                            break  # Found zero-day, no need to check further
+                                
+                                y_test_multiclass_seq.append(sequence_label)
+                                
+                                # For attack_cat, use the label that corresponds to sequence_label
+                                if test_attack_cat_original is not None and last_timestep_idx < len(test_attack_cat_original):
+                                    test_attack_cat_seq.append(test_attack_cat_original[last_timestep_idx])
                         if len(y_test_multiclass_seq) > 0:
                             y_test_multiclass_seq = torch.tensor(y_test_multiclass_seq)
-                            # Debug: Count zero-day sequences in mapped labels
+                            # DETAILED DIAGNOSTIC: Count zero-day sequences in mapped labels
                             zero_day_count_in_seq = (y_test_multiclass_seq == self.config.zero_day_attack_label).sum().item()
                             total_seq_count = len(y_test_multiclass_seq)
                             current_percentage = 100 * zero_day_count_in_seq / total_seq_count if total_seq_count > 0 else 0
-                            logger.info(f"🔍 Before post-sequence filtering: {zero_day_count_in_seq}/{total_seq_count} zero-day sequences ({current_percentage:.1f}%)")
-                            logger.info(f"🔍 DEBUG: Unique labels in mapped sequences: {set(y_test_multiclass_seq.numpy() if torch.is_tensor(y_test_multiclass_seq) else y_test_multiclass_seq)}")
+                            unique_labels_in_mapped = torch.unique(y_test_multiclass_seq).cpu().numpy()
+                            label_counts_mapped = torch.bincount(y_test_multiclass_seq.long()).cpu().numpy()
                             
-                            # POST-SEQUENCE FILTERING: Adjust to achieve target zero-day percentage (reduced from 30% to 20% for more test samples)
-                            target_zero_day_percentage = 0.25  # Target 25% zero-day (40% Normal, 35% Non-zero-day, 25% Zero-day)
+                            logger.info(f"🔍 SEQUENCE MAPPING DIAGNOSTIC (Before post-sequence filtering):")
+                            logger.info(f"   Total sequences mapped: {total_seq_count}")
+                            logger.info(f"   Unique labels in mapped sequences: {unique_labels_in_mapped}")
+                            logger.info(f"   Label distribution: {dict(zip(unique_labels_in_mapped, label_counts_mapped[unique_labels_in_mapped]))}")
+                            logger.info(f"   Zero-day sequences (label {self.config.zero_day_attack_label}): {zero_day_count_in_seq}/{total_seq_count} ({current_percentage:.1f}%)")
                             
-                            # Get zero-day and non-zero-day sequence indices
+                            if zero_day_count_in_seq == 0:
+                                logger.error(f"❌ CRITICAL: No zero-day sequences found in mapped labels!")
+                                logger.error(f"   This means zero-day samples were not at the last timestep of sequences")
+                                logger.error(f"   Available labels: {unique_labels_in_mapped.tolist()}")
+                                logger.error(f"   Expected label {self.config.zero_day_attack_label} for '{self.config.zero_day_attack}'")
+                                logger.error(f"   This will cause available_zero_day = 0 in post-sequence filtering!")
+                                logger.error(f"   ROOT CAUSE: Zero-day samples may not be at sequence boundaries (last timestep)")
+                            else:
+                                logger.info(f"   ✅ Zero-day sequences successfully mapped: {zero_day_count_in_seq} sequences")
+                            
+                            # POST-SEQUENCE FILTERING: Adjust to achieve target composition
+                            # TARGET: 60% Normal, 30% Known attacks, 10% Zero-day
+                            target_normal_percentage = 0.60  # 60% Normal
+                            target_known_attack_percentage = 0.30  # 30% Known attacks
+                            target_zero_day_percentage = 0.10  # 10% Zero-day
+                            
+                            # Separate sequences into Normal, Known attacks, and Zero-day
+                            normal_label = 0
                             zero_day_mask = (y_test_multiclass_seq == self.config.zero_day_attack_label)
+                            normal_mask = (y_test_multiclass_seq == normal_label)
+                            known_attack_mask = (~zero_day_mask) & (~normal_mask)
+                            
                             zero_day_indices = torch.where(zero_day_mask)[0].numpy()
-                            non_zero_day_indices = torch.where(~zero_day_mask)[0].numpy()
+                            normal_indices = torch.where(normal_mask)[0].numpy()
+                            known_attack_indices = torch.where(known_attack_mask)[0].numpy()
                             
                             available_zero_day = len(zero_day_indices)
-                            available_non_zero_day = len(non_zero_day_indices)
+                            available_normal = len(normal_indices)
+                            available_known_attack = len(known_attack_indices)
                             
-                            # Target: 30% zero-day sequences (MAXIMIZE total while maintaining 30% ratio)
-                            # Strategy: Use ALL available zero-day sequences, then calculate needed non-zero-day to maintain 30% ratio
-                            # For 30% zero-day: if we have N zero-day (30%), we need M non-zero-day (70%) where N/(N+M) = 0.30
-                            # This means: N = 0.30*(N+M) => N = 0.30N + 0.30M => 0.70N = 0.30M => M = (7/3)N
+                            # FIXED STRATEGY: Maintain exact 60/30/10 ratio
+                            # Find the maximum total we can achieve while maintaining exact ratio and respecting constraints
+                            if available_zero_day > 0:
+                                # Calculate maximum total based on each category's constraint
+                                # From zero-day constraint: total_max = available_zero_day / 0.10
+                                max_total_from_zero_day = available_zero_day / target_zero_day_percentage
+                                # From normal constraint: total_max = available_normal / 0.60
+                                max_total_from_normal = available_normal / target_normal_percentage
+                                # From known attack constraint: total_max = available_known_attack / 0.30
+                                max_total_from_known = available_known_attack / target_known_attack_percentage
+                                
+                                # Use the minimum (bottleneck constraint) - this ensures we don't exceed any category
+                                max_total = int(min(max_total_from_zero_day, max_total_from_normal, max_total_from_known))
+                                
+                                # Calculate exact target counts maintaining 60/30/10 ratio
+                                target_zero_day_count = int(max_total * target_zero_day_percentage)
+                                target_normal_count = int(max_total * target_normal_percentage)
+                                target_known_attack_count = int(max_total * target_known_attack_percentage)
+                                
+                                # Final safety check (shouldn't be needed due to min() above, but good practice)
+                                target_zero_day_count = min(target_zero_day_count, available_zero_day)
+                                target_normal_count = min(target_normal_count, available_normal)
+                                target_known_attack_count = min(target_known_attack_count, available_known_attack)
+                                
+                                # Verify ratio is maintained (for logging)
+                                final_total = target_zero_day_count + target_normal_count + target_known_attack_count
+                                if final_total > 0:
+                                    actual_zero_day_pct = 100 * target_zero_day_count / final_total
+                                    actual_normal_pct = 100 * target_normal_count / final_total
+                                    actual_known_pct = 100 * target_known_attack_count / final_total
+                                    logger.info(f"   ✅ Ratio verification: Normal={actual_normal_pct:.1f}%, Known={actual_known_pct:.1f}%, Zero-day={actual_zero_day_pct:.1f}% (target: 60/30/10)")
+                            else:
+                                # No zero-day available, use available samples maintaining Normal/Known ratio
+                                target_zero_day_count = 0
+                                if available_normal > 0 and available_known_attack > 0:
+                                    # Maintain 60/30 ratio between Normal and Known
+                                    # Total non-zero-day = Normal + Known = 0.60 + 0.30 = 0.90 of total
+                                    # So Normal = (0.60/0.90) * available, Known = (0.30/0.90) * available
+                                    max_total_non_zero = available_normal + available_known_attack
+                                    target_normal_count = int(max_total_non_zero * (target_normal_percentage / (target_normal_percentage + target_known_attack_percentage)))
+                                    target_known_attack_count = max_total_non_zero - target_normal_count
+                                else:
+                                    target_normal_count = min(available_normal, int(len(y_test_multiclass_seq) * target_normal_percentage))
+                                    target_known_attack_count = min(available_known_attack, int(len(y_test_multiclass_seq) * target_known_attack_percentage))
                             
-                            # Use ALL available zero-day sequences to maximize total count
-                            target_zero_day_count = available_zero_day
+                            # Final total will be: target_normal_count + target_known_attack_count + target_zero_day_count
+                            logger.info(f"📊 Filtering strategy: {target_normal_count} Normal ({target_normal_percentage*100:.0f}%) + {target_known_attack_count} Known ({target_known_attack_percentage*100:.0f}%) + {target_zero_day_count} Zero-day ({target_zero_day_percentage*100:.0f}%) = {target_normal_count + target_known_attack_count + target_zero_day_count} total sequences")
                             
-                            # Calculate needed non-zero-day sequences to maintain target percentage ratio
-                            # For 20% ratio: if we have N zero-day (20%), we need M = 4N non-zero-day (80%)
-                            # For 30% ratio: if we have N zero-day (30%), we need M = (7/3)N non-zero-day (70%)
-                            # Formula: if target = p, then M = N * (1-p)/p = N * (0.8/0.2) = 4N
-                            ratio_non_zero_day = (1.0 - target_zero_day_percentage) / target_zero_day_percentage
-                            target_non_zero_day_count = int(target_zero_day_count * ratio_non_zero_day)
-                            
-                            # Adjust if we don't have enough non-zero-day sequences
-                            if target_non_zero_day_count > available_non_zero_day:
-                                # Not enough non-zero-day: reduce zero-day to fit available non-zero-day
-                                # If M is max non-zero-day, then N = M * p/(1-p) is max zero-day
-                                max_zero_day_by_ratio = int(available_non_zero_day * target_zero_day_percentage / (1.0 - target_zero_day_percentage))
-                                target_zero_day_count = min(available_zero_day, max_zero_day_by_ratio)
-                                target_non_zero_day_count = int(target_zero_day_count * ratio_non_zero_day)
-                            
-                            # Final total will be: target_zero_day_count + target_non_zero_day_count
-                            logger.info(f"📊 Filtering strategy: Using {target_zero_day_count} zero-day + {target_non_zero_day_count} non-zero-day = {target_zero_day_count + target_non_zero_day_count} total sequences (target: {target_zero_day_percentage*100:.0f}% zero-day)")
-                            
-                            if target_zero_day_count > 0 and target_non_zero_day_count > 0:
-                                np.random.seed(42)
-                                selected_zero_day = np.random.choice(zero_day_indices, size=target_zero_day_count, replace=False)
-                                np.random.seed(43)
-                                selected_non_zero_day = np.random.choice(non_zero_day_indices, size=target_non_zero_day_count, replace=False)
-                                selected_indices = np.concatenate([selected_zero_day, selected_non_zero_day])
+                            if target_normal_count > 0 or target_known_attack_count > 0 or target_zero_day_count > 0:
+                                selected_indices_list = []
+                                if target_normal_count > 0 and available_normal > 0:
+                                    np.random.seed(42)
+                                    selected_normal = np.random.choice(normal_indices, size=target_normal_count, replace=False)
+                                    selected_indices_list.append(selected_normal)
+                                
+                                # ENHANCED: Ensure equal distribution of known attack types (similar to validation set)
+                                if target_known_attack_count > 0 and available_known_attack > 0:
+                                    # Get unique known attack types in sequences
+                                    known_attack_labels_in_seq = np.unique(y_test_multiclass_seq[known_attack_indices].numpy() if torch.is_tensor(y_test_multiclass_seq) else y_test_multiclass_seq[known_attack_indices])
+                                    num_known_attack_types_in_seq = len(known_attack_labels_in_seq)
+                                    
+                                    # Each known attack type should have equal samples
+                                    target_per_attack_type_test = target_known_attack_count // num_known_attack_types_in_seq if num_known_attack_types_in_seq > 0 else 0
+                                    
+                                    if target_per_attack_type_test > 0:
+                                        selected_known_seq_list = []
+                                        y_test_mc_seq_np = y_test_multiclass_seq.numpy() if torch.is_tensor(y_test_multiclass_seq) else y_test_multiclass_seq
+                                        
+                                        # Sample equally from each known attack type
+                                        for attack_label in known_attack_labels_in_seq:
+                                            attack_mask_test = (y_test_mc_seq_np[known_attack_indices] == attack_label)
+                                            attack_indices_test = known_attack_indices[np.where(attack_mask_test)[0]]
+                                            
+                                            if len(attack_indices_test) >= target_per_attack_type_test:
+                                                np.random.seed(42 + int(attack_label))  # Different seed per attack type
+                                                selected_attack_test = np.random.choice(attack_indices_test, size=target_per_attack_type_test, replace=False)
+                                                selected_known_seq_list.append(selected_attack_test)
+                                            elif len(attack_indices_test) > 0:
+                                                # Use all available if less than target
+                                                selected_known_seq_list.append(attack_indices_test)
+                                                logger.info(f"   ⚠️  Test set - Attack type {attack_label}: Only {len(attack_indices_test)} sequences available (target: {target_per_attack_type_test}), using all available")
+                                        
+                                        if selected_known_seq_list:
+                                            selected_known_attack = np.concatenate(selected_known_seq_list)
+                                            selected_indices_list.append(selected_known_attack)
+                                            logger.info(f"   ✅ Test set - Known attacks: {len(selected_known_attack)} sequences from {len(known_attack_labels_in_seq)} attack types ({target_per_attack_type_test} per type)")
+                                    else:
+                                        # Fallback: random sampling if can't achieve equal distribution
+                                        np.random.seed(43)
+                                        selected_known_attack = np.random.choice(known_attack_indices, size=target_known_attack_count, replace=False)
+                                        selected_indices_list.append(selected_known_attack)
+                                        logger.warning(f"   ⚠️  Test set - Cannot achieve equal distribution (target_per_attack_type={target_per_attack_type_test}), using random sampling")
+                                if target_zero_day_count > 0 and available_zero_day > 0:
+                                    np.random.seed(44)
+                                    selected_zero_day = np.random.choice(zero_day_indices, size=target_zero_day_count, replace=False)
+                                    selected_indices_list.append(selected_zero_day)
+                                
+                                selected_indices = np.concatenate(selected_indices_list) if selected_indices_list else np.array([], dtype=np.int64)
                                 
                                 # Shuffle to mix
                                 np.random.seed(44)
@@ -1015,14 +1787,84 @@ class BlockchainFederatedIncentiveSystem:
                                     test_attack_cat_seq = [test_attack_cat_seq[i] for i in selected_indices]
                                 
                                 # Verify final distribution
-                                final_zero_day_count = (y_test_multiclass_seq == self.config.zero_day_attack_label).sum().item()
                                 final_total = len(y_test_multiclass_seq)
-                                final_percentage = 100 * final_zero_day_count / final_total if final_total > 0 else 0
-                                logger.info(f"✅ After post-sequence filtering: {final_zero_day_count}/{final_total} zero-day sequences ({final_percentage:.1f}%) [TARGET: {target_zero_day_percentage*100:.0f}%]")
+                                final_normal_count = (y_test_multiclass_seq == normal_label).sum().item()
+                                final_zero_day_count = (y_test_multiclass_seq == self.config.zero_day_attack_label).sum().item()
+                                final_known_attack_count = final_total - final_normal_count - final_zero_day_count
+                                final_normal_percentage = 100 * final_normal_count / final_total if final_total > 0 else 0
+                                final_known_attack_percentage = 100 * final_known_attack_count / final_total if final_total > 0 else 0
+                                final_zero_day_percentage = 100 * final_zero_day_count / final_total if final_total > 0 else 0
+                                logger.info(f"✅ After post-sequence filtering:")
+                                logger.info(f"   Normal: {final_normal_count}/{final_total} ({final_normal_percentage:.1f}%) [TARGET: {target_normal_percentage*100:.0f}%]")
+                                logger.info(f"   Known attacks: {final_known_attack_count}/{final_total} ({final_known_attack_percentage:.1f}%) [TARGET: {target_known_attack_percentage*100:.0f}%]")
+                                logger.info(f"   Zero-day: {final_zero_day_count}/{final_total} ({final_zero_day_percentage:.1f}%) [TARGET: {target_zero_day_percentage*100:.0f}%]")
+                                
+                                # Log known attack type distribution
+                                if final_known_attack_count > 0:
+                                    known_attack_labels_in_final = np.unique(y_test_multiclass_seq[(y_test_multiclass_seq != normal_label) & (y_test_multiclass_seq != self.config.zero_day_attack_label)].numpy() if torch.is_tensor(y_test_multiclass_seq) else y_test_multiclass_seq[(y_test_multiclass_seq != normal_label) & (y_test_multiclass_seq != self.config.zero_day_attack_label)])
+                                    unique_final, counts_final = np.unique(y_test_multiclass_seq.numpy() if torch.is_tensor(y_test_multiclass_seq) else y_test_multiclass_seq, return_counts=True)
+                                    test_attack_type_dist = {}
+                                    for label in known_attack_labels_in_final:
+                                        count_test = counts_final[unique_final == label].sum() if label in unique_final else 0
+                                        test_attack_type_dist[label] = count_test
+                                    logger.info(f"   ✅ Test set - Known attack type distribution: {test_attack_type_dist}")
+                                    
+                                    # Check if all attack types are equally distributed
+                                    if len(test_attack_type_dist) > 0:
+                                        counts_per_type = list(test_attack_type_dist.values())
+                                        min_count = min(counts_per_type)
+                                        max_count = max(counts_per_type)
+                                        if max_count - min_count <= 1:
+                                            logger.info(f"   ✅ Test set - All {len(test_attack_type_dist)} known attack types equally distributed ({min_count}-{max_count} sequences each)")
+                                        else:
+                                            logger.warning(f"   ⚠️  Test set - Attack types unevenly distributed: {min_count}-{max_count} sequences per type (should be equal)")
                             else:
-                                logger.warning(f"⚠️  Cannot achieve {target_zero_day_percentage*100:.0f}% zero-day ratio. Available: {available_zero_day} zero-day, {available_non_zero_day} non-zero-day. Using all available sequences without filtering.")
+                                logger.warning(f"⚠️  Cannot achieve target composition. Available: {available_normal} Normal, {available_known_attack} Known attacks, {available_zero_day} Zero-day. Using all available sequences without filtering.")
                             
                             # Store filtered sequences (CRITICAL: All three must have the same length after filtering)
+                            # DETAILED LOGGING: Verify zero-day samples are preserved after filtering
+                            final_zero_day_in_multiclass = (y_test_multiclass_seq == self.config.zero_day_attack_label).sum().item()
+                            final_normal_in_multiclass = (y_test_multiclass_seq == 0).sum().item()
+                            unique_labels_final = torch.unique(y_test_multiclass_seq).cpu().numpy()
+                            logger.info(f"🔍 POST-FILTERING VERIFICATION:")
+                            logger.info(f"   Final y_test_multiclass_seq length: {len(y_test_multiclass_seq)}")
+                            logger.info(f"   Final X_test_seq length: {len(X_test_seq)}")
+                            logger.info(f"   Final y_test_seq length: {len(y_test_seq)}")
+                            logger.info(f"   ✅ All sequences aligned: {len(y_test_multiclass_seq) == len(X_test_seq) == len(y_test_seq)}")
+                            logger.info(f"   Unique labels in final multiclass: {unique_labels_final}")
+                            logger.info(f"   Zero-day sequences in filtered multiclass: {final_zero_day_in_multiclass} (looking for label {self.config.zero_day_attack_label})")
+                            logger.info(f"   Normal sequences in filtered multiclass: {final_normal_in_multiclass}")
+                            
+                            if final_zero_day_in_multiclass == 0:
+                                logger.error(f"❌ CRITICAL: After post-sequence filtering, NO zero-day sequences remain in y_test_multiclass_seq!")
+                                logger.error(f"   This will cause all zero-day metrics to be zero!")
+                                logger.error(f"   Available labels: {unique_labels_final.tolist()}")
+                                logger.error(f"   Expected label {self.config.zero_day_attack_label} for '{self.config.zero_day_attack}'")
+                                logger.error(f"   Check the filtering logic above - zero-day samples may have been filtered out")
+                                
+                                # CRITICAL FIX: If no zero-day sequences after filtering, we need to check why
+                                # Possible causes:
+                                # 1. No zero-day sequences were mapped (sequence mapping issue)
+                                # 2. All zero-day sequences were filtered out (filtering issue)
+                                # 3. Subset didn't contain zero-day samples (subset creation issue)
+                                
+                                if zero_day_count_in_seq == 0:
+                                    logger.error(f"   ROOT CAUSE: No zero-day sequences found during sequence mapping (before filtering)")
+                                    logger.error(f"   This means zero-day samples from the subset were not mapped to sequences correctly")
+                                    logger.error(f"   Possible fixes:")
+                                    logger.error(f"     1. Reduce sequence_stride to capture more sequences")
+                                    logger.error(f"     2. Increase zero-day percentage in subset (currently 10%)")
+                                    logger.error(f"     3. Check if zero-day samples are at sequence boundaries")
+                                elif available_zero_day > 0:
+                                    logger.error(f"   ROOT CAUSE: Zero-day sequences existed before filtering ({available_zero_day}) but were removed during filtering")
+                                    logger.error(f"   This suggests the filtering logic incorrectly removed all zero-day sequences")
+                                    logger.error(f"   Check filtering logic: target_zero_day_count calculation may be wrong")
+                                
+                                # Don't raise exception - allow code to continue but metrics will be zero
+                                # This allows the run to complete so we can see what went wrong
+                            else:
+                                logger.info(f"   ✅ Zero-day samples preserved: {final_zero_day_in_multiclass} sequences with label {self.config.zero_day_attack_label}")
+                            
                             self.preprocessed_data['y_test_multiclass'] = y_test_multiclass_seq
                             # IMPORTANT: X_test_seq and y_test_seq will be stored later at line 1072-1073,
                             # but we need to ensure they're the filtered versions (which they should be since we filtered in-place)
@@ -1047,7 +1889,7 @@ class BlockchainFederatedIncentiveSystem:
                         self.preprocessed_data['test_attack_cat_original'] = test_attack_cat_original
                     
                     # If saved test set exists, replace with saved one (for reproducibility)
-                    use_saved_test_set = False
+                    # (use_saved_test_set already initialized above)
                     if saved_test_set is not None:
                         logger.info("🔄 Checking saved test set from optimization trial...")
                         
@@ -1080,7 +1922,7 @@ class BlockchainFederatedIncentiveSystem:
                         elif saved_x_len != len(X_test_seq):
                             # CRITICAL: Check if saved test set size matches newly created sequences
                             logger.warning(f"⚠️ Saved test set size ({saved_x_len}) doesn't match newly created test sequences ({len(X_test_seq)})!")
-                            logger.warning(f"⚠️ Skipping saved test set - size mismatch. Will use newly created test set with correct composition (40% Normal, 35% Non-zero-day, 25% Zero-day).")
+                            logger.warning(f"⚠️ Skipping saved test set - size mismatch. Will use newly created test set with correct composition (60% Normal, 30% Known attacks, 10% Zero-day).")
                             use_saved_test_set = False
                         # Additional check: Verify saved test set has correct zero-day composition (not 100% zero-day)
                         elif saved_multiclass is not None:
@@ -1095,10 +1937,10 @@ class BlockchainFederatedIncentiveSystem:
                             zero_day_count = (saved_multiclass_np == zero_day_label).sum()
                             zero_day_percentage = 100 * zero_day_count / len(saved_multiclass_np) if len(saved_multiclass_np) > 0 else 0
                             
-                            # Expected: ~25% zero-day (40% Normal, 35% Non-zero-day, 25% Zero-day)
+                            # Expected: ~10% zero-day (60% Normal, 30% Known attacks, 10% Zero-day)
                             # Reject if it's clearly wrong (e.g., 100% or 0% zero-day, or way off target)
-                            if zero_day_percentage > 80.0 or zero_day_percentage < 5.0:
-                                logger.warning(f"⚠️ Saved test set has incorrect zero-day composition: {zero_day_percentage:.1f}% zero-day (expected ~25%)!")
+                            if zero_day_percentage > 50.0 or zero_day_percentage < 1.0:
+                                logger.warning(f"⚠️ Saved test set has incorrect zero-day composition: {zero_day_percentage:.1f}% zero-day (expected ~10%)!")
                                 logger.warning(f"⚠️ Skipping saved test set - wrong composition. Will use newly created test set with correct composition.")
                                 use_saved_test_set = False
                             else:
@@ -1210,6 +2052,16 @@ class BlockchainFederatedIncentiveSystem:
                 f"Test samples: {len(self.preprocessed_data['X_test'])}")
             logger.info(
                 f"Features: {len(self.preprocessed_data['feature_names'])}")
+            
+            # Verify validation multiclass labels are available
+            if 'y_val_multiclass' in self.preprocessed_data:
+                val_mc = self.preprocessed_data['y_val_multiclass']
+                if torch.is_tensor(val_mc):
+                    logger.info(f"✅ Validation multiclass labels available: {len(val_mc)} labels, unique: {torch.unique(val_mc).tolist()}")
+                else:
+                    logger.info(f"✅ Validation multiclass labels available: {len(val_mc)} labels (numpy/list)")
+            else:
+                logger.warning(f"⚠️  y_val_multiclass not found in preprocessed_data. Keys: {list(self.preprocessed_data.keys())}")
             
             return True
             
@@ -1642,39 +2494,53 @@ class BlockchainFederatedIncentiveSystem:
                 val_query_x = X_val_tensor[val_query_indices]
                 val_query_y = y_val_tensor[val_query_indices]
                 
-                # Compute prototypes and get logits
-                prototypes_val, unique_labels_val = global_model.compute_prototypes(val_support_x, val_support_y)
+                # CRITICAL FIX: Ensure labels are binary (0=Normal, 1=Attack) for prototype-based evaluation
+                # Convert multiclass labels to binary if needed
+                val_support_y_binary = (val_support_y != 0).long()  # Normal=0, Attack=1
+                val_query_y_binary = (val_query_y != 0).long()  # Normal=0, Attack=1
+                
+                # Compute prototypes using binary labels
+                prototypes_val, unique_labels_val = global_model.compute_prototypes(val_support_x, val_support_y_binary)
+                
+                # Map query labels to prototype indices (0, 1) for loss calculation
+                # unique_labels_val contains the unique binary labels from support set (should be [0, 1] or [0] or [1])
+                # Create mapping: label -> prototype index
+                label_to_idx = {label.item(): idx for idx, label in enumerate(unique_labels_val)}
+                val_query_y_indices = torch.tensor([label_to_idx.get(label.item(), 0) for label in val_query_y_binary], 
+                                                   dtype=torch.long, device=self.device)
+                
                 outputs = global_model.forward_with_prototypes(val_query_x, prototypes_val)  # Prototype-based logits
                 
-                # Calculate loss
+                # Calculate loss using mapped indices
                 criterion = torch.nn.CrossEntropyLoss()
-                validation_loss = criterion(outputs, val_query_y).item()
+                validation_loss = criterion(outputs, val_query_y_indices).item()
                 
-                # Calculate predictions using threshold-based binary classification
-                probabilities = torch.softmax(outputs, dim=1)
-                attack_probabilities = probabilities[:, 1] if probabilities.shape[1] > 1 else probabilities.squeeze(1)  # P(Attack)
-                predictions = (attack_probabilities >= 0.5).long()
+                # Calculate predictions: Map prototype indices back to binary labels
+                predictions_indices = torch.argmax(outputs, dim=1)  # Indices into unique_labels_val
+                predictions = unique_labels_val[predictions_indices]  # Map back to actual binary labels (0 or 1)
                 
-                # Calculate accuracy
-                correct = (predictions == val_query_y).sum().item()
-                total = val_query_y.size(0)
+                # Calculate accuracy using binary labels
+                correct = (predictions == val_query_y_binary).sum().item()
+                total = val_query_y_binary.size(0)
                 validation_accuracy = correct / total
 
                 # Debug: Log prediction distribution
                 unique_preds, pred_counts = torch.unique(
                     predictions, return_counts=True)
                 unique_labels, label_counts = torch.unique(
-                    val_query_y, return_counts=True)  # Fixed: use val_query_y instead of y_val_tensor
+                    val_query_y_binary, return_counts=True)  # Use binary labels
                 logger.info(
                     f"🔍 DEBUG: Predictions distribution: {dict(zip(unique_preds.cpu().numpy(), pred_counts.cpu().numpy()))}")
                 logger.info(
                     f"🔍 DEBUG: Labels distribution: {dict(zip(unique_labels.cpu().numpy(), label_counts.cpu().numpy()))}")
                 logger.info(f"🔍 DEBUG: Correct predictions: {correct}/{total}")
+                logger.info(f"🔍 DEBUG: Unique labels in support set: {unique_labels_val.tolist()}")
+                logger.info(f"🔍 DEBUG: Prototype count: {len(prototypes_val)}")
                 
-                # Calculate F1-score
+                # Calculate F1-score using binary labels
                 from sklearn.metrics import f1_score
                 predictions_np = predictions.cpu().numpy()
-                val_query_y_np = val_query_y.cpu().numpy()  # Fixed: use val_query_y instead of y_val_tensor
+                val_query_y_np = val_query_y_binary.cpu().numpy()  # Use binary labels
                 validation_f1 = f1_score(
                     val_query_y_np, predictions_np, average='weighted')
                 
@@ -2865,12 +3731,15 @@ class BlockchainFederatedIncentiveSystem:
             # Since sequences are created from original data, zero_day_indices are broken
             # Instead, use the zero-day attack label directly from y_test
             
-            # Get zero-day attack information from preprocessed_data
-            zero_day_attack = self.preprocessed_data.get('zero_day_attack', 'Generic')
-            attack_types = self.preprocessed_data.get('attack_types', {})
+            # Get zero-day attack information from preprocessed_data or config
+            # CRITICAL: Use config.zero_day_attack as the source of truth, fallback to preprocessed_data
+            zero_day_attack = self.preprocessed_data.get('zero_day_attack', self.config.zero_day_attack)
+            attack_types = self.preprocessed_data.get('attack_types', self.config.attack_types)
             
             # Get the numeric label for zero-day attack
-            zero_day_attack_label = attack_types.get(zero_day_attack, 1)  # Default to label 1 if not found
+            # Use config.zero_day_attack_label as source of truth
+            zero_day_attack_label = self.config.zero_day_attack_label
+            logger.info(f"🔍 Using zero-day attack: '{zero_day_attack}' (label: {zero_day_attack_label}) from config")
             
             # FIXED: Use sequence-level multiclass labels to preserve 50% distribution from stratified sampling
             # Priority: Use sequence-level labels since stratified subset already ensures correct distribution
@@ -2885,15 +3754,45 @@ class BlockchainFederatedIncentiveSystem:
                 
                 # Direct comparison: y_test_multiclass_seq is already aligned with sequences
                 if len(y_test_multiclass_seq) == len(y_test_tensor):
+                    # DETAILED LOGGING: Check what labels are in multiclass sequence
+                    unique_labels_in_seq = torch.unique(y_test_multiclass_seq).cpu().numpy()
+                    label_counts = torch.bincount(y_test_multiclass_seq.long()).cpu().numpy()
+                    logger.info(f"🔍 DETAILED ZERO-DAY DIAGNOSTIC:")
+                    logger.info(f"   Multiclass sequence length: {len(y_test_multiclass_seq)}")
+                    logger.info(f"   Test tensor (sequences) length: {len(y_test_tensor)}")
+                    logger.info(f"   ✅ Size match: {len(y_test_multiclass_seq)} == {len(y_test_tensor)}")
+                    logger.info(f"   Unique labels in multiclass sequence: {unique_labels_in_seq}")
+                    logger.info(f"   Label distribution: {dict(zip(unique_labels_in_seq, label_counts[unique_labels_in_seq]))}")
+                    logger.info(f"   Looking for zero-day attack '{zero_day_attack}' (label {zero_day_attack_label})")
+                    
                     zero_day_mask = (y_test_multiclass_seq == zero_day_attack_label)
                     zero_day_count = zero_day_mask.sum().item()
+                    
+                    if zero_day_count == 0:
+                        logger.error(f"❌ ZERO-DAY DIAGNOSTIC: No samples found with label {zero_day_attack_label}!")
+                        logger.error(f"   Available labels: {unique_labels_in_seq.tolist()}")
+                        logger.error(f"   Expected label {zero_day_attack_label} for '{zero_day_attack}' but it's not in the sequence!")
+                        logger.error(f"   This will cause all zero-day metrics to be zero.")
+                    else:
+                        logger.info(f"   ✅ Found {zero_day_count} zero-day sequences with label {zero_day_attack_label}")
                 else:
-                    logger.warning(f"⚠️ Mismatch: {len(y_test_multiclass_seq)} multiclass labels vs {len(y_test_tensor)} sequences")
+                    logger.error(f"❌ CRITICAL SIZE MISMATCH: {len(y_test_multiclass_seq)} multiclass labels vs {len(y_test_tensor)} sequences")
+                    logger.error(f"   This prevents zero-day mask creation - all zero-day metrics will be zero!")
+                    logger.error(f"   Attempting to diagnose the mismatch...")
+                    
+                    # Try to understand the mismatch
+                    if 'y_test_multiclass' in self.preprocessed_data:
+                        orig_multiclass = self.preprocessed_data['y_test_multiclass']
+                        logger.error(f"   Original y_test_multiclass length: {len(orig_multiclass) if hasattr(orig_multiclass, '__len__') else 'N/A'}")
+                    if 'X_test' in self.preprocessed_data:
+                        X_test_shape = self.preprocessed_data['X_test'].shape if hasattr(self.preprocessed_data['X_test'], 'shape') else 'N/A'
+                        logger.error(f"   X_test shape: {X_test_shape}")
+                    
                     zero_day_mask = torch.zeros(len(y_test_tensor), dtype=torch.bool, device=self.device)
                     zero_day_count = 0
                 
-                logger.info(f"🔍 Using sequence-level multiclass labels (preserves 30% zero-day distribution from stratified sampling)")
-                logger.info(f"🔍 Identified {zero_day_count} zero-day sequences from {len(y_test_multiclass_seq)} sequences ({100*zero_day_count/len(y_test_multiclass_seq):.1f}%)")
+                logger.info(f"🔍 Using sequence-level multiclass labels (target: 10% zero-day distribution)")
+                logger.info(f"🔍 Identified {zero_day_count} zero-day sequences from {len(y_test_multiclass_seq) if len(y_test_multiclass_seq) == len(y_test_tensor) else len(y_test_tensor)} sequences ({100*zero_day_count/len(y_test_tensor):.1f}% of test sequences)")
             elif 'test_attack_cat_original' in self.preprocessed_data:
                 # Fallback: Check ALL timesteps (may overcount due to sequence overlaps)
                 test_attack_cat_original = self.preprocessed_data['test_attack_cat_original']
@@ -2976,16 +3875,74 @@ class BlockchainFederatedIncentiveSystem:
                 y_val_tensor = torch.LongTensor(self.preprocessed_data['y_val']).to(self.device)
                 y_val_binary = (y_val_tensor != 0).long()
                 
-                support_size = min(200, len(X_val_tensor))
-                support_indices = torch.randperm(len(X_val_tensor))[:support_size]
-                support_x = X_val_tensor[support_indices]
-                support_y = y_val_binary[support_indices]
+                # CRITICAL FIX: Force balanced 50/50 support set to prevent prototype bias
+                # This ensures Normal and Attack prototypes are equally representative
+                normal_indices = torch.where(y_val_binary == 0)[0]
+                attack_indices = torch.where(y_val_binary == 1)[0]
+                
+                if len(normal_indices) > 0 and len(attack_indices) > 0:
+                    # Use equal number of samples from each class for balanced prototypes
+                    # Target: 50-100 samples per class (total 100-200 samples)
+                    target_per_class = min(75, len(normal_indices), len(attack_indices))
+                    if target_per_class < 20:  # If too few samples, use what's available
+                        target_per_class = min(len(normal_indices), len(attack_indices))
+                    
+                    normal_sample = normal_indices[torch.randperm(len(normal_indices))[:target_per_class]]
+                    attack_sample = attack_indices[torch.randperm(len(attack_indices))[:target_per_class]]
+                    support_indices = torch.cat([normal_sample, attack_sample])
+                    support_x = X_val_tensor[support_indices]
+                    support_y = y_val_binary[support_indices]
+                    
+                    unique_support_labels = torch.unique(support_y)
+                    logger.info(f"🔍 DEBUG: Balanced support set created: {len(unique_support_labels)} classes")
+                    logger.info(f"🔍 DEBUG: Support set label distribution: {torch.bincount(support_y, minlength=2).tolist()} (target: balanced 50/50)")
+                else:
+                    # Fallback: Use random sampling if balanced selection not possible
+                    logger.warning(f"⚠️ Cannot create balanced support set. Using random sampling.")
+                    support_size = min(200, len(X_val_tensor))
+                    support_indices = torch.randperm(len(X_val_tensor))[:support_size]
+                    support_x = X_val_tensor[support_indices]
+                    support_y = y_val_binary[support_indices]
+                    unique_support_labels = torch.unique(support_y)
+                    logger.info(f"🔍 DEBUG: Support set has {len(unique_support_labels)} unique labels: {unique_support_labels.tolist()}")
+                    logger.info(f"🔍 DEBUG: Support set label distribution: {torch.bincount(support_y, minlength=2).tolist()}")
                 
                 # Compute prototypes and get prototype-based logits (on filtered test set if exclude_zero_day=True)
                 prototypes, unique_labels = global_model.compute_prototypes(support_x, support_y)
+                logger.info(f"🔍 DEBUG: Computed {len(prototypes)} prototypes for labels: {unique_labels.tolist()}")
+                
+                # CRITICAL DEBUG: Check prototype quality - are they well-separated?
+                if len(prototypes) >= 2:
+                    prototype_distance = torch.norm(prototypes[0] - prototypes[1], p=2).item()
+                    logger.info(f"🔍 DEBUG: Distance between Normal and Attack prototypes: {prototype_distance:.4f}")
+                    logger.info(f"🔍 DEBUG: Normal prototype norm: {torch.norm(prototypes[0], p=2).item():.4f}")
+                    logger.info(f"🔍 DEBUG: Attack prototype norm: {torch.norm(prototypes[1], p=2).item():.4f}")
+                
                 base_logits = global_model.forward_with_prototypes(X_test_filtered, prototypes)  # Prototype-based logits
-                base_predictions = torch.argmax(base_logits, dim=1)
+                
+                # DEBUG: Check logits distribution for zero-day samples
+                if not exclude_zero_day and len(zero_day_mask) > 0:
+                    zero_day_logits = base_logits[zero_day_mask_filtered]
+                    logger.info(f"🔍 DEBUG: Zero-day logits shape: {zero_day_logits.shape}")
+                    logger.info(f"🔍 DEBUG: Zero-day logits mean per class: {zero_day_logits.mean(dim=0).cpu().tolist()}")
+                    logger.info(f"🔍 DEBUG: Zero-day logits argmax (which prototype is closest): {torch.argmax(zero_day_logits, dim=1).cpu().bincount(minlength=len(unique_labels)).tolist()}")
+                    # Check distances to prototypes
+                    query_embeddings = global_model.extract_embeddings(X_test_filtered[zero_day_mask_filtered])
+                    distances = torch.cdist(query_embeddings.unsqueeze(0), prototypes.unsqueeze(0), p=2).squeeze(0)
+                    logger.info(f"🔍 DEBUG: Zero-day distances to prototypes: mean={distances.mean(dim=0).cpu().tolist()}, std={distances.std(dim=0).cpu().tolist()}")
+                    logger.info(f"🔍 DEBUG: Which prototype is closer? (0=first prototype, 1=second prototype): {torch.argmin(distances, dim=1).cpu().bincount(minlength=len(unique_labels)).tolist()}")
+                
+                # CRITICAL FIX: argmax returns indices into prototypes array, need to map to actual class labels
+                base_predictions_indices = torch.argmax(base_logits, dim=1)  # Indices: 0, 1, ... (corresponds to unique_labels order)
+                base_predictions = unique_labels[base_predictions_indices]  # Map indices to actual class labels (0=Normal, 1=Attack)
                 base_probabilities = torch.softmax(base_logits, dim=1)
+                
+                # Additional debug for zero-day samples
+                if not exclude_zero_day and len(zero_day_mask) > 0:
+                    zero_day_predictions_indices = base_predictions_indices[zero_day_mask_filtered]
+                    logger.info(f"🔍 DEBUG: Zero-day argmax indices (prototype order): {zero_day_predictions_indices.cpu().bincount(minlength=len(unique_labels)).tolist()}")
+                    logger.info(f"🔍 DEBUG: Zero-day mapped predictions (actual labels): {base_predictions[zero_day_mask_filtered].cpu().bincount(minlength=2).tolist()}")
+                    logger.info(f"🔍 DEBUG: unique_labels mapping: {unique_labels.tolist()} (index 0 → label {unique_labels[0].item()}, index 1 → label {unique_labels[1].item() if len(unique_labels) > 1 else 'N/A'})")
             
             # Calculate metrics (using filtered test set if exclude_zero_day=True)
             # CRITICAL FIX: Convert multiclass predictions to binary for comparison with binary labels
@@ -3104,13 +4061,53 @@ class BlockchainFederatedIncentiveSystem:
                 non_zero_day_predictions = base_predictions
                 non_zero_day_actual = y_test_filtered
             else:
-                # Use original zero_day_mask to identify zero-day samples in predictions
+                # Use zero_day_mask_filtered to identify zero-day samples in predictions
+                # CRITICAL: Verify mask size matches predictions size
+                if len(zero_day_mask_filtered) != len(base_predictions):
+                    logger.error(f"❌ SIZE MISMATCH: zero_day_mask_filtered ({len(zero_day_mask_filtered)}) != base_predictions ({len(base_predictions)})")
+                    logger.error(f"   This will cause incorrect zero-day sample extraction!")
+                    # Fix: Truncate or pad mask to match predictions
+                    if len(zero_day_mask_filtered) > len(base_predictions):
+                        zero_day_mask_filtered = zero_day_mask_filtered[:len(base_predictions)]
+                        logger.warning(f"   Truncated zero_day_mask_filtered to {len(base_predictions)}")
+                    else:
+                        # Pad with False
+                        padding = torch.zeros(len(base_predictions) - len(zero_day_mask_filtered), dtype=torch.bool, device=self.device)
+                        zero_day_mask_filtered = torch.cat([zero_day_mask_filtered, padding])
+                        logger.warning(f"   Padded zero_day_mask_filtered to {len(base_predictions)}")
+                
+                # Log mask statistics before indexing
+                logger.info(f"🔍 DEBUG: zero_day_mask_filtered size: {len(zero_day_mask_filtered)}, base_predictions size: {len(base_predictions)}")
+                logger.info(f"🔍 DEBUG: zero_day_mask_filtered sum: {zero_day_mask_filtered.sum().item()}")
+                
                 zero_day_predictions = base_predictions[zero_day_mask_filtered]
                 zero_day_actual = y_test_filtered[zero_day_mask_filtered]
                 
                 non_zero_day_mask = ~zero_day_mask_filtered
                 non_zero_day_predictions = base_predictions[non_zero_day_mask]
                 non_zero_day_actual = y_test_filtered[non_zero_day_mask]
+                
+                # DETAILED LOGGING: Log actual extracted samples with diagnostic info
+                logger.info(f"🔍 DETAILED EXTRACTION DIAGNOSTIC:")
+                logger.info(f"   Zero-day mask filtered size: {len(zero_day_mask_filtered)}")
+                logger.info(f"   Zero-day mask filtered sum (True values): {zero_day_mask_filtered.sum().item()}")
+                logger.info(f"   Base predictions size: {len(base_predictions)}")
+                logger.info(f"   Y test filtered size: {len(y_test_filtered)}")
+                logger.info(f"   Extracted {len(zero_day_predictions)} zero-day predictions from base_predictions")
+                logger.info(f"   Extracted {len(zero_day_actual)} zero-day labels from y_test_filtered")
+                
+                if len(zero_day_actual) == 0:
+                    logger.error(f"❌ ZERO-DAY EXTRACTION FAILED: No zero-day samples extracted!")
+                    logger.error(f"   This means zero_day_mask_filtered had no True values, or indexing failed")
+                    logger.error(f"   Zero-day mask filtered sum: {zero_day_mask_filtered.sum().item()}")
+                    logger.error(f"   All zero-day metrics will be set to 0.0 - this is why the plot shows zeros!")
+                else:
+                    logger.info(f"   ✅ Successfully extracted {len(zero_day_actual)} zero-day samples for evaluation")
+                    # Log distribution of extracted samples
+                    unique_actual = torch.unique(zero_day_actual).cpu().numpy()
+                    unique_preds = torch.unique(zero_day_predictions).cpu().numpy()
+                    logger.info(f"   Extracted zero-day actual labels: {unique_actual} (counts: {torch.bincount(zero_day_actual.long()).cpu().numpy()})")
+                    logger.info(f"   Extracted zero-day predictions: {unique_preds} (counts: {torch.bincount(zero_day_predictions.long()).cpu().numpy()})")
             
             # Zero-day only metrics
             if len(zero_day_actual) > 0:
@@ -3135,16 +4132,21 @@ class BlockchainFederatedIncentiveSystem:
                 
                 # Calculate zero-day-specific AUC-PR (using probabilities from zero-day samples only)
                 try:
+                    # CRITICAL FIX: Use zero_day_mask_filtered (not zero_day_mask) because attack_probs_clean is from filtered test set
                     # Get attack probabilities - use attack_probs_clean if available, otherwise calculate from base_probabilities
                     if 'attack_probs_clean' in locals() and attack_probs_clean is not None:
-                        zero_day_attack_probs_raw = attack_probs_clean[zero_day_mask.cpu().numpy()]
+                        # Use zero_day_mask_filtered because attack_probs_clean is calculated from filtered test set
+                        zero_day_mask_filtered_np = zero_day_mask_filtered.cpu().numpy() if torch.is_tensor(zero_day_mask_filtered) else zero_day_mask_filtered
+                        zero_day_attack_probs_raw = attack_probs_clean[zero_day_mask_filtered_np]
                     else:
                         # Fallback: calculate attack_probs from base_probabilities
                         if base_probabilities.shape[1] == 2:
                             attack_probs_temp = base_probabilities[:, 1].cpu().numpy()
                         else:
                             attack_probs_temp = (1.0 - base_probabilities[:, 0]).cpu().numpy()
-                        zero_day_attack_probs_raw = attack_probs_temp[zero_day_mask.cpu().numpy()]
+                        # Use zero_day_mask_filtered because base_probabilities is from filtered test set
+                        zero_day_mask_filtered_np = zero_day_mask_filtered.cpu().numpy() if torch.is_tensor(zero_day_mask_filtered) else zero_day_mask_filtered
+                        zero_day_attack_probs_raw = attack_probs_temp[zero_day_mask_filtered_np]
                     
                     # Clean the probabilities
                     zero_day_attack_probs = np.asarray(zero_day_attack_probs_raw, dtype=np.float64)
@@ -3213,6 +4215,11 @@ class BlockchainFederatedIncentiveSystem:
                 if len(zero_day_attack_probs) > 0:
                     logger.info(f"🔍 DEBUG BASE MODEL - Zero-day prob stats: min={zero_day_attack_probs.min():.4f}, max={zero_day_attack_probs.max():.4f}, mean={zero_day_attack_probs.mean():.4f}, median={np.median(zero_day_attack_probs):.4f}")
             else:
+                logger.error(f"❌ ZERO-DAY METRICS SET TO ZERO: len(zero_day_actual) == 0")
+                logger.error(f"   This is why the zero-day performance plot shows all zeros!")
+                logger.error(f"   Root cause: No zero-day samples were extracted from the test set")
+                logger.error(f"   Check the logs above for zero-day mask creation issues")
+                
                 zero_day_accuracy = 0.0
                 zero_day_precision = 0.0
                 zero_day_recall = 0.0
@@ -3304,16 +4311,24 @@ class BlockchainFederatedIncentiveSystem:
                 logger.warning(f"      ROC AUC: Not available (calculation failed)")
             logger.info(f"      MCC: {base_mcc:.4f}")
             test_set_size = len(y_test_filtered) if exclude_zero_day else len(y_test_tensor)
-            logger.info(f"\n   🔴 Zero-Day Attacks Only ({len(zero_day_actual)} samples, {len(zero_day_actual)/test_set_size*100:.1f}% of {'filtered ' if exclude_zero_day else ''}test set):")
-            logger.info(f"      Accuracy: {zero_day_accuracy:.4f}")
-            logger.info(f"      F1-Score: {zero_day_f1:.4f}")
-            logger.info(f"      Precision: {zero_day_precision:.4f}")
-            logger.info(f"      Recall: {zero_day_recall:.4f}")
-            logger.info(f"      Zero-Day Detection Rate: {zero_day_detection_rate:.4f}")
-            if zero_day_auc_pr is not None:
-                logger.info(f"      Zero-Day-Specific AUC-PR: {zero_day_auc_pr:.4f} ⭐ (calculated on zero-day samples only, should match detection rate if perfect)")
+            
+            # Only show zero-day metrics if zero-day samples are included (not excluded)
+            if not exclude_zero_day and len(zero_day_actual) > 0:
+                logger.info(f"\n   🔴 Zero-Day Attacks Only ({len(zero_day_actual)} samples, {len(zero_day_actual)/test_set_size*100:.1f}% of test set):")
+                logger.info(f"      Accuracy: {zero_day_accuracy:.4f}")
+                logger.info(f"      F1-Score: {zero_day_f1:.4f}")
+                logger.info(f"      Precision: {zero_day_precision:.4f}")
+                logger.info(f"      Recall: {zero_day_recall:.4f}")
+                logger.info(f"      Zero-Day Detection Rate: {zero_day_detection_rate:.4f}")
+                if zero_day_auc_pr is not None:
+                    logger.info(f"      Zero-Day-Specific AUC-PR: {zero_day_auc_pr:.4f} ⭐ (calculated on zero-day samples only, should match detection rate if perfect)")
+                else:
+                    logger.warning(f"      Zero-Day-Specific AUC-PR: Not available")
+            elif exclude_zero_day:
+                logger.info(f"\n   🔴 Zero-Day Attacks Only: N/A (excluded from this evaluation)")
+                logger.info(f"      Zero-day samples were excluded to evaluate base model on Normal + Known Attacks only")
             else:
-                logger.warning(f"      Zero-Day-Specific AUC-PR: Not available")
+                logger.warning(f"\n   🔴 Zero-Day Attacks Only: 0 samples (no zero-day samples found in test set)")
             logger.info(f"\n   🟢 Non-Zero-Day Samples ({len(non_zero_day_actual)} samples, {len(non_zero_day_actual)/test_set_size*100:.1f}% of {'filtered ' if exclude_zero_day else ''}test set):")
             logger.info(f"      Accuracy: {non_zero_day_accuracy:.4f}")
             logger.info(f"      F1-Score: {non_zero_day_f1:.4f}")
@@ -3482,12 +4497,15 @@ class BlockchainFederatedIncentiveSystem:
             # FIXED: Create proper zero-day mask using multiclass labels or attack_cat (same fix as base model)
             # Since sequences use binary labels, we need to use original multiclass labels/attack_cat
             
-            # Get zero-day attack information from preprocessed_data
-            zero_day_attack = self.preprocessed_data.get('zero_day_attack', 'Generic')
-            attack_types = self.preprocessed_data.get('attack_types', {})
+            # Get zero-day attack information from preprocessed_data or config
+            # CRITICAL: Use config.zero_day_attack as the source of truth, fallback to preprocessed_data
+            zero_day_attack = self.preprocessed_data.get('zero_day_attack', self.config.zero_day_attack)
+            attack_types = self.preprocessed_data.get('attack_types', self.config.attack_types)
             
             # Get the numeric label for zero-day attack
-            zero_day_attack_label = attack_types.get(zero_day_attack, 1)  # Default to label 1 if not found
+            # Use config.zero_day_attack_label as source of truth
+            zero_day_attack_label = self.config.zero_day_attack_label
+            logger.info(f"🔍 Using zero-day attack: '{zero_day_attack}' (label: {zero_day_attack_label}) from config")
             
             # FIXED: Use sequence-level multiclass labels to preserve 50% distribution from stratified sampling
             # Priority: Use sequence-level labels since stratified subset already ensures correct distribution
@@ -3638,9 +4656,28 @@ class BlockchainFederatedIncentiveSystem:
                 
                 # Compute prototypes from support set
                 prototypes, unique_labels = adapted_model.compute_prototypes(support_x, support_y)
+                logger.info(f"🔍 DEBUG TTT: Computed {len(prototypes)} prototypes for labels: {unique_labels.tolist()}")
+                
+                # CRITICAL: Ensure support set has both classes
+                unique_support_labels = torch.unique(support_y)
+                if len(unique_support_labels) < 2:
+                    logger.warning(f"⚠️ TTT Support set only has {len(unique_support_labels)} class(es)! This will cause prototype bias.")
                 
                 # Get prototype-based logits for test set (negative distances as logits)
                 adapted_logits = adapted_model.forward_with_prototypes(X_test_tensor, prototypes)
+                
+                # CRITICAL FIX: Map argmax indices to actual class labels (same as base model)
+                adapted_predictions_indices = torch.argmax(adapted_logits, dim=1)  # Indices into prototypes array
+                adapted_predictions_from_prototypes = unique_labels[adapted_predictions_indices]  # Map to actual labels
+                
+                # DEBUG: Check logits distribution for zero-day samples
+                if len(zero_day_mask) > 0:
+                    zero_day_logits_ttt = adapted_logits[zero_day_mask]
+                    zero_day_predictions_indices_ttt = adapted_predictions_indices[zero_day_mask]
+                    logger.info(f"🔍 DEBUG TTT: Zero-day logits mean per class: {zero_day_logits_ttt.mean(dim=0).cpu().tolist()}")
+                    logger.info(f"🔍 DEBUG TTT: Zero-day argmax indices (prototype order): {zero_day_predictions_indices_ttt.cpu().bincount(minlength=len(unique_labels)).tolist()}")
+                    logger.info(f"🔍 DEBUG TTT: Zero-day mapped predictions (actual labels): {adapted_predictions_from_prototypes[zero_day_mask].cpu().bincount(minlength=2).tolist()}")
+                    logger.info(f"🔍 DEBUG TTT: unique_labels mapping: {unique_labels.tolist()}")
                 
                 # Apply temperature scaling for probability calibration (improves AUC-PR ranking)
                 # Temperature > 1.0 softens overconfident predictions from entropy minimization
@@ -3813,8 +4850,10 @@ class BlockchainFederatedIncentiveSystem:
             )
             
             # Convert back to multiclass predictions (for compatibility with existing code)
-            # If binary prediction is 1 (Attack), use argmax; if 0 (Normal), use 0
-            adapted_predictions = torch.argmax(adapted_logits, dim=1).cpu().numpy()
+            # CRITICAL FIX: Map argmax indices to actual class labels (same as base model)
+            adapted_predictions_indices = torch.argmax(adapted_logits, dim=1)  # Indices into prototypes array
+            adapted_predictions_from_prototypes = unique_labels[adapted_predictions_indices]  # Map to actual labels
+            adapted_predictions = adapted_predictions_from_prototypes.cpu().numpy()
             # Override with threshold-based predictions: if binary=0, force Normal (0)
             adapted_predictions = np.where(adapted_predictions_binary == 0, 0, adapted_predictions)
             adapted_predictions = torch.from_numpy(adapted_predictions).to(self.device)
@@ -3901,15 +4940,35 @@ class BlockchainFederatedIncentiveSystem:
                 adapted_far = 0.0
             
             # STEP 2: Calculate separate metrics for zero-day and non-zero-day samples (same as base model)
+            # DETAILED LOGGING for TTT model evaluation
+            logger.info(f"\n🔍 TTT MODEL ZERO-DAY EXTRACTION:")
+            logger.info(f"   Zero-day mask size: {len(zero_day_mask)}")
+            logger.info(f"   Zero-day mask sum (True values): {zero_day_mask.sum().item()}")
+            logger.info(f"   Adapted predictions size: {len(adapted_predictions)}")
+            logger.info(f"   Y test tensor size: {len(y_test_tensor)}")
+            
             zero_day_predictions = adapted_predictions[zero_day_mask]
             zero_day_actual = y_test_tensor[zero_day_mask]
+            
+            logger.info(f"   Extracted {len(zero_day_predictions)} zero-day predictions")
+            logger.info(f"   Extracted {len(zero_day_actual)} zero-day labels")
+            
+            if len(zero_day_actual) == 0:
+                logger.error(f"❌ TTT MODEL: No zero-day samples extracted!")
+                logger.error(f"   Zero-day mask had {zero_day_mask.sum().item()} True values")
+                logger.error(f"   This means zero-day mask creation failed or no zero-day samples in test set")
+                logger.error(f"   All TTT zero-day metrics will be zero!")
             
             non_zero_day_mask = ~zero_day_mask
             non_zero_day_predictions = adapted_predictions[non_zero_day_mask]
             non_zero_day_actual = y_test_tensor[non_zero_day_mask]
             
             # Zero-day only metrics
+            logger.info(f"\n🔍 TTT MODEL ZERO-DAY METRICS CALCULATION:")
+            logger.info(f"   Zero-day actual samples count: {len(zero_day_actual)}")
+            
             if len(zero_day_actual) > 0:
+                logger.info(f"   ✅ Proceeding to calculate TTT zero-day metrics (will NOT be zero)")
                 # CRITICAL FIX: Convert predictions to binary BEFORE comparing (model outputs multiclass 0-9, labels are binary 0-1)
                 adapted_zero_day_y_true_bin = (zero_day_actual.cpu().numpy() != 0).astype(int)
                 adapted_zero_day_y_pred_bin = (zero_day_predictions.cpu().numpy() != 0).astype(int)
@@ -3931,16 +4990,21 @@ class BlockchainFederatedIncentiveSystem:
                 
                 # Calculate zero-day-specific AUC-PR (using probabilities from zero-day samples only)
                 try:
+                    # CRITICAL FIX: Use zero_day_mask (not filtered) because adapted model uses full test set
                     # Get attack probabilities - use attack_probs_clean if available
                     if 'attack_probs_clean' in locals() and attack_probs_clean is not None:
-                        adapted_zero_day_attack_probs_raw = attack_probs_clean[zero_day_mask.cpu().numpy()]
+                        # For adapted model, zero_day_mask is already correct (uses full test set, not filtered)
+                        zero_day_mask_np = zero_day_mask.cpu().numpy() if torch.is_tensor(zero_day_mask) else zero_day_mask
+                        adapted_zero_day_attack_probs_raw = attack_probs_clean[zero_day_mask_np]
                     else:
                         # Fallback: calculate attack_probs from adapted_probabilities
                         if adapted_probabilities.shape[1] == 2:
                             attack_probs_temp = adapted_probabilities[:, 1].cpu().numpy()
                         else:
                             attack_probs_temp = (1.0 - adapted_probabilities[:, 0]).cpu().numpy()
-                        adapted_zero_day_attack_probs_raw = attack_probs_temp[zero_day_mask.cpu().numpy()]
+                        # For adapted model, zero_day_mask is already correct (uses full test set)
+                        zero_day_mask_np = zero_day_mask.cpu().numpy() if torch.is_tensor(zero_day_mask) else zero_day_mask
+                        adapted_zero_day_attack_probs_raw = attack_probs_temp[zero_day_mask_np]
                     
                     # Clean the probabilities
                     adapted_zero_day_attack_probs = np.asarray(adapted_zero_day_attack_probs_raw, dtype=np.float64)
@@ -4009,6 +5073,10 @@ class BlockchainFederatedIncentiveSystem:
                 if len(adapted_zero_day_attack_probs) > 0:
                     logger.info(f"🔍 DEBUG TTT MODEL - Zero-day prob stats: min={adapted_zero_day_attack_probs.min():.4f}, max={adapted_zero_day_attack_probs.max():.4f}, mean={adapted_zero_day_attack_probs.mean():.4f}, median={np.median(adapted_zero_day_attack_probs):.4f}")
             else:
+                logger.error(f"❌ TTT MODEL: Zero-day metrics set to zero (len(zero_day_actual) == 0)")
+                logger.error(f"   This is why TTT zero-day performance plot shows zeros!")
+                logger.error(f"   Check zero-day mask creation in evaluate_adapted_model")
+                
                 adapted_zero_day_accuracy = 0.0
                 adapted_zero_day_precision = 0.0
                 adapted_zero_day_recall = 0.0
