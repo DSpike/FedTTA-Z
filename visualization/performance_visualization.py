@@ -113,9 +113,9 @@ class PerformanceVisualizer:
         
         # Plot training loss
         ax1.plot(epochs, plot_losses, 'b-', linewidth=2, marker='o', markersize=6)
-        ax1.set_title(f'Federated Training Loss Over Rounds{self._get_title_suffix()}', fontweight='bold', fontfamily='Times New Roman')
-        ax1.set_xlabel('Round', fontfamily='Times New Roman')
-        ax1.set_ylabel('Average Loss', fontfamily='Times New Roman')
+        ax1.set_title(f'Transductive Meta Learning Loss Over Rounds{self._get_title_suffix()}', fontweight='bold', fontfamily='Times New Roman')
+        ax1.set_xlabel('Federated Round', fontfamily='Times New Roman')
+        ax1.set_ylabel('Average Meta-Learning Loss', fontfamily='Times New Roman')
         ax1.grid(True, alpha=0.3)
         if use_log_scale:
             ax1.set_yscale('log')
@@ -131,9 +131,9 @@ class PerformanceVisualizer:
         
         # Plot training accuracy
         ax2.plot(epochs, training_history['epoch_accuracies'], 'g-', linewidth=2, marker='s', markersize=6)
-        ax2.set_title('Federated Training Accuracy Over Rounds', fontweight='bold', fontfamily='Times New Roman')
-        ax2.set_xlabel('Round', fontfamily='Times New Roman')
-        ax2.set_ylabel('Average Accuracy', fontfamily='Times New Roman')
+        ax2.set_title('Transductive Meta Learning Accuracy Over Rounds', fontweight='bold', fontfamily='Times New Roman')
+        ax2.set_xlabel('Federated Round', fontfamily='Times New Roman')
+        ax2.set_ylabel('Average Meta-Learning Accuracy', fontfamily='Times New Roman')
         ax2.grid(True, alpha=0.3)
         ax2.set_ylim(0, 1.1)
         
@@ -164,27 +164,258 @@ class PerformanceVisualizer:
         Returns:
             plot_path: Path to saved plot
         """
+        # COMPREHENSIVE INPUT VALIDATION AND LOGGING
+        logger.info("="*80)
+        logger.info("🎨 TTT ADAPTATION PLOT FUNCTION - INPUT VALIDATION")
+        logger.info("="*80)
+        logger.info(f"Input data type: {type(ttt_adaptation_data)}")
+        logger.info(f"Input data is None: {ttt_adaptation_data is None}")
+        logger.info(f"Input data is empty: {not ttt_adaptation_data if ttt_adaptation_data else 'N/A'}")
+        
+        if ttt_adaptation_data:
+            logger.info(f"Input data keys: {list(ttt_adaptation_data.keys()) if isinstance(ttt_adaptation_data, dict) else 'Not a dict'}")
+            if isinstance(ttt_adaptation_data, dict):
+                for key, value in ttt_adaptation_data.items():
+                    logger.info(f"  {key}: type={type(value)}, len={len(value) if hasattr(value, '__len__') else 'N/A'}")
+                    if hasattr(value, '__len__') and len(value) > 0 and len(value) <= 10:
+                        logger.info(f"    Values: {value}")
+                    elif hasattr(value, '__len__') and len(value) > 10:
+                        logger.info(f"    First 5: {value[:5]}, Last 5: {value[-5:]}")
+        logger.info("="*80)
+        
         if not ttt_adaptation_data:
             logger.warning("No TTT adaptation data provided for plotting")
-            return ""
+            # Create empty plot to indicate missing data
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+            ax1.text(0.5, 0.5, 'No TTT Adaptation Data\n\nData dictionary is empty or None', 
+                    ha='center', va='center', fontsize=12, 
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor="lightcoral", alpha=0.7))
+            ax1.set_title('TTT Adaptation Status', fontsize=14, fontweight='bold')
+            ax1.set_xlim(0, 1)
+            ax1.set_ylim(0, 1)
+            ax1.axis('off')
+            ax2.axis('off')
+            plt.tight_layout()
+            if save:
+                plot_path = os.path.join(self.output_dir, "ttt_adaptation_.png")
+                plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+                logger.info(f"TTT adaptation empty data plot saved: {plot_path}")
+                plt.close()
+                return plot_path
+            else:
+                plt.close()
+                return ""
+        
+        # Validate required keys exist
+        if 'steps' not in ttt_adaptation_data or 'total_losses' not in ttt_adaptation_data:
+            logger.error(f"❌ Missing required keys in TTT adaptation data. Available keys: {list(ttt_adaptation_data.keys())}")
+            logger.error("   Required keys: 'steps', 'total_losses'")
+            # Create error plot
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+            error_msg = f"Missing Required Data Keys\n\nAvailable: {list(ttt_adaptation_data.keys())}\nRequired: 'steps', 'total_losses'"
+            ax1.text(0.5, 0.5, error_msg, 
+                    ha='center', va='center', fontsize=11, 
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor="lightcoral", alpha=0.7))
+            ax1.set_title('TTT Adaptation Data Error', fontsize=14, fontweight='bold')
+            ax1.set_xlim(0, 1)
+            ax1.set_ylim(0, 1)
+            ax1.axis('off')
+            ax2.axis('off')
+            plt.tight_layout()
+            if save:
+                plot_path = os.path.join(self.output_dir, "ttt_adaptation_.png")
+                plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+                logger.info(f"TTT adaptation error plot saved: {plot_path}")
+                plt.close()
+                return plot_path
+            else:
+                plt.close()
+                return ""
         
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
         
-        steps = ttt_adaptation_data['steps']
-        total_losses = ttt_adaptation_data['total_losses']
+        # Safely extract data with validation
+        steps = ttt_adaptation_data.get('steps', [])
+        total_losses = ttt_adaptation_data.get('total_losses', [])
         # Simplified TTT: Only entropy and pseudo-label losses (removed repulsion, balance, contrastive, prototype)
         entropy_losses = ttt_adaptation_data.get('entropy_losses', [])
         pseudo_losses = ttt_adaptation_data.get('pseudo_losses', [])
         
+        # Validate data types and convert if needed
+        if steps is None:
+            steps = []
+        if total_losses is None:
+            total_losses = []
+        if entropy_losses is None:
+            entropy_losses = []
+        if pseudo_losses is None:
+            pseudo_losses = []
+        
+        # Convert to lists if they're not already (handle tensors, numpy arrays, etc.)
+        import torch
+        import numpy as np
+        
+        def safe_convert_to_list(data, name):
+            """Safely convert data to list, handling tensors, numpy arrays, etc."""
+            if data is None:
+                return []
+            
+            # Handle PyTorch tensors (check first before list, as tensors are iterable)
+            if isinstance(data, torch.Tensor):
+                try:
+                    converted = data.cpu().detach().tolist()
+                    # If result is still nested (e.g., tensor of tensors), flatten
+                    if isinstance(converted, list) and len(converted) > 0 and isinstance(converted[0], list):
+                        converted = [item[0] if isinstance(item, list) and len(item) > 0 else item for item in converted]
+                    return converted
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not convert {name} tensor to list: {e}, trying direct conversion")
+                    try:
+                        return [float(x) for x in data.cpu().detach().numpy().flatten()]
+                    except:
+                        logger.error(f"❌ Failed to convert {name} tensor")
+                        return []
+            
+            # Handle numpy arrays
+            if isinstance(data, np.ndarray):
+                try:
+                    converted = data.tolist()
+                    # Flatten if nested
+                    if isinstance(converted, list) and len(converted) > 0 and isinstance(converted[0], list):
+                        converted = [item[0] if isinstance(item, list) and len(item) > 0 else item for item in converted]
+                    return converted
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not convert {name} numpy array to list: {e}")
+                    return []
+            
+            # Handle lists (may contain tensors/numpy scalars)
+            if isinstance(data, list):
+                result = []
+                for item in data:
+                    if isinstance(item, torch.Tensor):
+                        try:
+                            result.append(float(item.cpu().detach().item()))
+                        except:
+                            result.append(float(item.cpu().detach().numpy().flatten()[0]))
+                    elif isinstance(item, (np.integer, np.floating)):
+                        result.append(float(item))
+                    elif isinstance(item, np.ndarray):
+                        result.append(float(item.item()) if item.size == 1 else float(item.flatten()[0]))
+                    elif isinstance(item, (int, float)):
+                        result.append(float(item))
+                    else:
+                        result.append(float(item) if item is not None else 0.0)
+                return result
+            
+            # Handle iterables (tuples, etc.)
+            if hasattr(data, '__iter__') and not isinstance(data, (str, bytes)):
+                try:
+                    return [float(x) for x in data]
+                except:
+                    logger.warning(f"⚠️ Could not convert {name} iterable to list")
+                    return []
+            
+            # Single value
+            try:
+                if isinstance(data, (torch.Tensor, np.ndarray)):
+                    return [float(data.item()) if hasattr(data, 'item') else float(data)]
+                return [float(data)]
+            except:
+                logger.error(f"❌ Cannot convert {name} to list. Type: {type(data)}, Value: {data}")
+                return []
+        
+        steps = safe_convert_to_list(steps, 'steps')
+        total_losses = safe_convert_to_list(total_losses, 'total_losses')
+        entropy_losses = safe_convert_to_list(entropy_losses, 'entropy_losses')
+        pseudo_losses = safe_convert_to_list(pseudo_losses, 'pseudo_losses')
+        
+        # Final validation: ensure all values are Python floats/ints
+        def ensure_scalars(data_list, name):
+            """Ensure all values in list are Python scalars"""
+            result = []
+            for i, item in enumerate(data_list):
+                if isinstance(item, (torch.Tensor, np.ndarray)):
+                    try:
+                        result.append(float(item.item()) if hasattr(item, 'item') else float(item))
+                    except:
+                        logger.warning(f"⚠️ {name}[{i}] is tensor/array but cannot convert: {type(item)}")
+                        result.append(0.0)
+                elif isinstance(item, (np.integer, np.floating)):
+                    result.append(float(item))
+                elif isinstance(item, (int, float)):
+                    result.append(float(item))
+                elif isinstance(item, list) and len(item) > 0:
+                    # Handle nested lists
+                    result.append(float(item[0]) if isinstance(item[0], (int, float)) else 0.0)
+                else:
+                    try:
+                        result.append(float(item) if item is not None else 0.0)
+                    except:
+                        logger.warning(f"⚠️ {name}[{i}] cannot convert to float: {type(item)}")
+                        result.append(0.0)
+            return result
+        
+        steps = ensure_scalars(steps, 'steps')
+        total_losses = ensure_scalars(total_losses, 'total_losses')
+        entropy_losses = ensure_scalars(entropy_losses, 'entropy_losses')
+        pseudo_losses = ensure_scalars(pseudo_losses, 'pseudo_losses')
+        
+        logger.info(f"🔍 After conversion: steps={len(steps)}, total_losses={len(total_losses)}, "
+                   f"entropy_losses={len(entropy_losses)}, pseudo_losses={len(pseudo_losses)}")
+        if len(steps) > 0:
+            logger.info(f"   steps sample: {steps[:3]} (type: {[type(x) for x in steps[:3]]})")
+        if len(total_losses) > 0:
+            logger.info(f"   total_losses sample: {total_losses[:3]} (type: {[type(x) for x in total_losses[:3]]})")
+        
+        logger.info(f"🔍 TTT plot data validation: steps={len(steps)}, total_losses={len(total_losses)}, "
+                   f"entropy_losses={len(entropy_losses) if entropy_losses else 0}, "
+                   f"pseudo_losses={len(pseudo_losses) if pseudo_losses else 0}")
+        
+        # CRITICAL CHECK: Verify we actually have plottable data
+        if len(steps) == 0:
+            logger.error("❌ CRITICAL: steps list is EMPTY! Cannot plot.")
+            logger.error(f"   ttt_adaptation_data keys: {list(ttt_adaptation_data.keys())}")
+            logger.error(f"   steps value: {ttt_adaptation_data.get('steps', 'NOT FOUND')}")
+            min_length = 0
+        elif len(total_losses) == 0:
+            logger.error("❌ CRITICAL: total_losses list is EMPTY! Cannot plot.")
+            logger.error(f"   total_losses value: {ttt_adaptation_data.get('total_losses', 'NOT FOUND')}")
+            min_length = 0
+        else:
+            logger.info(f"✅ Data validation passed: {len(steps)} steps, {len(total_losses)} losses")
+            # Show actual values to verify they're not all zeros or invalid
+            if len(steps) > 0:
+                logger.info(f"   First step: {steps[0]}, Last step: {steps[-1]}")
+            if len(total_losses) > 0:
+                logger.info(f"   First loss: {total_losses[0]}, Last loss: {total_losses[-1]}")
+                if all(l == 0.0 for l in total_losses):
+                    logger.warning("⚠️ WARNING: All loss values are 0.0! This might indicate a problem.")
+                if any(not isinstance(l, (int, float)) for l in total_losses):
+                    logger.warning("⚠️ WARNING: Some loss values are not numeric!")
+        
         # Fix dimension mismatch by ensuring all arrays have the same length
         # We always have total_losses; other components are optional
         loss_components = [total_losses]
-        if entropy_losses:
+        if entropy_losses and len(entropy_losses) > 0:
             loss_components.append(entropy_losses)
-        if pseudo_losses:
+        if pseudo_losses and len(pseudo_losses) > 0:
             loss_components.append(pseudo_losses)
         
-        min_length = min(len(steps), *[len(comp) for comp in loss_components])
+        # Calculate minimum length safely
+        if len(steps) == 0 or len(total_losses) == 0:
+            min_length = 0
+        else:
+            try:
+                component_lengths = [len(comp) for comp in loss_components if len(comp) > 0]
+                if component_lengths:
+                    min_length = min(len(steps), *component_lengths)
+                else:
+                    min_length = len(steps)
+            except (ValueError, TypeError) as e:
+                logger.error(f"❌ Error calculating min_length: {e}")
+                logger.error(f"   steps length: {len(steps)}, loss_components lengths: {[len(c) for c in loss_components]}")
+                min_length = 0
+        
         if min_length == 0:
             logger.warning("No valid TTT adaptation data to plot - TTT training may have failed")
             # Create a minimal plot indicating TTT failure
@@ -211,7 +442,7 @@ class PerformanceVisualizer:
             plt.tight_layout()
             
             if save:
-                plot_path = os.path.join(self.output_dir, f"ttt_adaptation_{self.attack_name}_latest.png")
+                plot_path = os.path.join(self.output_dir, "ttt_adaptation_.png")
                 plt.savefig(plot_path, dpi=300, bbox_inches='tight')
                 logger.info(f"TTT adaptation failure plot saved: {plot_path}")
                 plt.close()
@@ -221,14 +452,68 @@ class PerformanceVisualizer:
                 return ""
         
         # Truncate all arrays to the minimum length
-        steps = steps[:min_length]
-        total_losses = total_losses[:min_length]
-        if entropy_losses:
-            entropy_losses = entropy_losses[:min_length]
-        if pseudo_losses:
-            pseudo_losses = pseudo_losses[:min_length]
+        try:
+            steps = steps[:min_length] if min_length > 0 else []
+            total_losses = total_losses[:min_length] if min_length > 0 else []
+            if entropy_losses and len(entropy_losses) > 0:
+                entropy_losses = entropy_losses[:min_length]
+            if pseudo_losses and len(pseudo_losses) > 0:
+                pseudo_losses = pseudo_losses[:min_length]
+        except Exception as truncate_error:
+            logger.error(f"❌ Error truncating arrays: {truncate_error}")
+            logger.error(f"   steps length: {len(steps)}, total_losses length: {len(total_losses)}, min_length: {min_length}")
+            # Fall back to empty plot
+            min_length = 0
         
-        logger.info(f"TTT adaptation plot: Using {min_length} data points (steps: {len(ttt_adaptation_data['steps'])}, losses: {len(ttt_adaptation_data['total_losses'])})")
+        if min_length == 0:
+            logger.warning("No valid TTT adaptation data to plot - TTT training may have failed")
+            # Create a minimal plot indicating TTT failure
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+            
+            # Left plot: TTT Failure Message
+            ax1.text(0.5, 0.5, 'TTT Training Failed\n\nNo adaptation data available\n\nThis may be due to:\n• Tensor dimension mismatches\n• Model architecture issues\n• Training timeout', 
+                    ha='center', va='center', fontsize=12, 
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor="lightcoral", alpha=0.7))
+            ax1.set_title('TTT Adaptation Status', fontsize=14, fontweight='bold')
+            ax1.set_xlim(0, 1)
+            ax1.set_ylim(0, 1)
+            ax1.axis('off')
+            
+            # Right plot: Empty loss components
+            ax2.text(0.5, 0.5, 'No Loss Data Available\n\nTTT training did not complete\nsuccessfully', 
+                    ha='center', va='center', fontsize=12,
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.7))
+            ax2.set_title('Loss Components', fontsize=14, fontweight='bold')
+            ax2.set_xlim(0, 1)
+            ax2.set_ylim(0, 1)
+            ax2.axis('off')
+            
+            plt.tight_layout()
+            
+            if save:
+                plot_path = os.path.join(self.output_dir, "ttt_adaptation_.png")
+                plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+                logger.info(f"TTT adaptation failure plot saved: {plot_path}")
+                plt.close()
+                return plot_path
+            else:
+                plt.close()
+                return ""
+        
+        logger.info(f"TTT adaptation plot: Using {min_length} data points (steps: {len(steps)}, losses: {len(total_losses)})")
+        
+        # FINAL VERIFICATION: Print exact data that will be plotted
+        logger.info("="*80)
+        logger.info("🎨 FINAL DATA VERIFICATION BEFORE PLOTTING")
+        logger.info("="*80)
+        logger.info(f"steps (first 10): {steps[:10] if len(steps) >= 10 else steps}")
+        logger.info(f"total_losses (first 10): {total_losses[:10] if len(total_losses) >= 10 else total_losses}")
+        logger.info(f"All steps are numeric: {all(isinstance(s, (int, float)) for s in steps)}")
+        logger.info(f"All losses are numeric: {all(isinstance(l, (int, float)) for l in total_losses)}")
+        if len(steps) > 0 and len(total_losses) > 0:
+            logger.info(f"Steps range: [{min(steps)}, {max(steps)}]")
+            logger.info(f"Losses range: [{min(total_losses)}, {max(total_losses)}]")
+        logger.info("="*80)
         
         # Handle case with very few data points (e.g., early stopping after 1-2 steps)
         if min_length <= 3:
@@ -256,18 +541,64 @@ class PerformanceVisualizer:
         
         # Plot 1: Total Loss Evolution
         # Use consistent styling with Plot 2 for same visual pattern
-        ax1.plot(steps, total_losses, 'b-', linewidth=2, marker='o', markersize=8 if len(steps) <= 3 else 6, 
-                 label='Total Loss', alpha=0.9)
-        title = 'TTT Adaptation: Total Loss Evolution'
-        if min_length <= 3:
-            title += f' ({min_length} step{"s" if min_length > 1 else ""} - Early Stopping)'
-        ax1.set_title(title, fontweight='bold', fontfamily='Times New Roman', fontsize=12 if min_length <= 3 else 11)
-        ax1.set_xlabel('TTT Step', fontfamily='Times New Roman')
-        ax1.set_ylabel(f'Loss Value ({"log" if use_log_scale else "linear"} scale)', fontfamily='Times New Roman')
-        ax1.grid(True, alpha=0.3)
-        if use_log_scale:
-            ax1.set_yscale('log')
-        ax1.legend(prop={'family': 'Times New Roman'})
+        logger.info(f"🔍 Plotting: steps={steps[:5] if len(steps) >= 5 else steps}, total_losses={total_losses[:5] if len(total_losses) >= 5 else total_losses}")
+        
+        try:
+            # CRITICAL: Ensure we have valid numeric data
+            if len(steps) == 0 or len(total_losses) == 0:
+                raise ValueError(f"Cannot plot: steps length={len(steps)}, total_losses length={len(total_losses)}")
+            
+            # Verify data is numeric
+            try:
+                steps_float = [float(s) for s in steps]
+                losses_float = [float(l) for l in total_losses]
+            except (ValueError, TypeError) as e:
+                logger.error(f"❌ Data contains non-numeric values: {e}")
+                logger.error(f"   steps types: {[type(s) for s in steps[:5]]}")
+                logger.error(f"   losses types: {[type(l) for l in total_losses[:5]]}")
+                raise
+            
+            ax1.plot(steps_float, losses_float, 'b-', linewidth=2, marker='o', markersize=8 if len(steps_float) <= 3 else 6, 
+                     label='Total Loss', alpha=0.9)
+            
+            # Set axis limits to ensure data is visible
+            if len(steps_float) > 0 and len(losses_float) > 0:
+                x_min, x_max = min(steps_float), max(steps_float)
+                y_min, y_max = min(losses_float), max(losses_float)
+                # Add padding (at least 5% on each side)
+                x_range = x_max - x_min if x_max > x_min else max(1, x_max)
+                y_range = y_max - y_min if y_max > y_min else max(abs(y_min), abs(y_max), 0.1)
+                
+                # Ensure we have a visible range
+                if x_range == 0:
+                    x_range = 1
+                    x_min = max(0, x_min - 0.5)
+                    x_max = x_min + 1
+                if y_range == 0:
+                    y_range = max(abs(y_min), 0.1)
+                    y_min = y_min - 0.1 * y_range
+                    y_max = y_max + 0.1 * y_range
+                
+                ax1.set_xlim(max(0, x_min - 0.05 * x_range), x_max + 0.05 * x_range)
+                ax1.set_ylim(y_min - 0.05 * y_range, y_max + 0.05 * y_range)
+                logger.info(f"   Set axis limits: x=[{ax1.get_xlim()}], y=[{ax1.get_ylim()}]")
+                logger.info(f"   Data range: x=[{x_min}, {x_max}], y=[{y_min}, {y_max}]")
+            
+            title = 'TTT Adaptation: Total Loss Evolution'
+            if min_length <= 3:
+                title += f' ({min_length} step{"s" if min_length > 1 else ""} - Early Stopping)'
+            ax1.set_title(title, fontweight='bold', fontfamily='Times New Roman', fontsize=12 if min_length <= 3 else 11)
+            ax1.set_xlabel('TTT Step', fontfamily='Times New Roman')
+            ax1.set_ylabel(f'Loss Value ({"log" if use_log_scale else "linear"} scale)', fontfamily='Times New Roman')
+            ax1.grid(True, alpha=0.3)
+            if use_log_scale:
+                ax1.set_yscale('log')
+            ax1.legend(prop={'family': 'Times New Roman'})
+        except Exception as plot_error:
+            logger.error(f"❌ Error plotting total loss: {plot_error}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            raise
         
         # Add value labels for key points (less frequent to avoid clutter, but always show for few points)
         # Format depends on scale: scientific notation for log, decimal for linear
@@ -285,18 +616,62 @@ class PerformanceVisualizer:
                             fontfamily='Times New Roman', alpha=0.7, fontweight='bold' if len(total_losses) == 1 else 'normal')
         
         # Plot 2: Loss Components (Simplified: Total, Entropy, Pseudo-label only)
-        ax2.plot(steps, total_losses, 'b-', linewidth=2, marker='o', markersize=6,
-                 label='Total Loss', alpha=0.9)
+        try:
+            # Use the same converted float lists
+            steps_float = [float(s) for s in steps]
+            losses_float = [float(l) for l in total_losses]
+            
+            ax2.plot(steps_float, losses_float, 'b-', linewidth=2, marker='o', markersize=6,
+                     label='Total Loss', alpha=0.9)
 
-        # Entropy loss (core TENT principle)
-        if entropy_losses and len(entropy_losses) == min_length:
-            ax2.plot(steps, entropy_losses, 'm-', linewidth=2, marker='d', markersize=6,
-                     label='Entropy Loss')
+            # Entropy loss (core TENT principle)
+            if entropy_losses and len(entropy_losses) == min_length:
+                entropy_float = [float(e) for e in entropy_losses]
+                ax2.plot(steps_float, entropy_float, 'm-', linewidth=2, marker='d', markersize=6,
+                         label='Entropy Loss')
 
-        # Pseudo-label loss (confident predictions as supervision)
-        if pseudo_losses and len(pseudo_losses) == min_length:
-            ax2.plot(steps, pseudo_losses, 'g-', linewidth=2, marker='s', markersize=6,
-                     label='Pseudo-label Loss')
+            # Pseudo-label loss (confident predictions as supervision)
+            if pseudo_losses and len(pseudo_losses) == min_length:
+                pseudo_float = [float(p) for p in pseudo_losses]
+                ax2.plot(steps_float, pseudo_float, 'g-', linewidth=2, marker='s', markersize=6,
+                         label='Pseudo-label Loss')
+            
+            # Set axis limits to ensure data is visible
+            if len(steps_float) > 0 and len(losses_float) > 0:
+                x_min, x_max = min(steps_float), max(steps_float)
+                y_min = min(losses_float)
+                y_max = max(losses_float)
+                # Include entropy and pseudo losses in range if present
+                if entropy_losses and len(entropy_losses) == min_length:
+                    entropy_float = [float(e) for e in entropy_losses]
+                    y_min = min(y_min, min(entropy_float))
+                    y_max = max(y_max, max(entropy_float))
+                if pseudo_losses and len(pseudo_losses) == min_length:
+                    pseudo_float = [float(p) for p in pseudo_losses]
+                    y_min = min(y_min, min(pseudo_float))
+                    y_max = max(y_max, max(pseudo_float))
+                
+                # Add padding (at least 5% on each side)
+                x_range = x_max - x_min if x_max > x_min else max(1, x_max)
+                y_range = y_max - y_min if y_max > y_min else max(abs(y_min), abs(y_max), 0.1)
+                
+                # Ensure we have a visible range
+                if x_range == 0:
+                    x_range = 1
+                    x_min = max(0, x_min - 0.5)
+                    x_max = x_min + 1
+                if y_range == 0:
+                    y_range = max(abs(y_min), 0.1)
+                    y_min = y_min - 0.1 * y_range
+                    y_max = y_max + 0.1 * y_range
+                
+                ax2.set_xlim(max(0, x_min - 0.05 * x_range), x_max + 0.05 * x_range)
+                ax2.set_ylim(y_min - 0.05 * y_range, y_max + 0.05 * y_range)
+        except Exception as plot_error:
+            logger.error(f"❌ Error plotting loss components: {plot_error}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            raise
 
         ax2.set_title('TTT Adaptation: Loss Components (Entropy + Pseudo-Labels)', fontweight='bold', fontfamily='Times New Roman')
         ax2.set_xlabel('TTT Step', fontfamily='Times New Roman')
@@ -324,15 +699,41 @@ class PerformanceVisualizer:
                                  edgecolor='black', linewidth=0.5),
                         arrowprops=dict(arrowstyle='->', lw=1, color='black'))
         
-        plt.tight_layout()
-        
-        if save:
-            plot_path = os.path.join(self.output_dir, f"ttt_adaptation_{self.timestamp}.png")
-            plt.savefig(plot_path, dpi=300, bbox_inches='tight')
-            logger.info(f"TTT adaptation plot saved: {plot_path}")
-        
-        plt.close()  # Close figure instead of showing it
-        return plot_path if save else ""
+        try:
+            plt.tight_layout()
+            
+            if save:
+                plot_path = os.path.join(self.output_dir, "ttt_adaptation_.png")
+                plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+                logger.info(f"✅ TTT adaptation plot saved: {plot_path}")
+            
+            plt.close()  # Close figure instead of showing it
+            return plot_path if save else ""
+        except Exception as plot_error:
+            logger.error(f"❌ Error saving TTT adaptation plot: {plot_error}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            # Try to save a simple error plot
+            try:
+                plt.close()  # Close the failed plot first
+                fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+                ax.text(0.5, 0.5, f'Plot Generation Error\n\n{str(plot_error)[:200]}', 
+                        ha='center', va='center', fontsize=12, 
+                        bbox=dict(boxstyle="round,pad=0.3", facecolor="lightcoral", alpha=0.7))
+                ax.set_title('TTT Adaptation Plot Error', fontsize=14, fontweight='bold')
+                ax.set_xlim(0, 1)
+                ax.set_ylim(0, 1)
+                ax.axis('off')
+                plt.tight_layout()
+                if save:
+                    plot_path = os.path.join(self.output_dir, "ttt_adaptation_.png")
+                    plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+                    logger.info(f"✅ Error plot saved: {plot_path}")
+                plt.close()
+                return plot_path if save else ""
+            except Exception as fallback_error:
+                logger.error(f"❌ Failed to save error plot: {fallback_error}")
+                return ""
     
     
     # plot_zero_day_detection_metrics method removed - not properly plotting

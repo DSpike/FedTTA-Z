@@ -39,6 +39,58 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
+class CenterLoss(nn.Module):
+    """
+    Center Loss for intra-class compactness
+    
+    Reduces intra-class variance by pulling embeddings toward learnable class centers.
+    This helps create more compact, well-defined clusters in the embedding space.
+    
+    Reference: Wen et al. "A Discriminative Feature Learning Approach for Deep Face Recognition" (ECCV 2016)
+    """
+    
+    def __init__(self, num_classes, embedding_dim, device='cuda'):
+        """
+        Args:
+            num_classes: Number of classes (e.g., 2 for binary: Normal, Attack)
+            embedding_dim: Dimension of embeddings (e.g., 128)
+            device: Device to store learnable centers
+        """
+        super(CenterLoss, self).__init__()
+        # Learnable centers for each class - initialized randomly
+        self.centers = nn.Parameter(torch.randn(num_classes, embedding_dim).to(device))
+        self.num_classes = num_classes
+        self.embedding_dim = embedding_dim
+        
+    def forward(self, embeddings, labels):
+        """
+        Compute center loss: mean squared distance from embeddings to their class centers
+        
+        Args:
+            embeddings: (N, embedding_dim) - embeddings to pull toward centers
+            labels: (N,) - class labels for each embedding
+            
+        Returns:
+            center_loss: Scalar loss value
+        """
+        batch_size = embeddings.size(0)
+        
+        if batch_size == 0:
+            return torch.tensor(0.0, device=embeddings.device)
+        
+        # Get centers for each sample's class
+        # index_select: Select rows from self.centers based on labels
+        centers_batch = self.centers.index_select(0, labels.long())
+        
+        # Compute squared Euclidean distance from embeddings to their class centers
+        distances_squared = ((embeddings - centers_batch) ** 2).sum(dim=1)  # (N,)
+        
+        # Average distance across batch
+        center_loss = distances_squared.sum() / batch_size
+        
+        return center_loss
+
+
 class FocalLoss(nn.Module):
     """
     Focal Loss for Dense Object Detection (Lin et al., 2017)
@@ -113,6 +165,103 @@ class FocalLoss(nn.Module):
             return focal_loss.sum()
         else:
             return focal_loss
+
+
+# ----------------------------------------------------------------------------
+# Supervised Contrastive Loss - Minimal Implementation
+# ----------------------------------------------------------------------------
+
+class SupervisedContrastiveLoss(nn.Module):
+    '''Supervised Contrastive Loss - Minimal Implementation'''
+
+    def __init__(self, temperature=0.07):
+        super().__init__()
+        self.temperature = temperature
+
+    def forward(self, features, labels):
+        features = F.normalize(features, dim=1)
+        similarity = torch.matmul(features, features.T) / self.temperature
+        labels = labels.contiguous().view(-1, 1)
+        mask = torch.eq(labels, labels.T).float().to(features.device)
+        batch_size = features.shape[0]
+        mask_eye = torch.eye(batch_size, device=features.device)
+        mask = mask * (1 - mask_eye)
+        exp_sim = torch.exp(similarity) * (1 - mask_eye)
+        log_prob = similarity - torch.log(exp_sim.sum(1, keepdim=True))
+        mean_log_prob_pos = (mask * log_prob).sum(1) / (mask.sum(1) + 1e-8)
+        loss = -mean_log_prob_pos.mean()
+        return loss
+
+
+# ----------------------------------------------------------------------------
+# Multi-Prototype Learning - 3 prototypes per class
+# ----------------------------------------------------------------------------
+
+class MultiPrototypeLearner(nn.Module):
+    '''Multi-Prototype Learning - 3 prototypes per class'''
+
+    def __init__(self, embedding_dim, num_classes=2, prototypes_per_class=3):
+        super().__init__()
+        self.embedding_dim = embedding_dim
+        self.num_classes = num_classes
+        self.prototypes_per_class = prototypes_per_class
+        self.prototypes = nn.Parameter(
+            torch.randn(num_classes, prototypes_per_class, embedding_dim)
+        )
+    
+    def forward(self, embeddings, labels=None):
+        embeddings_norm = F.normalize(embeddings, dim=1)  # (batch_size, embedding_dim)
+        prototypes_norm = F.normalize(self.prototypes, dim=2)  # (num_classes, prototypes_per_class, embedding_dim)
+        batch_size = embeddings.shape[0]
+        
+        # Compute distances: for each embedding, distance to each prototype
+        # embeddings_norm: (batch_size, embedding_dim)
+        # prototypes_norm: (num_classes, prototypes_per_class, embedding_dim)
+        # We need: (batch_size, num_classes, prototypes_per_class)
+        
+        # Reshape prototypes to (num_classes * prototypes_per_class, embedding_dim)
+        prototypes_flat = prototypes_norm.view(-1, self.embedding_dim)  # (num_classes * prototypes_per_class, embedding_dim)
+        
+        # Compute distances: (batch_size, num_classes * prototypes_per_class)
+        distances_flat = torch.cdist(embeddings_norm, prototypes_flat, p=2)  # (batch_size, num_classes * prototypes_per_class)
+        
+        # Reshape back to (batch_size, num_classes, prototypes_per_class)
+        distances = distances_flat.view(batch_size, self.num_classes, self.prototypes_per_class)
+        
+        # Find minimum distance per class: (batch_size, num_classes)
+        min_distances, _ = torch.min(distances, dim=2)
+        logits = -min_distances  # Negative distances as logits (closer = higher logit)
+        
+        loss = None
+        if labels is not None:
+            # For each sample, get distances to prototypes of the correct class
+            # labels: (batch_size,)
+            # distances: (batch_size, num_classes, prototypes_per_class)
+            batch_indices = torch.arange(batch_size, device=embeddings.device)
+            correct_class_distances = distances[batch_indices, labels]  # (batch_size, prototypes_per_class)
+            min_dist, _ = torch.min(correct_class_distances, dim=1)  # (batch_size,)
+            loss = min_dist.mean()  # Average minimum distance to correct class prototypes
+        
+        return logits, loss
+
+
+# ----------------------------------------------------------------------------
+# Mixup Data Augmentation
+# ----------------------------------------------------------------------------
+
+class MixupAugmentation:
+    '''Mixup Data Augmentation'''
+
+    def __init__(self, alpha=0.4):
+        self.alpha = alpha
+    
+    def __call__(self, x, y):
+        batch_size = x.shape[0]
+        lam = np.random.beta(self.alpha, self.alpha)
+        index = torch.randperm(batch_size).to(x.device)
+        mixed_x = lam * x + (1 - lam) * x[index]
+        y_a, y_b = y, y[index]
+        return mixed_x, y_a, y_b, lam
 
 
 def compute_effective_class_weights(labels, num_classes, beta=0.9999):
@@ -460,7 +609,7 @@ class EfficientMultiScaleTCN(nn.Module):
         combined_features = torch.cat([pooled_out1, pooled_out2, pooled_out3], dim=1)
         
         return combined_features
-
+        
 
 class EmbeddingUtils:
     """
@@ -849,12 +998,12 @@ class TransductiveLearner(nn.Module):
         else:
             # Use provided kernel sizes or default (2, 3, 4)
             self.feature_extractors = EfficientMultiScaleTCN(
-                input_dim=input_dim,
-                sequence_length=sequence_length,  # Use configurable sequence length
-                hidden_dim=hidden_dim,
+            input_dim=input_dim,
+            sequence_length=sequence_length,  # Use configurable sequence length
+            hidden_dim=hidden_dim,
                 dropout=0.1,
                 kernel_sizes=tcn_kernel_sizes
-            )
+        )
             logger.info(f"✅ TCN initialized with kernel sizes: {tcn_kernel_sizes}")
         
         # Feature projection to embedding space (TCN/pooling output: hidden_dim + hidden_dim//2 + hidden_dim*2)
@@ -877,6 +1026,21 @@ class TransductiveLearner(nn.Module):
         
         # Meta-learner compatibility (for TTT adaptation)
         # Note: meta_learner will be set after initialization to avoid recursion
+        
+        # NEW: Enhanced losses and modules (initialized with defaults, can be updated from config)
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.supcon_loss = SupervisedContrastiveLoss(temperature=0.07)
+        self.multi_prototype = MultiPrototypeLearner(
+            embedding_dim=embedding_dim,
+            num_classes=num_classes,
+            prototypes_per_class=3
+        )
+        self.mixup = MixupAugmentation(alpha=0.4)
+        
+        # NEW: Loss weights (will be configurable via config)
+        self.supcon_weight = 0.3
+        self.multi_prototype_weight = 0.2
+        self._last_prototype_loss = None
         
         # Initialize weights for better learning on imbalanced data
         self._initialize_weights()
@@ -904,16 +1068,38 @@ class TransductiveLearner(nn.Module):
         support_x = support_x.to(device)
         support_y = support_y.to(device)
         
+        # SAFEGUARD: Check for empty support set
+        if len(support_x) == 0:
+            raise ValueError("Cannot compute prototypes: support set is empty")
+        
         # Extract embeddings
         support_embeddings = self.extract_embeddings(support_x)  # (N_support, embedding_dim)
         
+        # SAFEGUARD: Check for empty embeddings
+        if len(support_embeddings) == 0:
+            raise ValueError("Cannot compute prototypes: embeddings are empty")
+        
         # Compute prototypes as mean embeddings per class
         unique_labels = torch.unique(support_y)
+        
+        # SAFEGUARD: Check for empty labels
+        if len(unique_labels) == 0:
+            raise ValueError("Cannot compute prototypes: no labels found in support set")
+        
         prototypes = []
         for label in unique_labels:
             mask = (support_y == label)
-            prototype = support_embeddings[mask].mean(dim=0)  # Mean embedding for this class
+            if mask.sum() == 0:
+                # No samples for this label - create zero prototype
+                prototype = torch.zeros(support_embeddings.shape[1], device=device)
+            else:
+                prototype = support_embeddings[mask].mean(dim=0)  # Mean embedding for this class
             prototypes.append(prototype)
+        
+        # SAFEGUARD: Check for empty prototypes list before stacking
+        if len(prototypes) == 0:
+            raise ValueError("Cannot compute prototypes: prototypes list is empty")
+        
         prototypes = torch.stack(prototypes)  # (num_classes, embedding_dim)
         
         return prototypes, unique_labels
@@ -1115,7 +1301,62 @@ class TransductiveLearner(nn.Module):
             x
         )
     
-
+    def label_propagation(self, support_embeddings, support_y, query_embeddings, 
+                         alpha=0.99, n_iterations=10):
+        """
+        Graph-based label propagation for transductive learning
+        
+        Args:
+            support_embeddings: (N_support, embedding_dim)
+            support_y: (N_support,)
+            query_embeddings: (N_query, embedding_dim)
+            alpha: Propagation strength (0.99 = strong)
+            n_iterations: Number of propagation iterations
+        
+        Returns:
+            query_soft_labels: (N_query, num_classes)
+        """
+        # Combine all embeddings
+        all_embeddings = torch.cat([support_embeddings, query_embeddings], dim=0)
+        N = len(all_embeddings)
+        N_support = len(support_embeddings)
+        
+        # Compute similarity matrix (RBF kernel) - OPTIMIZED for large N
+        # For large N, use approximate median or sample-based computation
+        if N > 200:
+            # For large N, use k-nearest neighbors approach (faster)
+            k = min(10, N // 10)
+            distances_small = torch.cdist(all_embeddings[:min(100, N)], all_embeddings[:min(100, N)], p=2)
+            sigma = distances_small.median()
+            # Only compute distances to k nearest neighbors (approximate)
+            # Use full computation for smaller N
+            distances = torch.cdist(all_embeddings, all_embeddings, p=2)
+        else:
+            distances = torch.cdist(all_embeddings, all_embeddings, p=2)
+            sigma = distances.median()
+        
+        W = torch.exp(-distances ** 2 / (2 * sigma ** 2 + 1e-8))
+        W = W * (1 - torch.eye(N, device=W.device))  # Remove self-connections
+        
+        # Normalize W
+        D = W.sum(dim=1, keepdim=True)
+        W_normalized = W / (D + 1e-8)
+        
+        # Initialize label matrix
+        unique_labels = torch.unique(support_y)
+        num_classes = len(unique_labels)
+        Y = torch.zeros(N, num_classes, device=W.device)
+        Y[:N_support] = F.one_hot(support_y, num_classes).float()
+        Y[N_support:] = torch.ones(N - N_support, num_classes, device=W.device) / num_classes
+        
+        Y_initial = Y.clone()
+        
+        # Iterative propagation: Y^(t+1) = alpha * W * Y^(t) + (1 - alpha) * Y^(0)
+        for _ in range(n_iterations):
+            Y = alpha * torch.mm(W_normalized, Y) + (1 - alpha) * Y_initial
+        
+        # Return query labels
+        return Y[N_support:]
     
     def _initialize_weights(self):
         """
@@ -1246,19 +1487,207 @@ class TransductiveLearner(nn.Module):
         
         return prototypes, unique_labels
     
-    def compute_loss(self, support_embeddings, support_y, test_embeddings, test_predictions, prototypes):
+    @staticmethod
+    def _compute_prototype_margin_loss(prototypes, margin=1.0):
         """
-        Pure prototype-based loss computation (no classifier head)
-        Uses distance-based cross-entropy loss on prototype distances
+        Enforce minimum margin between all pairs of prototypes
+        
+        Penalizes prototypes that are too close together, encouraging better inter-class separation.
+        
+        Args:
+            prototypes: (num_classes, embedding_dim) - class prototypes
+            margin: Minimum desired distance between prototypes
+            
+        Returns:
+            margin_loss: Penalty for prototypes that are too close (scalar)
         """
-        # Compute prototypes from support set
+        num_classes = prototypes.size(0)
+        
+        if num_classes < 2:
+            return torch.tensor(0.0, device=prototypes.device)
+        
+        # Compute pairwise distances between prototypes
+        distances = torch.cdist(prototypes, prototypes, p=2)  # (num_classes, num_classes)
+        
+        # Create mask to exclude diagonal (distance to self = 0)
+        mask = 1 - torch.eye(num_classes, device=prototypes.device)
+        
+        # Compute margin violation: max(0, margin - distance)
+        # If distance < margin, violation is positive (penalty)
+        violations = torch.clamp(margin - distances, min=0)
+        
+        # Only penalize non-diagonal pairs (different classes)
+        num_pairs = num_classes * (num_classes - 1)
+        if num_pairs > 0:
+            margin_loss = (violations * mask).sum() / num_pairs
+        else:
+            margin_loss = torch.tensor(0.0, device=prototypes.device)
+        
+        return margin_loss
+    
+    def compute_adaptive_threshold(self, query_probs, support_y, 
+                                  min_threshold=0.5, max_threshold=0.9):
+        """
+        Compute adaptive confidence threshold based on:
+        1. Class imbalance in support set
+        2. Entropy of query predictions
+        
+        Args:
+            query_probs: (N_query, num_classes) prediction probabilities
+            support_y: (N_support,) support labels
+            min_threshold: Minimum confidence threshold
+            max_threshold: Maximum confidence threshold
+        
+        Returns:
+            adaptive_threshold: Computed threshold
+        """
+        # Measure class imbalance
+        unique_labels, counts = torch.unique(support_y, return_counts=True)
+        imbalance_ratio = counts.max().float() / counts.min().float()
+        
+        # Measure prediction entropy (uncertainty)
+        entropy = -(query_probs * torch.log(query_probs + 1e-8)).sum(dim=1).mean()
+        max_entropy = torch.log(torch.tensor(query_probs.size(1), dtype=torch.float, device=query_probs.device))
+        normalized_entropy = entropy / max_entropy  # 0 to 1
+        
+        # Adjust threshold:
+        # - Higher imbalance → lower threshold (accept more samples)
+        # - Higher entropy → higher threshold (be more selective)
+        imbalance_adjustment = torch.clamp(1.0 / imbalance_ratio, 0.7, 1.0)
+        entropy_adjustment = 1.0 + normalized_entropy
+        
+        adaptive_threshold = min_threshold * imbalance_adjustment * entropy_adjustment
+        adaptive_threshold = torch.clamp(adaptive_threshold, min_threshold, max_threshold)
+        
+        return adaptive_threshold.item()
+    
+    def refine_prototypes_iteratively(self, support_embeddings, support_y, 
+                                     query_embeddings, initial_prototypes, 
+                                     num_iterations=10, confidence_threshold=0.7,
+                                     use_adaptive_threshold=True, min_threshold=0.5, max_threshold=0.9):
+        """
+        Iteratively refine prototypes using confident query predictions
+        
+        Args:
+            support_embeddings: (N_support, embedding_dim)
+            support_y: (N_support,) support labels
+            query_embeddings: (N_query, embedding_dim)
+            initial_prototypes: (num_classes, embedding_dim)
+            num_iterations: Number of refinement iterations
+            confidence_threshold: Base confidence threshold (used if adaptive=False)
+            use_adaptive_threshold: Whether to use adaptive thresholding
+            min_threshold: Minimum confidence threshold for adaptive mode
+            max_threshold: Maximum confidence threshold for adaptive mode
+        
+        Returns:
+            refined_prototypes: (num_classes, embedding_dim)
+            convergence_history: List of prototype movement distances
+        """
+        prototypes = initial_prototypes.clone()
+        convergence_history = []
+        
         unique_labels = torch.unique(support_y)
-        support_prototypes = []
-        for label in unique_labels:
-            mask = (support_y == label)
-            prototype = support_embeddings[mask].mean(dim=0)
-            support_prototypes.append(prototype)
-        support_prototypes = torch.stack(support_prototypes)  # (num_classes, embedding_dim)
+        num_classes = len(unique_labels)
+        
+        for iteration in range(num_iterations):
+            # Compute distances to current prototypes
+            query_distances = torch.cdist(query_embeddings.unsqueeze(0), 
+                                         prototypes.unsqueeze(0), p=2).squeeze(0) ** 2
+            query_logits = -query_distances
+            query_probs = F.softmax(query_logits, dim=1)
+            
+            # Get confident predictions with adaptive thresholding
+            query_confidence, query_pseudo_indices = torch.max(query_probs, dim=1)
+            
+            if use_adaptive_threshold:
+                # Compute adaptive threshold based on class imbalance and prediction entropy
+                adaptive_conf_threshold = self.compute_adaptive_threshold(
+                    query_probs, support_y, min_threshold=min_threshold, max_threshold=max_threshold
+                )
+                high_conf_mask = query_confidence > adaptive_conf_threshold
+            else:
+                # Use fixed threshold
+                high_conf_mask = query_confidence > confidence_threshold
+            
+            # Store old prototypes for convergence check
+            old_prototypes = prototypes.clone()
+            
+            # Update each prototype
+            new_prototypes = []
+            for class_idx, label in enumerate(unique_labels):
+                # Support samples for this class
+                support_class_mask = (support_y == label)
+                support_class_embeddings = support_embeddings[support_class_mask]
+                
+                # High-confidence query samples predicted as this class
+                query_class_mask = (query_pseudo_indices == class_idx) & high_conf_mask
+                
+                if query_class_mask.any() and support_class_mask.any():
+                    query_class_embeddings = query_embeddings[query_class_mask]
+                    
+                    # Adaptive weighting based on confidence
+                    avg_confidence = query_confidence[query_class_mask].mean()
+                    query_weight = min(0.5, avg_confidence.item())  # Cap at 0.5
+                    support_weight = 1.0 - query_weight
+                    
+                    # Weighted combination
+                    combined_prototype = (
+                        support_weight * support_class_embeddings.mean(dim=0) +
+                        query_weight * query_class_embeddings.mean(dim=0)
+                    )
+                    new_prototypes.append(combined_prototype)
+                elif support_class_mask.any():
+                    # No confident query predictions - use support only
+                    new_prototypes.append(support_class_embeddings.mean(dim=0))
+                else:
+                    # No support samples - keep old prototype
+                    new_prototypes.append(old_prototypes[class_idx])
+            
+            prototypes = torch.stack(new_prototypes)
+            
+            # Check convergence: average movement of prototypes
+            prototype_movement = torch.norm(prototypes - old_prototypes, dim=1).mean()
+            convergence_history.append(prototype_movement.item())
+            
+            # Early stopping if converged
+            if prototype_movement < 1e-4:
+                logger.info(f"Prototype refinement converged at iteration {iteration}")
+                break
+        
+        return prototypes, convergence_history
+    
+    def compute_loss(self, support_embeddings, support_y, test_embeddings, test_predictions, prototypes,
+                    center_loss_fn=None, center_loss_weight=0.01, margin_loss_weight=0.1, margin=2.0):
+        """
+        Enhanced prototype-based loss with center loss and prototype margin enforcement
+        
+        Args:
+            support_embeddings: Support set embeddings (N_support, embedding_dim)
+            support_y: Support set labels (N_support,)
+            test_embeddings: Test/query set embeddings (N_test, embedding_dim)
+            test_predictions: Test set predictions (probabilities or labels)
+            prototypes: Pre-computed prototypes (num_classes, embedding_dim) - can be None to recompute
+            center_loss_fn: Optional CenterLoss instance for intra-class compactness
+            center_loss_weight: Weight for center loss (default: 0.01)
+            margin_loss_weight: Weight for prototype margin loss (default: 0.1)
+            margin: Minimum desired distance between prototypes (default: 2.0)
+            
+        Returns:
+            total_loss: Combined loss value
+            loss_dict: Dictionary with individual loss components (for logging)
+        """
+        # Compute prototypes from support set if not provided
+        unique_labels = torch.unique(support_y)
+        if prototypes is None:
+            support_prototypes = []
+            for label in unique_labels:
+                mask = (support_y == label)
+                if mask.sum() > 0:
+                    prototype = support_embeddings[mask].mean(dim=0)
+                    support_prototypes.append(prototype)
+            support_prototypes = torch.stack(support_prototypes)  # (num_classes, embedding_dim)
+        else:
+            support_prototypes = prototypes
         
         # Support loss: Cross-entropy on distances from support embeddings to prototypes
         support_distances = torch.cdist(support_embeddings.unsqueeze(0), support_prototypes.unsqueeze(0), p=2).squeeze(0) ** 2  # (N_support, num_classes)
@@ -1272,10 +1701,36 @@ class TransductiveLearner(nn.Module):
         test_labels = torch.argmax(test_predictions, dim=1) if test_predictions.dim() > 1 else test_predictions
         test_loss = F.cross_entropy(test_logits, test_labels)
         
-        # Total loss: weighted combination
-        total_loss = support_loss + test_loss
+        # Initialize loss components
+        center_loss_value = torch.tensor(0.0, device=support_embeddings.device)
+        margin_loss_value = torch.tensor(0.0, device=support_embeddings.device)
         
-        return total_loss
+        # **NEW: Center loss for intra-class compactness**
+        if center_loss_fn is not None:
+            # Apply center loss to both support and query embeddings
+            all_embeddings = torch.cat([support_embeddings, test_embeddings], dim=0)
+            all_labels = torch.cat([support_y, test_labels], dim=0)
+            center_loss_value = center_loss_fn(all_embeddings, all_labels)
+        
+        # **NEW: Prototype margin loss for inter-class separation**
+        if margin_loss_weight > 0 and support_prototypes.size(0) >= 2:
+            margin_loss_value = self._compute_prototype_margin_loss(support_prototypes, margin=margin)
+        
+        # Total loss: weighted combination
+        total_loss = (support_loss + test_loss + 
+                     center_loss_weight * center_loss_value + 
+                     margin_loss_weight * margin_loss_value)
+        
+        # Return loss dictionary for logging
+        loss_dict = {
+            'support_loss': support_loss.item(),
+            'test_loss': test_loss.item(),
+            'center_loss': center_loss_value.item() if center_loss_fn is not None else 0.0,
+            'margin_loss': margin_loss_value.item() if margin_loss_weight > 0 else 0.0,
+            'total_loss': total_loss.item()
+        }
+        
+        return total_loss, loss_dict
     
     def update_test_predictions(self, test_embeddings, prototypes):
         """
@@ -1309,14 +1764,48 @@ class TransductiveLearner(nn.Module):
             'epoch_accuracies': []
         }
         
+        # Get device for Center Loss initialization
+        device = next(self.parameters()).device
+        is_cuda_device = device.type == 'cuda' and torch.cuda.is_available()
+        
+        # **NEW: Initialize Center Loss for intra-class compactness**
+        # Get config parameters for center loss and margin loss
+        use_center_loss = getattr(config, 'use_center_loss', True) if config else True
+        center_loss_weight = getattr(config, 'center_loss_weight', 0.01) if config else 0.01
+        use_prototype_margin_loss = getattr(config, 'use_prototype_margin_loss', True) if config else True
+        margin_loss_weight = getattr(config, 'margin_loss_weight', 0.1) if config else 0.1
+        prototype_margin = getattr(config, 'prototype_margin', 2.0) if config else 2.0
+        
+        center_loss_fn = None
+        if use_center_loss:
+            # Initialize Center Loss with binary classification (Normal=0, Attack=1)
+            center_loss_fn = CenterLoss(
+                num_classes=2,  # Binary classification
+                embedding_dim=self.embedding_dim,
+                device=device
+            )
+            logger.info(f"✅ Center Loss enabled (weight={center_loss_weight}) for better embedding discriminativeness")
+        else:
+            logger.info("⚠️  Center Loss disabled")
+        
+        if use_prototype_margin_loss:
+            logger.info(f"✅ Prototype Margin Loss enabled (weight={margin_loss_weight}, margin={prototype_margin})")
+        else:
+            logger.info("⚠️  Prototype Margin Loss disabled")
+        
         # Enhanced optimizer for better convergence on imbalanced data
-        meta_optimizer = optim.AdamW(self.parameters(), lr=0.01, weight_decay=1e-4)
+        # Include Center Loss parameters in optimizer if enabled
+        optimizer_params = list(self.parameters())
+        if center_loss_fn is not None:
+            optimizer_params += list(center_loss_fn.parameters())
+        # Add multi-prototype parameters if enabled
+        use_multi_proto = getattr(config, 'use_multi_prototype', False) if config else False
+        if use_multi_proto:
+            optimizer_params += list(self.multi_prototype.parameters())
+        meta_optimizer = optim.AdamW(optimizer_params, lr=0.01, weight_decay=1e-4)
         
         # Mixed precision training: 40-70% faster, 50% less memory on modern GPUs (Volta+)
         # FP16 uses tensor cores for 2-4x speedup while maintaining FP32 precision for critical ops
-        # Check if model is on GPU (more reliable than just checking CUDA availability)
-        device = next(self.parameters()).device
-        is_cuda_device = device.type == 'cuda' and torch.cuda.is_available()
         scaler = GradScaler() if is_cuda_device else GradScaler()
         use_mixed_precision = is_cuda_device
         
@@ -1324,6 +1813,13 @@ class TransductiveLearner(nn.Module):
             logger.info(f"✅ Mixed precision FP16 enabled for meta-training on {device} (40-70% faster, 50% less memory)")
         else:
             logger.info(f"⚠️ Mixed precision disabled ({device.type.upper()} mode) - using FP32")
+        
+        # Gradient accumulation for effective batch size 64
+        # Get batch_size from config or use default
+        batch_size = getattr(config, 'batch_size', 32) if config else 32
+        gradient_accumulation_steps = max(1, 64 // batch_size)  # Calculate steps needed for effective batch size 64
+        effective_batch_size = batch_size * gradient_accumulation_steps
+        logger.info(f"🔄 Gradient accumulation: {gradient_accumulation_steps} steps (effective batch size: {effective_batch_size})")
         
         # Initialize focal loss function (will create per-task instances with class weights)
         for epoch in range(meta_epochs):
@@ -1333,7 +1829,10 @@ class TransductiveLearner(nn.Module):
             # Sample tasks for this epoch
             np.random.shuffle(meta_tasks)
             
-            for task in meta_tasks:
+            # Zero gradients at start of epoch
+            meta_optimizer.zero_grad()
+            
+            for task_idx, task in enumerate(meta_tasks):
                 # Move tensors to the same device as the model
                 device = next(self.parameters()).device
                 support_x = task['support_x'].to(device)
@@ -1353,13 +1852,25 @@ class TransductiveLearner(nn.Module):
                     bn_modules = []
                     bn_was_training = []
                 
+                # NEW: Apply Mixup augmentation to support set (80% of time)
+                use_mixup = getattr(config, 'use_mixup_augmentation', False) if config else False
+                mixup_probability = getattr(config, 'mixup_probability', 0.8) if config else 0.8
+                if self.training and use_mixup and np.random.random() > (1 - mixup_probability):
+                    support_x_augmented, y_a, y_b, lam = self.mixup(support_x, support_y)
+                    # Use hard labels for simplicity (can improve with soft labels later)
+                    support_x = support_x_augmented
+                    support_y = y_a
+                    if hasattr(self, 'training') and self.training:
+                        logger.debug(f"Applied Mixup with lambda={lam:.3f}")
+                
                 # MIXED PRECISION: Forward pass in FP16 for 2-4x speedup on tensor cores
                 with autocast(enabled=use_mixed_precision):
-                    # Pure prototype-based training: Extract embeddings
+                    # TRULY TRANSDUCTIVE: Use label propagation and iterative prototype refinement
+                    # Extract embeddings once
                     support_embeddings = self(support_x)  # (N_support, embedding_dim)
                     query_embeddings = self(query_x)  # (N_query, embedding_dim)
                     
-                    # Compute prototypes from support set (mean embedding per class)
+                    # Compute initial prototypes from support set (mean embedding per class)
                     unique_labels = torch.unique(support_y)
                     num_classes = len(unique_labels)
                     prototypes = []
@@ -1369,20 +1880,123 @@ class TransductiveLearner(nn.Module):
                         prototypes.append(prototype)
                     prototypes = torch.stack(prototypes)  # (num_classes, embedding_dim)
                     
-                    # Compute squared Euclidean distances
-                    support_distances = torch.cdist(support_embeddings.unsqueeze(0), prototypes.unsqueeze(0), p=2).squeeze(0) ** 2  # (N_support, num_classes)
-                    query_distances = torch.cdist(query_embeddings.unsqueeze(0), prototypes.unsqueeze(0), p=2).squeeze(0) ** 2  # (N_query, num_classes)
+                    # TRANSDUCTIVE OPTIMIZATION: Multi-step iterative refinement
+                    # Get config parameters for refinement (with defaults)
+                    num_refinement_iterations = getattr(config, 'transductive_refinement_iterations', 10) if config else 10
+                    refinement_confidence_threshold = getattr(config, 'transductive_refinement_confidence_threshold', 0.7) if config else 0.7
+                    use_adaptive_threshold = getattr(config, 'use_adaptive_refinement_threshold', True) if config else True
+                    min_refinement_threshold = getattr(config, 'transductive_refinement_min_threshold', 0.5) if config else 0.5
+                    max_refinement_threshold = getattr(config, 'transductive_refinement_max_threshold', 0.9) if config else 0.9
                     
-                    # Convert distances to logits (negative squared distances)
-                    support_logits = -support_distances
-                    query_logits = -query_distances
+                    refined_prototypes, convergence = self.refine_prototypes_iteratively(
+                        support_embeddings, support_y, query_embeddings, prototypes,
+                        num_iterations=num_refinement_iterations, 
+                        confidence_threshold=refinement_confidence_threshold,
+                        use_adaptive_threshold=use_adaptive_threshold,
+                        min_threshold=min_refinement_threshold,
+                        max_threshold=max_refinement_threshold
+                    )
                     
-                    # Cross-entropy loss on distance-based logits
+                    # NEW: Optionally use multi-prototype learner for logits computation
+                    use_multi_proto_for_logits = getattr(config, 'use_multi_prototype', False) if config else False
+                    if use_multi_proto_for_logits:
+                        # Use multi-prototype learner
+                        support_logits, _ = self.multi_prototype(support_embeddings, support_y)
+                        query_logits, _ = self.multi_prototype(query_embeddings, None)
+                        query_probs_final = F.softmax(query_logits, dim=1)
+                        # For compatibility, use mean prototypes
+                        prototypes = self.multi_prototype.prototypes.mean(dim=1)  # (num_classes, embedding_dim)
+                    else:
+                        # Use refined prototypes for final loss computation (original method)
+                        support_distances = torch.cdist(support_embeddings.unsqueeze(0), refined_prototypes.unsqueeze(0), p=2).squeeze(0) ** 2
+                        query_distances_refined = torch.cdist(query_embeddings.unsqueeze(0), 
+                                                             refined_prototypes.unsqueeze(0), p=2).squeeze(0) ** 2
+                        
+                        # Convert distances to logits
+                        support_logits = -support_distances
+                        query_logits = -query_distances_refined
+                        query_probs_final = F.softmax(query_logits, dim=1)
+                        
+                        # Update prototypes to use refined versions for consistency
+                        prototypes = refined_prototypes
+                    
+                    # Support loss (supervised)
                     support_loss = F.cross_entropy(support_logits, support_y)
-                    query_loss = F.cross_entropy(query_logits, query_y)
                     
-                    # Total loss
-                    total_loss = support_loss + query_loss
+                    # TRUE TRANSDUCTIVE LEARNING: Use refined predictions with confidence weighting
+                    # Remove .detach() to allow gradients through pseudo-label generation
+                    query_confidence, query_pseudo_indices = torch.max(query_probs_final, dim=1)
+                    query_pseudo_labels = unique_labels[query_pseudo_indices]  # NO .detach() - allows gradients
+                    
+                    # CONFIDENCE-WEIGHTED LOSS: Higher confidence samples contribute more
+                    query_loss_per_sample = F.cross_entropy(query_logits, query_pseudo_labels, reduction='none')
+                    query_loss = (query_confidence * query_loss_per_sample).mean()
+                    
+                    # Base loss: support + query
+                    base_loss = support_loss + 0.5 * query_loss
+                    
+                    # **NEW: Add Center Loss for intra-class compactness**
+                    center_loss_value = torch.tensor(0.0, device=support_embeddings.device)
+                    if center_loss_fn is not None:
+                        # Apply center loss to both support and query embeddings
+                        all_embeddings = torch.cat([support_embeddings, query_embeddings], dim=0)
+                        # Convert labels to binary (0=Normal, 1=Attack) for center loss
+                        all_labels_binary = torch.cat([
+                            (support_y != 0).long(),  # Support labels: 0->0, others->1
+                            (query_pseudo_labels != 0).long()  # Query labels: 0->0, others->1
+                        ], dim=0)
+                        center_loss_value = center_loss_fn(all_embeddings, all_labels_binary)
+                    
+                    # **NEW: Add Prototype Margin Loss for inter-class separation**
+                    margin_loss_value = torch.tensor(0.0, device=support_embeddings.device)
+                    if use_prototype_margin_loss and prototypes.size(0) >= 2:
+                        # Use mean prototypes from multi-prototype learner if available
+                        if hasattr(self, 'multi_prototype') and getattr(config, 'use_multi_prototype', False) if config else False:
+                            mean_prototypes = self.multi_prototype.prototypes.mean(dim=1)  # (num_classes, embedding_dim)
+                            margin_loss_value = self._compute_prototype_margin_loss(mean_prototypes, margin=prototype_margin)
+                        else:
+                            margin_loss_value = self._compute_prototype_margin_loss(prototypes, margin=prototype_margin)
+                    
+                    # NEW: Supervised contrastive loss
+                    use_supcon = getattr(config, 'use_supervised_contrastive_loss', False) if config else False
+                    supcon_weight = getattr(config, 'contrastive_loss_weight', 0.3) if config else 0.3
+                    supcon_loss_value = torch.tensor(0.0, device=support_embeddings.device)
+                    if use_supcon:
+                        # Combine support and query embeddings for contrastive learning
+                        all_embeddings_for_supcon = torch.cat([support_embeddings, query_embeddings], dim=0)
+                        all_labels_for_supcon = torch.cat([support_y, query_pseudo_labels], dim=0)
+                        supcon_loss_value = self.supcon_loss(all_embeddings_for_supcon, all_labels_for_supcon)
+                    
+                    # NEW: Multi-prototype loss
+                    use_multi_proto = getattr(config, 'use_multi_prototype', False) if config else False
+                    multi_proto_weight = getattr(config, 'multi_prototype_weight', 0.2) if config else 0.2
+                    proto_loss_value = torch.tensor(0.0, device=support_embeddings.device)
+                    if use_multi_proto:
+                        # Use multi-prototype learner to get logits and loss
+                        all_embeddings_for_proto = torch.cat([support_embeddings, query_embeddings], dim=0)
+                        all_labels_for_proto = torch.cat([support_y, query_pseudo_labels], dim=0)
+                        _, proto_loss_value = self.multi_prototype(all_embeddings_for_proto, all_labels_for_proto)
+                        self._last_prototype_loss = proto_loss_value
+                    
+                    # NEW TOTAL LOSS: Balanced weights with all components
+                    total_loss = (
+                        0.25 * base_loss +
+                        0.30 * supcon_weight * supcon_loss_value +
+                        0.20 * multi_proto_weight * proto_loss_value +
+                        0.10 * center_loss_weight * center_loss_value +
+                        0.15 * margin_loss_weight * margin_loss_value
+                    )
+                    
+                    # Optional: Log individual losses for debugging
+                    if hasattr(self, 'training') and self.training and epoch % 10 == 0:
+                        logger.debug(f"Losses - Base: {base_loss:.4f}, SupCon: {supcon_loss_value:.4f}, "
+                                    f"Proto: {proto_loss_value:.4f}, Center: {center_loss_value:.4f}, "
+                                    f"Margin: {margin_loss_value:.4f}")
+                    
+                    # Store for evaluation (outside autocast) - detach only for evaluation metrics
+                    query_logits_for_eval = query_logits.detach()
+                    query_probs_for_eval = query_probs_final.detach()
+                    unique_labels_for_eval = unique_labels
                     
                     # Add FedProx proximal term if enabled and global_params provided
                     if global_params is not None and hasattr(config, 'use_fedprox') and config.use_fedprox:
@@ -1399,8 +2013,9 @@ class TransductiveLearner(nn.Module):
                         # Add proximal term: (μ/2) * ||w - w_global||²
                         total_loss = total_loss + (fedprox_mu / 2.0) * proximal_term
                 
-                # Compute accuracy (prototype-based predictions) - outside autocast for evaluation
-                predictions = unique_labels[torch.argmin(query_distances, dim=1)]  # Nearest prototype
+                # Compute accuracy using refined predictions (prototype-based) - outside autocast for evaluation
+                # Use the refined query predictions from transductive optimization
+                predictions = unique_labels_for_eval[torch.argmax(query_probs_for_eval, dim=1)]  # Use refined predictions
                 accuracy = (predictions == query_y).float().mean().item()
                 
                 # Restore BatchNorm training mode if it was temporarily changed
@@ -1409,20 +2024,41 @@ class TransductiveLearner(nn.Module):
                         if was_training:
                             m.train()
                 
+                # GRADIENT ACCUMULATION: Scale loss by accumulation steps
+                total_loss = total_loss / gradient_accumulation_steps
+                
                 # MIXED PRECISION: Backward pass with GradScaler (FP16/FP32 mixed)
                 # This enables FP16 backward pass while maintaining FP32 precision for critical operations
-                meta_optimizer.zero_grad()
+                # Note: Don't zero_grad here - gradients accumulate across steps
                 
                 # Scale loss for mixed precision training (prevents underflow in FP16)
-                scaled_loss = scaler.scale(total_loss)
-                scaled_loss.backward()
+                if use_mixed_precision:
+                    scaled_loss = scaler.scale(total_loss)
+                    scaled_loss.backward()
+                else:
+                    total_loss.backward()
                 
-                # Optimizer step with scaler (handles FP16/FP32 conversion automatically)
-                scaler.step(meta_optimizer)
-                scaler.update()  # Update scaler state for next iteration
+                # Update optimizer every accumulation_steps
+                if (task_idx + 1) % gradient_accumulation_steps == 0:
+                    if use_mixed_precision:
+                        scaler.step(meta_optimizer)
+                        scaler.update()  # Update scaler state for next iteration
+                    else:
+                        meta_optimizer.step()
+                    
+                    meta_optimizer.zero_grad()
                 
-                epoch_losses.append(total_loss.item())
+                epoch_losses.append(total_loss.item() * gradient_accumulation_steps)  # Scale back for logging
                 epoch_accuracies.append(accuracy)
+            
+            # Handle remaining tasks that didn't complete an accumulation step
+            if len(meta_tasks) % gradient_accumulation_steps != 0:
+                if use_mixed_precision:
+                    scaler.step(meta_optimizer)
+                    scaler.update()
+                else:
+                    meta_optimizer.step()
+                meta_optimizer.zero_grad()
             
             # Record epoch metrics
             avg_loss = np.mean(epoch_losses)
@@ -1437,6 +2073,502 @@ class TransductiveLearner(nn.Module):
         logger.info("Transductive meta-training completed")
         return training_history
    # TTT methods removed - now handled by FedAVG coordinator
+
+
+class TrueTransductiveLearner(nn.Module):
+    """
+    True Transductive Meta-Learning with:
+    1. Iterative pseudo-label refinement
+    2. Confidence-weighted query participation
+    3. Graph-based label propagation
+    4. Joint support-query optimization
+    
+    Key insight: Query samples must actively participate in learning, using their unlabeled 
+    distribution to refine the model, not just passively receive predictions.
+    """
+    
+    def __init__(self, input_dim: int, hidden_dim: int = 128, embedding_dim: int = 64, 
+                 num_classes: int = 2, sequence_length: int = 1,
+                 transductive_steps: int = 10, confidence_threshold: float = 0.7,
+                 label_propagation_alpha: float = 0.99, temperature: float = 2.0,
+                 tcn_kernel_sizes: tuple = (2, 3, 4)):
+        super(TrueTransductiveLearner, self).__init__()
+        
+        self.embedding_dim = embedding_dim
+        self.num_classes = num_classes
+        self.transductive_steps = transductive_steps
+        self.confidence_threshold = confidence_threshold
+        self.label_propagation_alpha = label_propagation_alpha
+        self.temperature = temperature
+        
+        # Feature extractor (reuse existing architecture)
+        self.feature_extractors = EfficientMultiScaleTCN(
+            input_dim=input_dim,
+            sequence_length=sequence_length,
+            hidden_dim=hidden_dim,
+            dropout=0.1,
+            kernel_sizes=tcn_kernel_sizes
+        )
+        
+        # Feature projection
+        feature_output_dim = self.feature_extractors.output_dim
+        self.feature_projection = nn.Sequential(
+            nn.Linear(feature_output_dim, embedding_dim),
+            nn.BatchNorm1d(embedding_dim),
+            nn.ReLU()
+        )
+        
+        logger.info("✅ True Transductive Learner initialized")
+        logger.info(f"   Transductive steps: {transductive_steps}")
+        logger.info(f"   Confidence threshold: {confidence_threshold}")
+        logger.info(f"   Label propagation alpha: {label_propagation_alpha}")
+    
+    def extract_embeddings(self, x):
+        """Extract embeddings from input"""
+        combined_features = self.feature_extractors(x)
+        embeddings = self.feature_projection(combined_features)
+        embeddings = F.layer_norm(embeddings, embeddings.size()[1:])
+        return embeddings
+    
+    def forward(self, x):
+        """Forward pass returns embeddings"""
+        return self.extract_embeddings(x)
+    
+    def compute_prototypes(self, embeddings, labels, num_classes=None):
+        """
+        Compute class prototypes from labeled embeddings
+        
+        Args:
+            embeddings: (N, embedding_dim)
+            labels: (N,) class labels
+            num_classes: Number of classes (optional)
+        
+        Returns:
+            prototypes: (num_classes, embedding_dim)
+        """
+        if num_classes is None:
+            num_classes = len(torch.unique(labels))
+        
+        prototypes = []
+        for class_id in range(num_classes):
+            class_mask = (labels == class_id)
+            if class_mask.any():
+                prototype = embeddings[class_mask].mean(dim=0)
+            else:
+                # Zero prototype for missing classes
+                prototype = torch.zeros(self.embedding_dim, device=embeddings.device)
+            prototypes.append(prototype)
+        
+        return torch.stack(prototypes)
+    
+    def compute_similarity_graph(self, support_embeddings, query_embeddings):
+        """
+        Compute similarity graph between all samples (support + query)
+        
+        Returns:
+            W: (N_support + N_query, N_support + N_query) similarity matrix
+        """
+        all_embeddings = torch.cat([support_embeddings, query_embeddings], dim=0)
+        
+        # Compute pairwise cosine similarities
+        normalized_embeddings = F.normalize(all_embeddings, p=2, dim=1)
+        similarity_matrix = torch.mm(normalized_embeddings, normalized_embeddings.t())
+        
+        # Apply RBF kernel for smoother similarities
+        # W_ij = exp(-||x_i - x_j||^2 / (2 * sigma^2))
+        distances = torch.cdist(all_embeddings, all_embeddings, p=2)
+        sigma = distances.median()
+        W = torch.exp(-distances ** 2 / (2 * sigma ** 2))
+        
+        # Zero out self-connections
+        W = W * (1 - torch.eye(W.size(0), device=W.device))
+        
+        return W
+    
+    def label_propagation(self, W, initial_labels, num_support):
+        """
+        Graph-based label propagation
+        
+        Algorithm:
+            Y^(t+1) = alpha * W * Y^(t) + (1 - alpha) * Y^(0)
+        
+        where:
+            - Y^(0) is initial label distribution (one-hot for support, uniform for query)
+            - W is normalized similarity matrix
+            - alpha controls propagation strength
+        
+        Args:
+            W: (N, N) similarity matrix
+            initial_labels: (N_support,) labels for support set
+            num_support: Number of support samples
+        
+        Returns:
+            propagated_labels: (N, num_classes) soft label distribution
+        """
+        N = W.size(0)
+        
+        # Initialize label matrix Y
+        Y = torch.zeros(N, self.num_classes, device=W.device)
+        
+        # Set support labels (one-hot encoding)
+        Y[:num_support] = F.one_hot(initial_labels, num_classes=self.num_classes).float()
+        
+        # Set query labels (uniform distribution initially)
+        Y[num_support:] = torch.ones(N - num_support, self.num_classes, device=W.device) / self.num_classes
+        
+        # Normalize W row-wise (degree normalization)
+        D = W.sum(dim=1, keepdim=True)
+        W_normalized = W / (D + 1e-8)
+        
+        # Store initial labels
+        Y_initial = Y.clone()
+        
+        # Iterative label propagation
+        for _ in range(self.transductive_steps):
+            Y_new = self.label_propagation_alpha * torch.mm(W_normalized, Y) + \
+                    (1 - self.label_propagation_alpha) * Y_initial
+            Y = Y_new
+        
+        return Y
+    
+    def transductive_inference(self, support_x, support_y, query_x, 
+                               use_label_propagation=True, use_prototype_refinement=True):
+        """
+        True transductive inference with iterative refinement
+        
+        Args:
+            support_x: (N_support, seq_len, input_dim)
+            support_y: (N_support,) support labels
+            query_x: (N_query, seq_len, input_dim)
+            use_label_propagation: Use graph-based label propagation
+            use_prototype_refinement: Refine prototypes using confident query predictions
+        
+        Returns:
+            query_predictions: (N_query, num_classes) soft predictions
+            adaptation_history: Dict with adaptation metrics
+        """
+        device = next(self.parameters()).device
+        support_x = support_x.to(device)
+        support_y = support_y.to(device)
+        query_x = query_x.to(device)
+        
+        # Extract embeddings
+        support_embeddings = self.extract_embeddings(support_x)
+        query_embeddings = self.extract_embeddings(query_x)
+        
+        num_support = len(support_embeddings)
+        num_query = len(query_embeddings)
+        
+        logger.info("="*80)
+        logger.info("TRUE TRANSDUCTIVE INFERENCE")
+        logger.info("="*80)
+        logger.info(f"Support samples: {num_support}, Query samples: {num_query}")
+        
+        # Track adaptation history
+        adaptation_history = {
+            'step_losses': [],
+            'step_accuracies': [],
+            'step_confidences': [],
+            'prototype_updates': [],
+            'high_confidence_counts': []
+        }
+        
+        # Initial prototypes from support set only
+        prototypes = self.compute_prototypes(support_embeddings, support_y, self.num_classes)
+        
+        # Method 1: Graph-based Label Propagation (if enabled)
+        if use_label_propagation:
+            logger.info("🔄 Method 1: Graph-based Label Propagation")
+            
+            # Build similarity graph
+            W = self.compute_similarity_graph(support_embeddings, query_embeddings)
+            
+            # Propagate labels
+            all_labels = self.label_propagation(W, support_y, num_support)
+            
+            # Extract query predictions
+            query_predictions_lp = all_labels[num_support:]
+            
+            logger.info(f"   Label propagation completed: {self.transductive_steps} iterations")
+        else:
+            query_predictions_lp = None
+        
+        # Method 2: Iterative Prototype Refinement (if enabled)
+        if use_prototype_refinement:
+            logger.info("🔄 Method 2: Iterative Prototype Refinement")
+            
+            # Clone embeddings for refinement (avoid modifying originals)
+            current_support_embeddings = support_embeddings.clone()
+            current_query_embeddings = query_embeddings.clone()
+            
+            for step in range(self.transductive_steps):
+                # 1. Compute distances to current prototypes
+                query_distances = torch.cdist(current_query_embeddings, prototypes, p=2)
+                query_logits = -query_distances / self.temperature
+                query_probs = F.softmax(query_logits, dim=1)
+                
+                # 2. Compute confidence scores
+                query_confidence, query_pseudo_labels = torch.max(query_probs, dim=1)
+                
+                # 3. ADAPTIVE threshold: Use dynamic threshold based on current confidence distribution
+                # Start with mean + small margin, gradually increase toward fixed threshold
+                mean_confidence = query_confidence.mean().item()
+                min_threshold = max(0.55, min(mean_confidence + 0.05, 0.65))  # At least 55%, up to 65%
+                max_threshold = self.confidence_threshold  # Target threshold (0.7)
+                
+                # Gradually increase threshold over steps (adaptive annealing)
+                progress = step / max(1, self.transductive_steps - 1)  # 0.0 to 1.0
+                adaptive_threshold = min_threshold + (max_threshold - min_threshold) * progress
+                
+                # Filter high-confidence predictions with adaptive threshold
+                high_conf_mask = query_confidence > adaptive_threshold
+                num_high_conf = high_conf_mask.sum().item()
+                effective_threshold = adaptive_threshold  # For logging
+                
+                # Fallback: If no samples found, use top 30% by confidence (ensures at least some samples)
+                if num_high_conf == 0 and len(query_confidence) > 0:
+                    k = max(1, int(len(query_confidence) * 0.3))  # Top 30%
+                    _, top_k_indices = torch.topk(query_confidence, k)
+                    high_conf_mask = torch.zeros_like(query_confidence, dtype=torch.bool)
+                    high_conf_mask[top_k_indices] = True
+                    num_high_conf = high_conf_mask.sum().item()
+                    effective_threshold = query_confidence[top_k_indices[-1]].item()  # Threshold of last selected
+                    logger.debug(f"   Fallback to top-{k} selection (threshold={effective_threshold:.3f})")
+                
+                adaptation_history['step_confidences'].append(query_confidence.mean().item())
+                adaptation_history['high_confidence_counts'].append(num_high_conf)
+                
+                # 4. CRITICAL: Refine prototypes using confident query predictions
+                if num_high_conf > 0:
+                    new_prototypes = []
+                    prototype_updated = False
+                    
+                    for class_id in range(self.num_classes):
+                        # Support samples for this class
+                        support_class_mask = (support_y == class_id)
+                        support_class_embeddings = current_support_embeddings[support_class_mask]
+                        
+                        # High-confidence query samples predicted as this class
+                        query_class_mask = (query_pseudo_labels == class_id) & high_conf_mask
+                        
+                        if query_class_mask.any():
+                            query_class_embeddings = current_query_embeddings[query_class_mask]
+                            query_class_confidences = query_confidence[query_class_mask]
+                            
+                            # Adaptive weighting: Higher confidence query samples get more weight
+                            # Base weights: support (0.7) vs query (0.3)
+                            # But adjust query weight based on average confidence
+                            avg_query_confidence = query_class_confidences.mean().item()
+                            confidence_multiplier = min(1.0, avg_query_confidence / 0.8)  # Scale by confidence
+                            
+                            support_weight = 0.7
+                            query_weight = 0.3 * confidence_multiplier  # Scale query weight by confidence
+                            # Renormalize to maintain sum = 1.0
+                            total_weight = support_weight + query_weight
+                            support_weight = support_weight / total_weight
+                            query_weight = query_weight / total_weight
+                            
+                            if len(support_class_embeddings) > 0:
+                                combined_prototype = (
+                                    support_weight * support_class_embeddings.mean(dim=0) +
+                                    query_weight * query_class_embeddings.mean(dim=0)
+                                )
+                            else:
+                                # No support samples for this class (shouldn't happen)
+                                combined_prototype = query_class_embeddings.mean(dim=0)
+                            
+                            new_prototypes.append(combined_prototype)
+                            prototype_updated = True
+                        else:
+                            # No confident query predictions for this class - keep original
+                            if len(support_class_embeddings) > 0:
+                                new_prototypes.append(support_class_embeddings.mean(dim=0))
+                            else:
+                                new_prototypes.append(prototypes[class_id])
+                    
+                    if prototype_updated:
+                        prototypes = torch.stack(new_prototypes)
+                        adaptation_history['prototype_updates'].append(step)
+                
+                # 5. Compute loss for monitoring
+                support_distances = torch.cdist(current_support_embeddings, prototypes, p=2)
+                support_loss = F.cross_entropy(-support_distances / self.temperature, support_y)
+                
+                # Query loss (weighted by confidence)
+                query_loss_per_sample = F.cross_entropy(
+                    query_logits, query_pseudo_labels, reduction='none'
+                )
+                query_loss = (query_confidence * query_loss_per_sample).mean()
+                
+                total_loss = support_loss + 0.5 * query_loss
+                adaptation_history['step_losses'].append(total_loss.item())
+                
+                if step % 2 == 0:
+                    logger.info(f"   Step {step}/{self.transductive_steps}: "
+                              f"Loss={total_loss:.4f}, "
+                              f"High-conf samples={num_high_conf}/{num_query} "
+                              f"(threshold={effective_threshold:.3f}), "
+                              f"Avg confidence={query_confidence.mean():.3f}")
+            
+            # Final predictions after refinement
+            query_distances = torch.cdist(current_query_embeddings, prototypes, p=2)
+            query_predictions_pr = F.softmax(-query_distances / self.temperature, dim=1)
+            
+            logger.info(f"✅ Prototype refinement completed: {len(adaptation_history['prototype_updates'])} updates")
+        else:
+            query_predictions_pr = None
+        
+        # Combine predictions from both methods (if both enabled)
+        if use_label_propagation and use_prototype_refinement:
+            # Ensemble: Average predictions from both methods
+            query_predictions = 0.5 * query_predictions_lp + 0.5 * query_predictions_pr
+            logger.info("🔀 Ensemble: Averaged Label Propagation + Prototype Refinement")
+        elif use_label_propagation:
+            query_predictions = query_predictions_lp
+        elif use_prototype_refinement:
+            query_predictions = query_predictions_pr
+        else:
+            # Fallback: Simple prototype-based prediction
+            query_distances = torch.cdist(query_embeddings, prototypes, p=2)
+            query_predictions = F.softmax(-query_distances / self.temperature, dim=1)
+        
+        logger.info("="*80)
+        
+        return query_predictions, adaptation_history
+    
+    def meta_train_transductive(self, meta_tasks: List[Dict], meta_epochs: int = 100, 
+                                meta_lr: float = 0.001, config=None):
+        """
+        Meta-train with TRUE transductive learning
+        
+        Key differences from standard meta-learning:
+        1. Query labels NEVER used during training
+        2. Query samples actively participate via transductive inference
+        3. Loss computed on pseudo-labels from transductive process
+        
+        Args:
+            meta_tasks: List of meta-learning tasks
+            meta_epochs: Number of meta-training epochs
+            meta_lr: Meta-learning rate
+            config: Optional config object
+        
+        Returns:
+            training_history: Training metrics
+        """
+        logger.info(f"Starting TRUE TRANSDUCTIVE meta-training for {meta_epochs} epochs")
+        logger.info(f"Meta-learning rate: {meta_lr}")
+        
+        training_history = {
+            'epoch_losses': [],
+            'epoch_accuracies': [],
+            'epoch_transductive_gains': []
+        }
+        
+        # Meta-optimizer
+        meta_optimizer = optim.AdamW(self.parameters(), lr=meta_lr, weight_decay=1e-4)
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(meta_optimizer, T_max=meta_epochs)
+        
+        # Mixed precision
+        device = next(self.parameters()).device
+        is_cuda_device = device.type == 'cuda' and torch.cuda.is_available()
+        scaler = GradScaler() if is_cuda_device else GradScaler()
+        use_mixed_precision = is_cuda_device
+        
+        for epoch in range(meta_epochs):
+            epoch_losses = []
+            epoch_accuracies = []
+            epoch_transductive_gains = []
+            
+            # Shuffle tasks
+            np.random.shuffle(meta_tasks)
+            
+            for task_idx, task in enumerate(meta_tasks):
+                support_x = task['support_x'].to(device)
+                support_y = task['support_y'].to(device)
+                query_x = task['query_x'].to(device)
+                query_y = task['query_y'].to(device)  # Only for evaluation, NOT training
+                
+                meta_optimizer.zero_grad()
+                
+                with autocast(enabled=use_mixed_precision):
+                    # TRANSDUCTIVE INFERENCE: Query labels NOT used
+                    query_predictions, _ = self.transductive_inference(
+                        support_x, support_y, query_x,
+                        use_label_propagation=True,
+                        use_prototype_refinement=True
+                    )
+                    
+                    # Generate pseudo-labels from transductive predictions
+                    query_pseudo_labels = torch.argmax(query_predictions, dim=1)
+                    
+                    # Extract embeddings for loss computation
+                    support_embeddings = self.extract_embeddings(support_x)
+                    query_embeddings = self.extract_embeddings(query_x)
+                    
+                    # Compute prototypes
+                    prototypes = self.compute_prototypes(support_embeddings, support_y, self.num_classes)
+                    
+                    # Support loss
+                    support_distances = torch.cdist(support_embeddings, prototypes, p=2)
+                    support_loss = F.cross_entropy(-support_distances / self.temperature, support_y)
+                    
+                    # Query loss using PSEUDO-LABELS (not ground truth)
+                    query_distances = torch.cdist(query_embeddings, prototypes, p=2)
+                    query_loss = F.cross_entropy(-query_distances / self.temperature, query_pseudo_labels)
+                    
+                    # Total loss
+                    total_loss = support_loss + 0.5 * query_loss
+                
+                # Backward pass
+                scaled_loss = scaler.scale(total_loss)
+                scaled_loss.backward()
+                
+                # Gradient clipping
+                scaler.unscale_(meta_optimizer)
+                torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
+                
+                scaler.step(meta_optimizer)
+                scaler.update()
+                
+                # Evaluate accuracy (using ground truth for metrics only)
+                with torch.no_grad():
+                    predictions = torch.argmax(query_predictions, dim=1)
+                    accuracy = (predictions == query_y).float().mean().item()
+                    
+                    # Compute "transductive gain" (vs. non-transductive baseline)
+                    # Non-transductive: simple prototype-based prediction without refinement
+                    simple_distances = torch.cdist(query_embeddings, prototypes, p=2)
+                    simple_predictions = torch.argmin(simple_distances, dim=1)
+                    simple_accuracy = (simple_predictions == query_y).float().mean().item()
+                    
+                    transductive_gain = accuracy - simple_accuracy
+                
+                epoch_losses.append(total_loss.item())
+                epoch_accuracies.append(accuracy)
+                epoch_transductive_gains.append(transductive_gain)
+            
+            # Scheduler step
+            scheduler.step()
+            
+            # Record epoch metrics
+            avg_loss = np.mean(epoch_losses)
+            avg_accuracy = np.mean(epoch_accuracies)
+            avg_gain = np.mean(epoch_transductive_gains)
+            
+            training_history['epoch_losses'].append(avg_loss)
+            training_history['epoch_accuracies'].append(avg_accuracy)
+            training_history['epoch_transductive_gains'].append(avg_gain)
+            
+            if epoch % 10 == 0:
+                logger.info(f"Epoch {epoch}/{meta_epochs}: "
+                          f"Loss={avg_loss:.4f}, "
+                          f"Accuracy={avg_accuracy:.4f}, "
+                          f"Transductive Gain={avg_gain:+.4f}")
+        
+        logger.info("✅ TRUE TRANSDUCTIVE meta-training completed")
+        logger.info(f"Final transductive gain: {training_history['epoch_transductive_gains'][-1]:+.4f}")
+        
+        return training_history
 class MetaLearner(nn.Module):
     """
     Meta-Learning model for few-shot adaptation with transductive learning
@@ -1655,6 +2787,27 @@ def create_meta_tasks(data_x, data_y, n_way: int = 2, k_shot: int = 5, n_query: 
     if zero_day_attack_label is not None:
         logger.info(f"Excluding zero-day attack (label {zero_day_attack_label}) from training")
     
+    # CRITICAL: Validate that data_x and data_y have matching sizes
+    if isinstance(data_x, torch.Tensor):
+        data_x_size = data_x.shape[0]
+    else:
+        data_x_size = len(data_x)
+    
+    if isinstance(data_y, torch.Tensor):
+        data_y_size = data_y.shape[0]
+    else:
+        data_y_size = len(data_y)
+    
+    if data_x_size != data_y_size:
+        raise ValueError(f"CRITICAL SIZE MISMATCH: data_x has {data_x_size} samples but data_y has {data_y_size} samples. "
+                       f"They must have the same length at dimension 0.")
+    
+    # Convert to tensors if needed
+    if not isinstance(data_x, torch.Tensor):
+        data_x = torch.FloatTensor(data_x)
+    if not isinstance(data_y, torch.Tensor):
+        data_y = torch.LongTensor(data_y)
+    
     meta_tasks = []
     
     # CRITICAL FIX: Ensure data_y is 1D before processing
@@ -1665,11 +2818,24 @@ def create_meta_tasks(data_x, data_y, n_way: int = 2, k_shot: int = 5, n_query: 
     
     # Use multiclass labels for attack type distinction if available and needed
     if include_all_attack_types_in_support and data_y_multiclass is not None:
-        # Use multiclass labels to distinguish attack types
-        labels_for_attack_types = data_y_multiclass
-        if labels_for_attack_types.dim() > 1:
-            labels_for_attack_types = labels_for_attack_types.squeeze()
-        logger.info(f"✅ Using multiclass labels for attack type distinction: {len(torch.unique(labels_for_attack_types))} unique labels")
+        # CRITICAL: Validate that data_y_multiclass has the same size as data_y
+        if isinstance(data_y_multiclass, torch.Tensor):
+            multiclass_size = data_y_multiclass.shape[0]
+        else:
+            multiclass_size = len(data_y_multiclass)
+        
+        if multiclass_size != data_y_size:
+            logger.warning(f"⚠️  data_y_multiclass size ({multiclass_size}) doesn't match data_y size ({data_y_size}). "
+                          f"Using binary labels instead (will only see 1 attack type).")
+            labels_for_attack_types = data_y
+        else:
+            # Use multiclass labels to distinguish attack types
+            labels_for_attack_types = data_y_multiclass
+            if not isinstance(labels_for_attack_types, torch.Tensor):
+                labels_for_attack_types = torch.LongTensor(labels_for_attack_types)
+            if labels_for_attack_types.dim() > 1:
+                labels_for_attack_types = labels_for_attack_types.squeeze()
+            logger.info(f"✅ Using multiclass labels for attack type distinction: {len(torch.unique(labels_for_attack_types))} unique labels")
     else:
         # Use binary labels (fallback)
         labels_for_attack_types = data_y
@@ -1799,28 +2965,28 @@ def create_meta_tasks(data_x, data_y, n_way: int = 2, k_shot: int = 5, n_query: 
             else:
                 # Fallback if not enough labels available
                 selected_labels = available_labels
-            
-            for label in selected_labels:
-                # Get samples for this class
-                class_mask = data_y == label
-                class_indices = torch.where(class_mask)[0]
-                
-                # Check if we have enough samples for k_shot
-                if len(class_indices) < k_shot:
-                    logger.warning(f"⚠️  Class {label.item()} has only {len(class_indices)} samples, but k_shot={k_shot}. Using all available samples.")
-                    support_indices = class_indices
-                else:
-                    # Shuffle and select samples for support set
-                    shuffled_indices = class_indices[torch.randperm(len(class_indices))]
-                    support_indices = shuffled_indices[:k_shot]
-                
-                support_x_list.append(data_x[support_indices])
-                # Ensure labels are 1D before appending
-                labels = data_y[support_indices]
-                if labels.dim() > 1:
-                    labels = labels.squeeze()
-                support_y_list.append(labels)
         
+        for label in selected_labels:
+            # Get samples for this class
+            class_mask = data_y == label
+            class_indices = torch.where(class_mask)[0]
+            
+            # Check if we have enough samples for k_shot
+            if len(class_indices) < k_shot:
+                logger.warning(f"⚠️  Class {label.item()} has only {len(class_indices)} samples, but k_shot={k_shot}. Using all available samples.")
+                support_indices = class_indices
+            else:
+                # Shuffle and select samples for support set
+                shuffled_indices = class_indices[torch.randperm(len(class_indices))]
+                support_indices = shuffled_indices[:k_shot]
+            
+            support_x_list.append(data_x[support_indices])
+            # Ensure labels are 1D before appending
+            labels = data_y[support_indices]
+            if labels.dim() > 1:
+                labels = labels.squeeze()
+            support_y_list.append(labels)
+            
         # Combine support sets
         support_x = torch.cat(support_x_list, dim=0)
         # Ensure all labels in list have same dimensions before concatenating

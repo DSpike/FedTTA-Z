@@ -320,10 +320,10 @@ class UNSWPreprocessor:
                 random_state=42
             )
             logger.info(f"  ✅ Using {len(X_sample):,} samples for IG computation (representative sample)")
-            ig_scores = mutual_info_classif(X_sample, y_sample, random_state=42, n_jobs=-1)
+            ig_scores = mutual_info_classif(X_sample, y_sample, random_state=42, n_jobs=2)
         else:
             logger.info(f"  Using all {len(X):,} samples for IG computation")
-            ig_scores = mutual_info_classif(X.values, y.values, random_state=42, n_jobs=-1)
+            ig_scores = mutual_info_classif(X.values, y.values, random_state=42, n_jobs=2)
         
         ig_scores = np.array(ig_scores)
         
@@ -350,7 +350,7 @@ class UNSWPreprocessor:
             n_estimators=100,
             max_depth=10,
             random_state=42,
-            n_jobs=-1
+            n_jobs=2
         )
         rf.fit(X_stage1.values, y.values)
         rf_importances = rf.feature_importances_
@@ -1116,7 +1116,7 @@ class UNSWPreprocessor:
         
         # Split: 80% train, 20% val (BEFORE rebalancing)
         X_train_split, X_val_split, y_train_split, y_val_split = train_test_split(
-            X, y,
+            X, y, 
             test_size=0.2,  # 20% for validation
             stratify=y,  # This ensures all classes are represented in both sets
             random_state=42

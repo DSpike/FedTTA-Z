@@ -38,9 +38,12 @@ class HyperparameterOptimizer:
             n_trials: Number of optimization trials
             direction: "maximize" or "minimize"
             metric: Primary metric to optimize. Options:
-                - "balanced_base_ttt": DEFAULT - Balanced base model + TTT (40% base F1, 30% TTT ZDR, 30% TTT F1)
-                  Optimizes for BOTH strong federated few-shot base model AND excellent zero-day detection after TTT
-                  Recommended for fair and comprehensive optimization
+                - "balanced_base_ttt": DEFAULT - Improved objective with penalties
+                  Base Score: 40% base F1 + 30% TTT ZDR + 30% TTT F1
+                  FAR Penalty: Exponential penalty for high false alarm rate
+                  Drift Penalty: Penalizes drop in known attack accuracy
+                  Formula: Base Score - FAR Penalty - Drift Penalty
+                  Recommended for fair and comprehensive optimization with deployment considerations
                 - "ttt_zero_day_detection_rate": Optimize for zero-day detection only (TTT-adapted)
                 - "ttt_auc_pr": Optimize for AUC-PR (TTT-adapted)
                 - "ttt_f1_score": Optimize for F1-score (TTT-adapted)
@@ -97,19 +100,15 @@ class HyperparameterOptimizer:
         Returns:
             Dictionary of suggested hyperparameters
         """
-        # === FEDERATED LEARNING HYPERPARAMETERS ===
-        num_clients = trial.suggest_int("num_clients", 3, 10)
-        num_rounds = trial.suggest_int("num_rounds", 5, 20)
-        dirichlet_alpha = trial.suggest_float("dirichlet_alpha", 0.5, 10.0, log=True)
-        
         # === META-LEARNING HYPERPARAMETERS ===
-        meta_lr = trial.suggest_float("meta_learning_rate", 1e-4, 1e-2, log=True)
-        meta_epochs = trial.suggest_int("meta_epochs", 3, 30)  # Extended range to find optimal meta-epochs
+        # CORRECTED search space (based on SOTA literature)
+        meta_lr = trial.suggest_float("meta_learning_rate", 5e-4, 3e-3, log=True)  # Narrower, more conservative
+        meta_epochs = trial.suggest_int("meta_epochs", 15, 35)  # Include baseline 50 outlier
         k_shot = trial.suggest_int("k_shot", 100, 200)
         n_query = trial.suggest_int("n_query", 10, 20)
-        num_meta_tasks = trial.suggest_int("num_meta_tasks", 10, 40)  # Number of meta-tasks per client per round
-        hidden_dim = trial.suggest_categorical("hidden_dim", [256, 512, 768])
-        embedding_dim = trial.suggest_categorical("embedding_dim", [128, 256, 512])
+        num_meta_tasks = trial.suggest_int("num_meta_tasks", 30, 120)  # Include baseline 100
+        hidden_dim = trial.suggest_categorical("hidden_dim", [128, 256, 384])  # More conservative
+        embedding_dim = trial.suggest_categorical("embedding_dim", [64, 128, 192])  # More conservative
         # FIXED: Equal distribution is now a fixed configuration (not optimized)
         # All classes (Normal + each attack type) get equal proportion in support set
         enforce_equal_support_composition = True
@@ -125,9 +124,14 @@ class HyperparameterOptimizer:
         
         # === TTT HYPERPARAMETERS ===
         ttt_lr = trial.suggest_float("ttt_lr", 1e-4, 2e-3, log=True)
-        ttt_steps = trial.suggest_int("ttt_base_steps", 200, 400)
-        ttt_batch_size = trial.suggest_categorical("ttt_batch_size", [4, 8, 16, 32])
+        # CORRECTED TTT steps range - Log-scale sampling for better coverage
+        ttt_steps = int(trial.suggest_float("ttt_base_steps_log", 50, 300, log=True))  # Include optimal 80-120 zone!
+        ttt_batch_size = trial.suggest_categorical("ttt_batch_size", [4, 8, 16, 32, 64, 128])
         ttt_adaptation_query_size = trial.suggest_int("ttt_adaptation_query_size", 1000, 2000)
+        
+        # === NEW TTT PARAMETERS (L2 Regularization & Confidence Rejection) ===
+        ttt_l2_reg_weight = trial.suggest_float("ttt_l2_reg_weight", 0.001, 0.1, log=True)  # L2 regularization weight
+        confidence_rejection_threshold = trial.suggest_float("confidence_rejection_threshold", 0.5, 0.9)  # Confidence threshold for rejection
         
         # === TENT + PSEUDO-LABELS CONFIGURATION ===
         use_pseudo_labels = trial.suggest_categorical("use_pseudo_labels", [True, False])
@@ -151,11 +155,6 @@ class HyperparameterOptimizer:
         fedprox_mu = trial.suggest_float("fedprox_mu", 0.001, 0.1, log=True)
         
         return {
-            # Federated learning
-            "num_clients": num_clients,
-            "num_rounds": num_rounds,
-            "dirichlet_alpha": dirichlet_alpha,
-            
             # Meta-learning
             "learning_rate": meta_lr,
             "meta_epochs": meta_epochs,
@@ -180,6 +179,8 @@ class HyperparameterOptimizer:
             "ttt_base_steps": ttt_steps,
             "ttt_batch_size": ttt_batch_size,
             "ttt_adaptation_query_size": ttt_adaptation_query_size,
+            "ttt_l2_reg_weight": ttt_l2_reg_weight,
+            "confidence_rejection_threshold": confidence_rejection_threshold,
             
             # TENT + Pseudo-Labels
             "use_pseudo_labels": use_pseudo_labels,
@@ -214,11 +215,6 @@ class HyperparameterOptimizer:
         Returns:
             Updated SystemConfig
         """
-        # Update federated learning parameters
-        config.num_clients = hyperparams["num_clients"]
-        config.num_rounds = hyperparams["num_rounds"]
-        config.dirichlet_alpha = hyperparams["dirichlet_alpha"]
-        
         # Update meta-learning parameters
         config.learning_rate = hyperparams["learning_rate"]
         config.meta_epochs = hyperparams["meta_epochs"]
@@ -246,6 +242,8 @@ class HyperparameterOptimizer:
         config.ttt_base_steps = hyperparams["ttt_base_steps"]
         config.ttt_batch_size = hyperparams["ttt_batch_size"]
         config.ttt_adaptation_query_size = hyperparams["ttt_adaptation_query_size"]
+        config.ttt_l2_reg_weight = hyperparams.get("ttt_l2_reg_weight", 0.01)
+        config.confidence_rejection_threshold = hyperparams.get("confidence_rejection_threshold", 0.7)
         
         # Update TENT + Pseudo-Labels parameters
         config.use_pseudo_labels = hyperparams["use_pseudo_labels"]
@@ -360,21 +358,18 @@ class HyperparameterOptimizer:
             # Save test set for this trial (for reproducibility)
             self._save_test_set(system.preprocessed_data, trial.number)
             
-            # Setup federated learning
-            if not system.setup_federated_learning():
-                logger.error("❌ Federated learning setup failed")
+            # Setup centralized learning
+            if not system.setup_centralized_learning():
+                logger.error("❌ Centralized learning setup failed")
                 return float('-inf') if self.direction == "maximize" else float('inf')
             
-            # Run federated training rounds
+            # Run centralized training (single training pass, no rounds)
             system.training_history = []
-            for round_num in range(1, config.num_rounds + 1):
-                logger.info(f"🔄 Federated Round {round_num}/{config.num_rounds}")
-                round_results = system.coordinator.run_federated_round(
-                    epochs=config.local_epochs
-                )
-                if not round_results:
-                    logger.error(f"❌ Federated round {round_num} failed")
-                    return float('-inf') if self.direction == "maximize" else float('inf')
+            logger.info(f"🎯 Running centralized meta-learning training...")
+            round_results = system.coordinator.train_once()
+            if not round_results:
+                logger.error("❌ Centralized training failed")
+                return float('-inf') if self.direction == "maximize" else float('inf')
             
             # Evaluate base model
             base_results = system.evaluate_base_model_only()
@@ -426,43 +421,47 @@ class HyperparameterOptimizer:
             metric_value = 0.0
             
             if self.metric == "balanced_base_ttt":
-                # BALANCED BASE + TTT: Optimizes for BOTH strong base model AND excellent TTT performance
-                # Formula: 0.40 * base_f1_score + 0.30 * ttt_zero_day_detection_rate + 0.30 * ttt_f1_score
-                # This ensures we optimize for:
-                # - Strong federated few-shot base model (40% weight)
-                # - Excellent zero-day detection after TTT (30% weight)
-                # - Overall TTT performance (30% weight)
-                base_f1_weight = 0.40  # Base model F1-score (federated few-shot performance)
-                ttt_zdr_weight = 0.30  # TTT zero-day detection rate
-                ttt_f1_weight = 0.30   # TTT overall F1-score
+                # IMPROVED objective with FAR penalty and distribution drift penalty
+                # Base score: 40% base F1, 30% TTT ZDR, 30% TTT F1
+                # FAR penalty: Exponential penalty for high false alarm rate (critical for deployment)
+                # Drift penalty: Penalizes drop in known attack accuracy (prevents overfitting to zero-day)
                 
-                # Normalize all metrics to 0-1 range (they already are)
-                base_f1_score = base_f1  # Already 0.0-1.0
-                ttt_zdr_score = ttt_zdr  # Already 0.0-1.0
-                ttt_f1_score = ttt_f1    # Already 0.0-1.0
+                # Extract FAR from results
+                ttt_far = adapted_results.get('far', 0.0)  # False alarm rate
                 
-                # Combined balanced base + TTT score
-                metric_value = (
-                    base_f1_weight * base_f1_score +
-                    ttt_zdr_weight * ttt_zdr_score +
-                    ttt_f1_weight * ttt_f1_score
+                # Base score
+                base_score = (
+                    0.40 * base_f1 +
+                    0.30 * ttt_zdr +
+                    0.30 * ttt_f1
                 )
+                
+                # FAR penalty (exponential to heavily penalize high FAR)
+                # Penalty increases quadratically with FAR, normalized to 0.05 threshold
+                far_penalty = 0.1 * min(1.0, (ttt_far / 0.05) ** 2)  # Penalty increases with FAR^2
+                
+                # Distribution drift penalty
+                # Penalizes drop in known attack accuracy (prevents TTT from degrading known attack detection)
+                known_acc_drop = max(0, base_non_zero_day_acc - ttt_non_zero_day_acc)
+                drift_penalty = 0.05 * known_acc_drop
+                
+                # Final score with penalties
+                metric_value = base_score - far_penalty - drift_penalty
                 
                 # Log balanced base + TTT breakdown for debugging
                 logger.debug(f"  Balanced Base + TTT objective breakdown:")
-                logger.debug(f"    Base F1: {base_f1_score:.4f} (weight: {base_f1_weight:.2f}) → {base_f1_weight * base_f1_score:.4f}")
-                logger.debug(f"    TTT ZDR: {ttt_zdr_score:.4f} (weight: {ttt_zdr_weight:.2f}) → {ttt_zdr_weight * ttt_zdr_score:.4f}")
-                logger.debug(f"    TTT F1: {ttt_f1_score:.4f} (weight: {ttt_f1_weight:.2f}) → {ttt_f1_weight * ttt_f1_score:.4f}")
-                logger.debug(f"    Combined: {metric_value:.4f}")
+                logger.debug(f"    Base score: {base_score:.4f} (40% base F1 + 30% TTT ZDR + 30% TTT F1)")
+                logger.debug(f"    FAR penalty: {far_penalty:.4f} (FAR: {ttt_far:.4f})")
+                logger.debug(f"    Drift penalty: {drift_penalty:.4f} (Known acc drop: {known_acc_drop:.4f})")
+                logger.debug(f"    Final score: {metric_value:.4f}")
                 
                 # Store balanced base + TTT components in trial attributes
                 trial.set_user_attr("balanced_base_ttt_score", metric_value)
-                trial.set_user_attr("balanced_base_f1_component", base_f1_weight * base_f1_score)
-                trial.set_user_attr("balanced_ttt_zdr_component", ttt_zdr_weight * ttt_zdr_score)
-                trial.set_user_attr("balanced_ttt_f1_component", ttt_f1_weight * ttt_f1_score)
-                trial.set_user_attr("balanced_base_f1_weight", base_f1_weight)
-                trial.set_user_attr("balanced_ttt_zdr_weight", ttt_zdr_weight)
-                trial.set_user_attr("balanced_ttt_f1_weight", ttt_f1_weight)
+                trial.set_user_attr("balanced_base_score", base_score)
+                trial.set_user_attr("balanced_far_penalty", far_penalty)
+                trial.set_user_attr("balanced_drift_penalty", drift_penalty)
+                trial.set_user_attr("ttt_far", ttt_far)
+                trial.set_user_attr("known_acc_drop", known_acc_drop)
             elif self.metric == "multi_objective":
                 # BALANCED Multi-objective: Equal importance for zero-day and known attack detection
                 # Weights: 30% zero-day detection, 35% non-zero-day F1, 35% overall F1
@@ -513,14 +512,12 @@ class HyperparameterOptimizer:
             else:
                 # Fallback to balanced_base_ttt if unknown metric
                 logger.warning(f"⚠️ Unknown metric '{self.metric}'. Falling back to 'balanced_base_ttt'.")
-                base_f1_weight = 0.40
-                ttt_zdr_weight = 0.30
-                ttt_f1_weight = 0.30
-                metric_value = (
-                    base_f1_weight * base_f1 +
-                    ttt_zdr_weight * ttt_zdr +
-                    ttt_f1_weight * ttt_f1
-                )
+                base_score = 0.40 * base_f1 + 0.30 * ttt_zdr + 0.30 * ttt_f1
+                ttt_far = adapted_results.get('far', 0.0)
+                far_penalty = 0.1 * min(1.0, (ttt_far / 0.05) ** 2)
+                known_acc_drop = max(0, base_non_zero_day_acc - ttt_non_zero_day_acc)
+                drift_penalty = 0.05 * known_acc_drop
+                metric_value = base_score - far_penalty - drift_penalty
             
             # Log metrics and hyperparameters to Wandb
             wandb.log({
@@ -554,9 +551,11 @@ class HyperparameterOptimizer:
                 # Balanced base + TTT metrics (if applicable)
                 **({
                     "balanced_base_ttt_score": metric_value,
-                    "balanced_base_f1_component": 0.40 * base_f1,
-                    "balanced_ttt_zdr_component": 0.30 * ttt_zdr,
-                    "balanced_ttt_f1_component": 0.30 * ttt_f1,
+                    "balanced_base_score": 0.40 * base_f1 + 0.30 * ttt_zdr + 0.30 * ttt_f1,
+                    "balanced_far_penalty": 0.1 * min(1.0, (adapted_results.get('far', 0.0) / 0.05) ** 2),
+                    "balanced_drift_penalty": 0.05 * max(0, base_non_zero_day_acc - ttt_non_zero_day_acc),
+                    "ttt_far": adapted_results.get('far', 0.0),
+                    "known_acc_drop": max(0, base_non_zero_day_acc - ttt_non_zero_day_acc),
                 } if self.metric == "balanced_base_ttt" else {}),
                 # Balanced multi-objective metrics (if applicable)
                 **({
@@ -604,16 +603,23 @@ class HyperparameterOptimizer:
             
             # Enhanced logging for balanced base + TTT optimization
             if self.metric == "balanced_base_ttt":
-                base_f1_weight = 0.40
-                ttt_zdr_weight = 0.30
-                ttt_f1_weight = 0.30
+                # Calculate components for logging
+                base_score = 0.40 * base_f1 + 0.30 * ttt_zdr + 0.30 * ttt_f1
+                ttt_far = adapted_results.get('far', 0.0)
+                far_penalty = 0.1 * min(1.0, (ttt_far / 0.05) ** 2)
+                known_acc_drop = max(0, base_non_zero_day_acc - ttt_non_zero_day_acc)
+                drift_penalty = 0.05 * known_acc_drop
+                
                 logger.info(f"  🎯 Balanced Base + TTT Score ({self.metric}):")
-                logger.info(f"    Components (optimizes for BOTH strong base model AND excellent TTT performance):")
-                logger.info(f"      Base F1: {base_f1:.4f} × {base_f1_weight:.2f} = {base_f1_weight * base_f1:.4f}")
-                logger.info(f"      TTT ZDR: {ttt_zdr:.4f} × {ttt_zdr_weight:.2f} = {ttt_zdr_weight * ttt_zdr:.4f}")
-                logger.info(f"      TTT F1: {ttt_f1:.4f} × {ttt_f1_weight:.2f} = {ttt_f1_weight * ttt_f1:.4f}")
-                logger.info(f"    Combined Score: {metric_value:.4f}")
-                logger.info(f"    📊 Balance: 40% base model + 30% TTT zero-day + 30% TTT overall = 100%")
+                logger.info(f"    Objective: Base={base_score:.4f}, FAR penalty={far_penalty:.4f}, Drift penalty={drift_penalty:.4f}")
+                logger.info(f"    Components:")
+                logger.info(f"      Base F1: {base_f1:.4f} × 0.40 = {0.40 * base_f1:.4f}")
+                logger.info(f"      TTT ZDR: {ttt_zdr:.4f} × 0.30 = {0.30 * ttt_zdr:.4f}")
+                logger.info(f"      TTT F1: {ttt_f1:.4f} × 0.30 = {0.30 * ttt_f1:.4f}")
+                logger.info(f"      FAR: {ttt_far:.4f} → Penalty: {far_penalty:.4f}")
+                logger.info(f"      Known Acc Drop: {known_acc_drop:.4f} → Penalty: {drift_penalty:.4f}")
+                logger.info(f"    Final Score: {metric_value:.4f}")
+                logger.info(f"    📊 Formula: Base Score - FAR Penalty - Drift Penalty")
             # Enhanced logging for balanced multi-objective optimization
             elif self.metric == "multi_objective":
                 zdr_weight = 0.30
@@ -707,7 +713,7 @@ def main():
                        help="Name for Optuna study")
     parser.add_argument("--metric", type=str, default="balanced_base_ttt",
                        choices=["balanced_base_ttt", "ttt_zero_day_detection_rate", "ttt_auc_pr", "ttt_f1_score", "ttt_accuracy", "multi_objective"],
-                       help="Primary metric to optimize. 'balanced_base_ttt' (default) optimizes for both base model (40% base F1) and TTT performance (30% ZDR, 30% TTT F1). 'multi_objective' balances TTT-only metrics.")
+                       help="Primary metric to optimize. 'balanced_base_ttt' (default) uses improved objective: Base Score (40% base F1 + 30% TTT ZDR + 30% TTT F1) - FAR Penalty - Drift Penalty. 'multi_objective' balances TTT-only metrics.")
     parser.add_argument("--direction", type=str, default="maximize", choices=["maximize", "minimize"],
                        help="Optimization direction")
     
