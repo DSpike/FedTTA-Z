@@ -5176,10 +5176,31 @@ class BlockchainFederatedIncentiveSystem:
                         logger.warning("⚠️ No valid samples for base model confusion matrix")
                         base_cm_samples_used = 0
                     if cm.shape == (2, 2):
-                        tn, fp = cm[0][0], cm[0][1]
+                        tn, fp, fn, tp = cm.ravel()  # Use ravel() for consistent indexing: [TN, FP, FN, TP]
+                        # Confusion matrix layout (sklearn):
+                        #           Predicted
+                        #           Normal(0)  Attack(1)
+                        # Actual Normal(0) [TN    FP]
+                        #        Attack(1) [FN    TP]
+                        # FAR = FP / (FP + TN) = False Positives / All Normal Samples
                         far = fp / (fp + tn) if (fp + tn) > 0 else 0.0
+                        logger.info(f"🔍 Base Model Confusion Matrix: TN={tn}, FP={fp}, FN={fn}, TP={tp}")
+                        logger.info(f"🔍 Base Model FAR: FP={fp} / (FP+TN={fp+tn}) = {far:.4f}")
+                        if far == 0.0:
+                            if (fp + tn) == 0:
+                                logger.error(f"❌ FAR=0.0 because there are NO normal samples in test set! (FP+TN=0)")
+                            elif fp == 0 and tn > 0:
+                                logger.warning(f"⚠️ FAR=0.0 because FP=0 (no false positives). Model may predict all as Normal.")
+                                if tp == 0 and fn > 0:
+                                    logger.error(f"   ❌ Model predicts ALL samples as Normal! TP=0, FN={fn} (all {fn} attacks missed).")
+                        logger.info(f"🔍 Base Model Confusion Matrix: TN={tn}, FP={fp}, FN={fn}, TP={tp}")
+                        logger.info(f"🔍 Base Model FAR calculation: FP={fp}, TN={tn}, FAR={far:.4f}")
+                        if far == 0.0 and (fp + tn) > 0:
+                            logger.warning(f"⚠️ FAR is 0.0 but there are {fp + tn} normal samples. This means FP=0 (no false positives).")
+                            logger.warning(f"   This could indicate the model predicts everything as Normal (all 0s), which would also give ZDR=0.")
                     else:
                         far = 0.0
+                        logger.warning(f"⚠️ Confusion matrix shape is {cm.shape}, not (2,2). Setting FAR=0.0")
                     
                     results = {
                         'accuracy': accuracy,
