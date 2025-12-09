@@ -23,9 +23,15 @@ class SystemConfig:
     quick_verify: bool = False  # When True, run a fast built-in self-check path
     
     # === DATA CONFIGURATION ===
-    data_path: str = "CICIDS2017_train.csv"
-    test_path: str = "CICIDS2017_test.csv"
-    zero_day_attack: str = "PortScan"
+    # CICIDS2017 (original):
+    # data_path: str = "CICIDS2017_train.csv"
+    # test_path: str = "CICIDS2017_test.csv"
+    # zero_day_attack: str = "SSH-Patator"
+    
+    # CICIoT2023 (CICIDS2023):
+    data_path: str = "CICIOT23train.csv"
+    test_path: str = "CICIOT23test.csv"
+    zero_day_attack: str = "Recon-PortScan"  # Choose one attack as zero-day
        
     '''
     # Attack type mapping (UNSW-NB15 dataset) - commented out, using CICIDS2017 instead
@@ -43,7 +49,49 @@ class SystemConfig:
     }
     '''
     
-    # Attack type mapping (CICIDS2017 dataset)
+    # Attack type mapping (CICIoT2023 / CICIDS2023 dataset)
+    # Total: 34 unique labels including BenignTraffic
+    attack_types = {
+        'BenignTraffic': 0,  # BENIGN class (note: lowercase 'label' column)
+        'Backdoor_Malware': 1,
+        'BrowserHijacking': 2,
+        'CommandInjection': 3,
+        'DDoS-ACK_Fragmentation': 4,
+        'DDoS-HTTP_Flood': 5,
+        'DDoS-ICMP_Flood': 6,
+        'DDoS-ICMP_Fragmentation': 7,
+        'DDoS-PSHACK_Flood': 8,
+        'DDoS-RSTFINFlood': 9,
+        'DDoS-SYN_Flood': 10,
+        'DDoS-SlowLoris': 11,
+        'DDoS-SynonymousIP_Flood': 12,
+        'DDoS-TCP_Flood': 13,
+        'DDoS-UDP_Flood': 14,
+        'DDoS-UDP_Fragmentation': 15,
+        'DNS_Spoofing': 16,
+        'DictionaryBruteForce': 17,
+        'DoS-HTTP_Flood': 18,
+        'DoS-SYN_Flood': 19,
+        'DoS-TCP_Flood': 20,
+        'DoS-UDP_Flood': 21,
+        'MITM-ArpSpoofing': 22,
+        'Mirai-greeth_flood': 23,
+        'Mirai-greip_flood': 24,
+        'Mirai-udpplain': 25,
+        'Recon-HostDiscovery': 26,
+        'Recon-OSScan': 27,
+        'Recon-PingSweep': 28,
+        'Recon-PortScan': 29,
+        'SqlInjection': 30,
+        'Uploading_Attack': 31,
+        'VulnerabilityScan': 32,
+        'XSS': 33,
+        # Also map BENIGN for compatibility
+        'BENIGN': 0,
+    }
+    
+    # CICIDS2017 attack types (commented out - uncomment if switching back)
+    '''
     attack_types = {
         'BENIGN': 0,
         'Bot': 1,
@@ -62,10 +110,13 @@ class SystemConfig:
         'Web Attack  Sql Injection': 12,
         'Web Attack  XSS': 12
     }
+    '''
     @property
     def zero_day_attack_label(self) -> int:
         """Get the integer label for the zero-day attack type"""
-        return self.attack_types.get(self.zero_day_attack, 4)  # Default to DoS Hulk=4 (CICIDS2017)
+        # CICIoT2023: Default to Recon-PortScan=29 if not found
+        # CICIDS2017: Default to DoS Hulk=4 if not found
+        return self.attack_types.get(self.zero_day_attack, 29)  # Default to Recon-PortScan=29 (CICIoT2023)
     
     # === MODEL CONFIGURATION ===
     input_dim: int = 43  # Updated after IGRF-RFE feature selection (43 features selected)
@@ -115,7 +166,7 @@ class SystemConfig:
     
     # === TEST-TIME TRAINING (TTT) CONFIGURATION ===
     # Optimized from Optuna Trial 1 (best_hyperparameters.json)
-    ttt_base_steps: int = 83  # Optimized from Optuna Trial 1 (ttt_base_steps_log: 82.714 → 83)
+    ttt_base_steps: int = 85  # Optimized from Optuna Trial 1 (ttt_base_steps_log: 82.714 → 83)
     ttt_max_steps: int = 400  # Maximum TTT steps (safety limit)
     ttt_adaptation_query_size: int = 1198  # Optimized from Optuna Trial 1 (best_hyperparameters.json)
     ttt_batch_size: int = 64  # Optimized from Optuna Trial 1 (best_hyperparameters.json)

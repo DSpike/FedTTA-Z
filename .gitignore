@@ -114,3 +114,7 @@ Thumbs.db
 config_backups/
 *.log
 enhanced_blockchain_federated_system_state.json
+
+# Dataset files (too large for git)
+*.csv
+!requirements.txt
