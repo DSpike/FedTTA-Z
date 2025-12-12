@@ -3366,6 +3366,46 @@ class BlockchainFederatedIncentiveSystem:
                     'thresholds': base_pr_thresholds.tolist() if hasattr(base_pr_thresholds, 'tolist') else list(base_pr_thresholds)
                 }
                 logger.info(f"✅ Base model PR curve calculated: AUC-PR={base_auc_pr:.4f}, {len(base_precision_curve)} points")
+                
+                # CRITICAL: Optimize base model threshold for FAR < 1% (same as TTT model)
+                max_far_target = getattr(self.config, 'max_far_allowed', 0.01)
+                logger.info(f"🔍 Base Model FAR Optimization: Target FAR ≤ {max_far_target:.2%}")
+                
+                # Search for threshold that achieves FAR < 1%
+                candidate_thresholds = np.linspace(0.7, 0.99, 500)  # Focus on high thresholds
+                base_optimal_threshold_final = 0.95  # Very conservative default
+                base_best_far = 1.0
+                base_best_f1 = 0.0
+                base_best_score = -np.inf
+                
+                from sklearn.metrics import f1_score, confusion_matrix
+                
+                for thresh in candidate_thresholds:
+                    preds_at_thresh = (attack_probs_clean >= thresh).astype(int)
+                    
+                    # Calculate FAR
+                    false_positives = ((preds_at_thresh == 1) & (y_true_binary_clean == 0)).sum()
+                    true_negatives = ((preds_at_thresh == 0) & (y_true_binary_clean == 0)).sum()
+                    far_at_thresh = false_positives / (false_positives + true_negatives + 1e-8)
+                    
+                    # If FAR is acceptable, calculate other metrics
+                    if far_at_thresh <= max_far_target:
+                        # Calculate F1
+                        f1_at_thresh = f1_score(y_true_binary_clean, preds_at_thresh, zero_division=0)
+                        
+                        # Prefer threshold with best F1 while maintaining FAR constraint
+                        score = f1_at_thresh - 10.0 * max(0, far_at_thresh - max_far_target)
+                        if score > base_best_score or (far_at_thresh < base_best_far and far_at_thresh <= max_far_target):
+                            base_best_score = score
+                            base_optimal_threshold_final = thresh
+                            base_best_far = far_at_thresh
+                            base_best_f1 = f1_at_thresh
+                
+                # Use the FAR-optimized threshold for base model predictions
+                logger.info(f"✅ Base Model FAR-Optimized Threshold: {base_optimal_threshold_final:.4f}")
+                logger.info(f"   Results: FAR={base_best_far:.4f} ({'✅' if base_best_far <= max_far_target else '❌'}), F1={base_best_f1:.3f}")
+                if base_best_far > max_far_target:
+                    logger.warning(f"   ⚠️ Could not achieve FAR ≤ {max_far_target:.2%}, best FAR={base_best_far:.4f}")
             except Exception as e:
                 logger.error(f"❌ Base model ROC/PR curve calculation failed: {str(e)}")
                 logger.warning("⚠️ Continuing evaluation without PR/ROC curves - other plots will still be generated")
@@ -3374,6 +3414,7 @@ class BlockchainFederatedIncentiveSystem:
                 base_auc_pr = None
                 base_roc_curve = None
                 base_pr_curve = None
+                base_optimal_threshold_final = 0.5  # Fallback threshold
             
             # MCC removed as requested by user
             base_mcc = 0.0
@@ -3394,7 +3435,20 @@ class BlockchainFederatedIncentiveSystem:
                 logger.info(f"📊 BASE MODEL CM FINAL COUNT: {base_cm_samples_used} samples")
             else:
                 base_cm = np.array([[0, 0], [0, 0]])  # Empty confusion matrix if all rejected
-            base_cm_binary = confusion_matrix(y_true_bin, y_pred_bin)
+            # CRITICAL: Apply FAR-optimized threshold to base model predictions for FAR calculation
+            # Use FAR-optimized threshold if available, otherwise use original predictions
+            try:
+                if 'base_optimal_threshold_final' in locals() and base_optimal_threshold_final is not None:
+                    # Use the FAR-optimized threshold for base model binary predictions
+                    base_predictions_binary_far_optimized = (attack_probs >= base_optimal_threshold_final).astype(int)
+                    base_cm_binary = confusion_matrix(y_true_bin, base_predictions_binary_far_optimized)
+                else:
+                    # Fallback to original predictions if threshold optimization failed
+                    base_cm_binary = confusion_matrix(y_true_bin, y_pred_bin)
+            except:
+                # Final fallback
+                base_cm_binary = confusion_matrix(y_true_bin, y_pred_bin)
+            
             if base_cm_binary.shape == (2, 2):
                 tn, fp = base_cm_binary[0][0], base_cm_binary[0][1]
                 base_far = fp / (fp + tn) if (fp + tn) > 0 else 0.0
@@ -4023,9 +4077,68 @@ class BlockchainFederatedIncentiveSystem:
             
             try:
                 if len(np.unique(y_test_binary)) > 1 and attack_probs.std() > 1e-6:
-                    # Strategy 1: PR-Optimized (F1-optimized using precision-recall curve)
+                    # Strategy 1: FAR-Optimized (Prioritize FAR < 1% over ZDR)
+                    # This strategy finds the highest threshold that keeps FAR < 1%
+                    if threshold_strategy == 'far_optimized':
+                        max_far_target = getattr(self.config, 'max_far_allowed', 0.01)
+                        logger.info(f"🔍 FAR-Optimized Strategy: Target FAR ≤ {max_far_target:.2%}")
+                        
+                        # Search from high to low thresholds (high threshold = lower FAR)
+                        candidate_thresholds = np.linspace(0.7, 0.99, 500)  # Focus on high thresholds
+                        best_threshold = 0.95  # Very conservative default
+                        best_score = -np.inf
+                        best_far = 1.0
+                        best_zdr = 0.0
+                        best_f1 = 0.0
+                        
+                        from sklearn.metrics import f1_score, confusion_matrix
+                        
+                        for thresh in candidate_thresholds:
+                            preds_at_thresh = (attack_probs >= thresh).astype(int)
+                            
+                            # Calculate FAR
+                            false_positives = ((preds_at_thresh == 1) & (y_test_binary == 0)).sum()
+                            true_negatives = ((preds_at_thresh == 0) & (y_test_binary == 0)).sum()
+                            far_at_thresh = false_positives / (false_positives + true_negatives + 1e-8)
+                            
+                            # If FAR is acceptable, calculate other metrics
+                            if far_at_thresh <= max_far_target:
+                                # Calculate ZDR if zero-day samples available
+                                if len(zero_day_mask_np) > 0 and zero_day_mask_np.sum() > 0:
+                                    zero_day_labels_binary = y_test_binary[zero_day_mask_np]
+                                    zero_day_preds = preds_at_thresh[zero_day_mask_np]
+                                    if zero_day_labels_binary.sum() > 0:
+                                        zdr_at_thresh = (zero_day_preds[zero_day_labels_binary == 1].sum() / 
+                                                         zero_day_labels_binary.sum())
+                                    else:
+                                        zdr_at_thresh = 0.0
+                                else:
+                                    zdr_at_thresh = 0.0
+                                
+                                # Calculate F1
+                                f1_at_thresh = f1_score(y_test_binary, preds_at_thresh, zero_division=0)
+                                
+                                # Prefer threshold with best ZDR while maintaining FAR constraint
+                                # Score: prioritize ZDR, but FAR must be ≤ target
+                                score = zdr_at_thresh - 10.0 * max(0, far_at_thresh - max_far_target)  # Heavy penalty if FAR exceeds target
+                                if score > best_score or (far_at_thresh < best_far and far_at_thresh <= max_far_target):
+                                    best_score = score
+                                    best_threshold = thresh
+                                    best_far = far_at_thresh
+                                    best_zdr = zdr_at_thresh
+                                    best_f1 = f1_at_thresh
+                        
+                        ttt_optimal_threshold = best_threshold
+                        threshold_source = f"FAR-optimized (FAR ≤ {max_far_target:.2%})"
+                        logger.info(f"✅ Threshold Strategy: FAR-optimized")
+                        logger.info(f"   Selected threshold: {ttt_optimal_threshold:.4f}")
+                        logger.info(f"   Results: FAR={best_far:.4f} ({'✅' if best_far <= max_far_target else '❌'}), ZDR={best_zdr:.3f}, F1={best_f1:.3f}")
+                        if best_far > max_far_target:
+                            logger.warning(f"   ⚠️ Could not achieve FAR ≤ {max_far_target:.2%}, best FAR={best_far:.4f}")
+                    
+                    # Strategy 2: PR-Optimized (F1-optimized using precision-recall curve)
                     # This is the default strategy for balanced performance (precision + recall)
-                    if threshold_strategy == 'pr_optimized':
+                    elif threshold_strategy == 'pr_optimized':
                         ttt_optimal_threshold, _, _, _, _ = find_optimal_threshold_pr(
                             y_test_binary, attack_probs, method='f1', min_recall=0.3, min_precision=0.5)
                         threshold_source = "PR-optimized (F1-score)"

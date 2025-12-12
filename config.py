@@ -535,7 +535,7 @@ class SystemConfig:
     ttt_batch_size: int = 64  # Optimized from Optuna Trial 1 (best_hyperparameters.json)
     ttt_lr: float = 0.002  # Optimized from Optuna Trial 1 (best_hyperparameters.json)
     ttt_l2_reg_weight: float = 0.01  # INCREASED from 0.001 → 0.01 (10x increase for stronger regularization)
-    confidence_rejection_threshold: float = 0.8261845713819337  # Optimized from Optuna Trial 1 (best_hyperparameters.json)
+    confidence_rejection_threshold: float = 0.90  # Increased to 0.90 for stricter FAR control (reject more uncertain predictions)
     
     # === ATTACK PROTOTYPE DISCOVERY TTT ===
     ttt_prototype_clusters: int = 10  # Number of attack prototypes to discover
@@ -610,14 +610,16 @@ class SystemConfig:
     use_best_individual_if_ensemble_fails: bool = True
     
     # === THRESHOLD OPTIMIZATION STRATEGY ===
-    threshold_optimization_strategy: str = 'balanced_zdr_far'
+    # Options: 'balanced_zdr_far', 'far_optimized', 'pr_optimized', 'zdr_optimized'
+    threshold_optimization_strategy: str = 'far_optimized'  # Prioritize FAR < 1% over ZDR
     use_adaptive_threshold: bool = True
     threshold_adaptation_mode: str = 'combined'
     max_far_for_zdr: float = 0.35
     
     # === FAR-AWARE THRESHOLD OPTIMIZATION ===
-    max_far_allowed: float = 0.20
-    min_zdr_required: float = 0.85
+    # Target: FAR < 1% for production-ready systems
+    max_far_allowed: float = 0.01  # 1% maximum false alarm rate (very strict)
+    min_zdr_required: float = 0.75  # Reduced from 0.85 to allow stricter FAR constraint
     
     # === TRAINING CONFIGURATION ===
     support_weight: float = 0.5
