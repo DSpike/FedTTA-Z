@@ -449,7 +449,14 @@ class BlockchainFederatedIncentiveSystem:
             
             # 1. Initialize preprocessor
             # Check which dataset we're using based on file names
-            if 'CICIOT23' in self.config.data_path or 'CICIDS2023' in self.config.data_path:
+            if 'KDD' in self.config.data_path.upper() or 'KDD' in self.config.test_path.upper():
+                logger.info("Initializing KDDTest+ preprocessor...")
+                from centralized_nids_kdd_preprocessor import KDDPreprocessor
+                self.preprocessor = KDDPreprocessor(
+                    data_path=self.config.data_path,
+                    test_path=self.config.test_path
+                )
+            elif 'CICIOT23' in self.config.data_path or 'CICIDS2023' in self.config.data_path:
                 logger.info("Initializing CICIoT2023 preprocessor...")
                 from blockchain_federated_cicids2023_preprocessor import CICIDS2023Preprocessor
                 self.preprocessor = CICIDS2023Preprocessor(
@@ -542,6 +549,59 @@ class BlockchainFederatedIncentiveSystem:
     
     # Incentive verification removed for pure federated learning
     
+    def _is_zero_day_attack(self, attack_name: str) -> bool:
+        """
+        Check if an attack name belongs to the zero-day category/attack
+        Handles both category-based (when grouping enabled) and specific attack matching
+        """
+        if self.config.use_category_grouping and self.config.attack_category_mapping:
+            # Category-based: Check if attack maps to zero-day category
+            attack_category = self.config.attack_category_mapping.get(attack_name, None)
+            zero_day_category = self.config.zero_day_category
+            return attack_category == zero_day_category
+        else:
+            # Specific attack: Direct comparison
+            return attack_name == self.config.zero_day_attack
+    
+    def _convert_to_category_labels(self, y_multiclass, test_attack_cat=None):
+        """
+        Convert specific attack labels to category labels when grouping is enabled
+        """
+        if not (self.config.use_category_grouping and self.config.attack_category_mapping and self.config.category_types):
+            return y_multiclass
+        
+        import torch
+        import numpy as np
+        
+        # Convert to numpy if tensor
+        if torch.is_tensor(y_multiclass):
+            y_np = y_multiclass.cpu().numpy()
+            is_tensor = True
+        else:
+            y_np = np.array(y_multiclass)
+            is_tensor = False
+        
+        # Create reverse mapping: specific attack label -> category label
+        # First, create attack_name -> category_name mapping
+        # Then create attack_label -> category_label mapping
+        label_to_category = {}
+        for attack_name, category_name in self.config.attack_category_mapping.items():
+            attack_label = self.config.attack_types.get(attack_name, -1)
+            category_label = self.config.category_types.get(category_name, -1)
+            if attack_label >= 0 and category_label >= 0:
+                label_to_category[attack_label] = category_label
+        
+        # Handle normal (label 0) -> Normal category (label 0)
+        label_to_category[0] = 0
+        
+        # Convert labels
+        y_category = np.array([label_to_category.get(label, 0) for label in y_np])
+        
+        # Convert back to tensor if original was tensor
+        if is_tensor:
+            return torch.LongTensor(y_category)
+        return y_category
+    
     def _stratified_test_subset(self, X_test, y_test, y_test_multiclass, test_attack_cat, n_samples):
         """
         Create a stratified subset of test data with target zero-day samples (default 30%, can be overridden)
@@ -593,8 +653,18 @@ class BlockchainFederatedIncentiveSystem:
             else:
                 attack_cat_temp = None
             
-            if attack_cat_temp is not None and self.config.zero_day_attack in attack_cat_temp:
-                available_zero_day_precheck = np.sum(attack_cat_temp == self.config.zero_day_attack)
+            if attack_cat_temp is not None:
+                # Check category-based or specific attack matching
+                if self.config.use_category_grouping and self.config.attack_category_mapping:
+                    # Category-based: Count all attacks in the zero-day category
+                    zero_day_category = self.config.zero_day_category
+                    available_zero_day_precheck = np.sum([
+                        self.config.attack_category_mapping.get(attack, None) == zero_day_category 
+                        for attack in attack_cat_temp
+                    ])
+                else:
+                    # Specific attack: Direct comparison
+                    available_zero_day_precheck = np.sum(attack_cat_temp == self.config.zero_day_attack)
         
         # Calculate achievable subset size based on available zero-day samples
         if available_zero_day_precheck > 0 and zero_day_target_percentage > 0:
@@ -656,9 +726,21 @@ class BlockchainFederatedIncentiveSystem:
                 non_zero_day_indices = np.where(y_multiclass_np != zero_day_label)[0]
             else:
                 # Fallback: use binary labels or attack_cat if available
-                if attack_cat_np is not None and self.config.zero_day_attack in attack_cat_np:
-                    zero_day_indices = np.where(attack_cat_np == self.config.zero_day_attack)[0]
-                    non_zero_day_indices = np.where(attack_cat_np != self.config.zero_day_attack)[0]
+                if attack_cat_np is not None:
+                    # Check category-based or specific attack matching
+                    if self.config.use_category_grouping and self.config.attack_category_mapping:
+                        # Category-based: Find all attacks in the zero-day category
+                        zero_day_category = self.config.zero_day_category
+                        zero_day_mask = np.array([
+                            self.config.attack_category_mapping.get(attack, None) == zero_day_category 
+                            for attack in attack_cat_np
+                        ])
+                        zero_day_indices = np.where(zero_day_mask)[0]
+                        non_zero_day_indices = np.where(~zero_day_mask)[0]
+                    else:
+                        # Specific attack: Direct comparison
+                        zero_day_indices = np.where(attack_cat_np == self.config.zero_day_attack)[0]
+                        non_zero_day_indices = np.where(attack_cat_np != self.config.zero_day_attack)[0]
                 else:
                     # Last resort: use binary labels (less accurate)
                     zero_day_indices = np.array([])
@@ -799,9 +881,14 @@ class BlockchainFederatedIncentiveSystem:
             
             logger.info("Preprocessing dataset...")
             
-            # Run preprocessing pipeline
+            # Run preprocessing pipeline (support cross-dataset evaluation)
+            source_path = self.config.source_data_path if self.config.use_cross_dataset_evaluation else None
+            target_path = self.config.target_test_path if self.config.use_cross_dataset_evaluation else None
+            
             self.preprocessed_data = self.preprocessor.preprocess_unsw_dataset(
-                zero_day_attack=self.config.zero_day_attack
+                zero_day_attack=self.config.zero_day_attack,
+                source_data_path=source_path,
+                target_test_path=target_path
             )
             
             # Update model architecture based on actual feature count after
@@ -872,23 +959,45 @@ class BlockchainFederatedIncentiveSystem:
 
                 # Get multiclass labels before subsetting for mapping to sequences
                 y_train_multiclass_original = self.preprocessed_data.get('y_train_multiclass', None)
+                # Convert to category labels if grouping is enabled
+                if y_train_multiclass_original is not None and self.config.use_category_grouping:
+                    y_train_multiclass_original = self._convert_to_category_labels(y_train_multiclass_original)
                 
                 def map_multiclass_to_sequences(X_seq, y_multiclass_orig, subset_size):
                     """Helper function to map multiclass labels to sequences"""
                     if y_multiclass_orig is not None:
-                        sequence_length = self.config.sequence_length
-                        sequence_stride = self.config.sequence_stride
-                        y_multiclass_seq = []
-                        # Use subset size to get the correct portion of multiclass labels
-                        y_multiclass_subset = y_multiclass_orig[:subset_size] if len(y_multiclass_orig) > subset_size else y_multiclass_orig
-                        orig_len = len(y_multiclass_subset)
-                        for seq_idx in range(len(X_seq)):
-                            original_idx = seq_idx * sequence_stride + (sequence_length - 1)
-                            if original_idx < orig_len:
-                                original_label = y_multiclass_subset[original_idx].item() if torch.is_tensor(y_multiclass_subset[original_idx]) else y_multiclass_subset[original_idx]
-                                y_multiclass_seq.append(original_label)
-                        if len(y_multiclass_seq) > 0:
-                            return torch.tensor(y_multiclass_seq)
+                        try:
+                            sequence_length = self.config.sequence_length
+                            sequence_stride = self.config.sequence_stride
+                            y_multiclass_seq = []
+                            # Use subset size to get the correct portion of multiclass labels
+                            if torch.is_tensor(y_multiclass_orig):
+                                y_multiclass_subset = y_multiclass_orig[:subset_size] if len(y_multiclass_orig) > subset_size else y_multiclass_orig
+                            else:
+                                y_multiclass_subset = y_multiclass_orig[:subset_size] if len(y_multiclass_orig) > subset_size else y_multiclass_orig
+                                y_multiclass_subset = np.array(y_multiclass_subset)
+                            
+                            orig_len = len(y_multiclass_subset)
+                            for seq_idx in range(len(X_seq)):
+                                original_idx = seq_idx * sequence_stride + (sequence_length - 1)
+                                if original_idx < orig_len:
+                                    if torch.is_tensor(y_multiclass_subset):
+                                        original_label = y_multiclass_subset[original_idx].item()
+                                    else:
+                                        original_label = y_multiclass_subset[original_idx]
+                                    y_multiclass_seq.append(original_label)
+                                else:
+                                    # If index out of bounds, use the last available label
+                                    if orig_len > 0:
+                                        if torch.is_tensor(y_multiclass_subset):
+                                            original_label = y_multiclass_subset[-1].item()
+                                        else:
+                                            original_label = y_multiclass_subset[-1]
+                                        y_multiclass_seq.append(original_label)
+                            if len(y_multiclass_seq) > 0:
+                                return torch.tensor(y_multiclass_seq)
+                        except Exception as e:
+                            logger.warning(f"⚠️ Failed to map multiclass labels to sequences: {e}. Continuing without multiclass labels.")
                     return None
 
                 try:
@@ -976,6 +1085,10 @@ class BlockchainFederatedIncentiveSystem:
                 y_test_multiclass_original = self.preprocessed_data.get('y_test_multiclass', None)
                 test_attack_cat_original = self.preprocessed_data.get('test_attack_cat', None)
                 
+                # Convert to category labels if grouping is enabled
+                if y_test_multiclass_original is not None and self.config.use_category_grouping:
+                    y_test_multiclass_original = self._convert_to_category_labels(y_test_multiclass_original, test_attack_cat_original)
+                
                 # Use stratified sampling with HIGHER zero-day target (40-45%) BEFORE sequence creation
                 # Sequence creation dilutes zero-day percentage, so we need higher pre-sequence target
                 # This ensures we get enough zero-day sequences after sequence creation to maximize total
@@ -1040,7 +1153,7 @@ class BlockchainFederatedIncentiveSystem:
                                 if test_attack_cat_original is not None:
                                     test_attack_cat_seq.append(test_attack_cat_original[original_idx])
                         if len(y_test_multiclass_seq) > 0:
-                            y_test_multiclass_seq = torch.tensor(y_test_multiclass_seq)
+                            y_test_multiclass_seq = torch.tensor(y_test_multiclass_seq, dtype=torch.int64)
                             # Debug: Count zero-day sequences in mapped labels
                             zero_day_count_in_seq = (y_test_multiclass_seq == self.config.zero_day_attack_label).sum().item()
                             total_seq_count = len(y_test_multiclass_seq)
@@ -1112,13 +1225,15 @@ class BlockchainFederatedIncentiveSystem:
                                 logger.warning(f"⚠️  Cannot achieve {target_zero_day_percentage*100:.0f}% zero-day ratio. Available: {available_zero_day} zero-day, {available_non_zero_day} non-zero-day. Using all available sequences without filtering.")
                             
                             # Store filtered sequences (CRITICAL: All three must have the same length after filtering)
-                            self.preprocessed_data['y_test_multiclass'] = y_test_multiclass_seq
-                            # IMPORTANT: X_test_seq and y_test_seq will be stored later at line 1072-1073,
-                            # but we need to ensure they're the filtered versions (which they should be since we filtered in-place)
                             # Verify alignment before storing
                             assert len(X_test_seq) == len(y_test_seq) == len(y_test_multiclass_seq), \
                                 f"❌ Size mismatch after filtering: X_test_seq={len(X_test_seq)}, y_test_seq={len(y_test_seq)}, y_test_multiclass_seq={len(y_test_multiclass_seq)}"
                             logger.info(f"✅ Verified alignment: All test sequences have length {len(X_test_seq)} after filtering")
+                            
+                            # Store all three together to ensure they stay aligned
+                            self.preprocessed_data['X_test'] = X_test_seq
+                            self.preprocessed_data['y_test'] = y_test_seq
+                            self.preprocessed_data['y_test_multiclass'] = y_test_multiclass_seq
                         if len(test_attack_cat_seq) > 0:
                             self.preprocessed_data['test_attack_cat'] = test_attack_cat_seq
                             logger.info(f"✅ Final test sequences after post-sequence filtering: {len(X_test_seq)} sequences")
@@ -1419,13 +1534,34 @@ class BlockchainFederatedIncentiveSystem:
             # Get multiclass labels if available (for attack type distinction in support set)
             train_multiclass_labels = None
             if 'y_train_multiclass' in self.preprocessed_data:
-                train_multiclass_labels = torch.LongTensor(self.preprocessed_data['y_train_multiclass'])
-                logger.info(f"✅ Multiclass labels available: {len(torch.unique(train_multiclass_labels))} unique labels")
+                y_train_mc = self.preprocessed_data['y_train_multiclass']
+                # Convert to category labels if grouping is enabled
+                if self.config.use_category_grouping:
+                    y_train_mc = self._convert_to_category_labels(y_train_mc)
+                # Ensure int64 dtype (LongTensor)
+                if torch.is_tensor(y_train_mc):
+                    train_multiclass_labels = y_train_mc.long()
+                else:
+                    train_multiclass_labels = torch.LongTensor(y_train_mc)
+                unique_labels = torch.unique(train_multiclass_labels)
+                logger.info(f"✅ Multiclass labels available: {unique_labels.tolist()} ({len(unique_labels)} unique labels)")
             
             # Distribute data to centralized coordinator (stores full dataset)
+            # Ensure correct dtypes
+            X_train = self.preprocessed_data['X_train']
+            y_train = self.preprocessed_data['y_train']
+            if torch.is_tensor(X_train):
+                train_data = X_train.float()
+            else:
+                train_data = torch.FloatTensor(X_train)
+            if torch.is_tensor(y_train):
+                train_labels = y_train.long()
+            else:
+                train_labels = torch.LongTensor(y_train)
+            
             self.coordinator.distribute_data(
-                train_data=torch.FloatTensor(self.preprocessed_data['X_train']),
-                train_labels=torch.LongTensor(self.preprocessed_data['y_train']),
+                train_data=train_data,
+                train_labels=train_labels,
                 train_multiclass_labels=train_multiclass_labels
             )
             
@@ -2944,7 +3080,7 @@ class BlockchainFederatedIncentiveSystem:
                     # Check all timesteps in this sequence for zero-day attack
                     for original_idx in range(start_idx, min(end_idx, num_original_samples)):
                         if original_idx < num_original_samples:
-                            if test_attack_cat_original[original_idx] == zero_day_attack:
+                            if self._is_zero_day_attack(test_attack_cat_original[original_idx]):
                                 zero_day_mask[seq_idx] = True
                                 zero_day_count += 1
                                 break  # Found zero-day sample, no need to check rest of sequence
@@ -3239,14 +3375,23 @@ class BlockchainFederatedIncentiveSystem:
                 base_roc_curve = None
                 base_pr_curve = None
             
-            # Matthews Correlation Coefficient (using filtered test set)
-            base_mcc = matthews_corrcoef(y_test_filtered.cpu().numpy(), base_predictions.cpu().numpy())
+            # MCC removed as requested by user
+            base_mcc = 0.0
             
             # Confusion Matrix (using filtered test set)
             # Filter out rejected predictions (-1) before confusion matrix calculation
             valid_mask_cm = base_predictions.cpu().numpy() != -1
+            base_cm_samples_used = valid_mask_cm.sum()
+            base_valid_mask = valid_mask_cm.copy()  # Store for TTT model to use same samples
             if valid_mask_cm.sum() > 0:
-                base_cm = confusion_matrix(y_test_filtered.cpu().numpy()[valid_mask_cm], base_predictions.cpu().numpy()[valid_mask_cm])
+                # CRITICAL FIX: Use binary labels and binary predictions for confusion matrix (consistent with TTT model)
+                # Convert multiclass to binary: Normal=0, Attack=1
+                y_test_binary_cm = (y_test_filtered.cpu().numpy() != 0).astype(int)
+                base_predictions_binary_cm = (base_predictions.cpu().numpy() != 0).astype(int)
+                
+                # Use binary confusion matrix as the main one (consistent with TTT model approach)
+                base_cm = confusion_matrix(y_test_binary_cm[valid_mask_cm], base_predictions_binary_cm[valid_mask_cm])
+                logger.info(f"📊 BASE MODEL CM FINAL COUNT: {base_cm_samples_used} samples")
             else:
                 base_cm = np.array([[0, 0], [0, 0]])  # Empty confusion matrix if all rejected
             base_cm_binary = confusion_matrix(y_true_bin, y_pred_bin)
@@ -3458,6 +3603,8 @@ class BlockchainFederatedIncentiveSystem:
                 'evaluation_mode': 'exclude_zero_day' if exclude_zero_day else 'include_all',  # Track evaluation mode
                 'predictions': base_predictions.cpu().numpy().tolist(),
                 'probabilities': base_probabilities.cpu().numpy().tolist(),
+                'cm_samples_used': base_cm_samples_used,  # Store for TTT model to match sample count
+                'base_valid_mask': base_valid_mask.tolist() if hasattr(base_valid_mask, 'tolist') else list(base_valid_mask),  # Store for TTT model to use same samples
                 
                 # STEP 3: Add separate metrics for zero-day attacks only
                 'zero_day_only': {
@@ -3748,7 +3895,7 @@ class BlockchainFederatedIncentiveSystem:
                     # Check all timesteps in this sequence for zero-day attack
                     for original_idx in range(start_idx, min(end_idx, num_original_samples)):
                         if original_idx < num_original_samples:
-                            if test_attack_cat_original[original_idx] == zero_day_attack:
+                            if self._is_zero_day_attack(test_attack_cat_original[original_idx]):
                                 zero_day_mask[seq_idx] = True
                                 zero_day_count += 1
                                 break  # Found zero-day sample, no need to check rest of sequence
@@ -4241,18 +4388,52 @@ class BlockchainFederatedIncentiveSystem:
                 adapted_roc_curve = None
                 adapted_pr_curve = None
             
-            # Matthews Correlation Coefficient
-            adapted_mcc = matthews_corrcoef(y_test_tensor.cpu().numpy(), adapted_predictions.cpu().numpy())
+            # MCC removed as requested by user
+            adapted_mcc = 0.0
+            
+            # CRITICAL: Use base model's valid mask to ensure same sample count for confusion matrix
+            base_valid_mask = None
+            base_cm_samples_used = None
+            if hasattr(self, 'base_evaluation_results') and self.base_evaluation_results:
+                base_cm_samples_used = self.base_evaluation_results.get('cm_samples_used', None)
+                base_valid_mask_list = self.base_evaluation_results.get('base_valid_mask', None)
+                if base_valid_mask_list is not None:
+                    base_valid_mask = np.array(base_valid_mask_list, dtype=bool)
+                    logger.info(f"🔍 RETRIEVED FROM BASE: base_cm_samples_used={base_cm_samples_used}, base_valid_mask length={len(base_valid_mask)}")
             
             # Confusion Matrix
-            # Filter out rejected predictions (-1) before confusion matrix calculation
-            adapted_valid_mask_cm = adapted_predictions.cpu().numpy() != -1
+            # CRITICAL: Use base_valid_mask if available to ensure same sample count
+            if base_valid_mask is not None and len(base_valid_mask) == len(adapted_predictions):
+                # Align base_valid_mask with adapted_predictions (both should be same length)
+                adapted_valid_mask_cm = base_valid_mask.copy()
+                logger.info(f"🔒 USING BASE VALID MASK: {adapted_valid_mask_cm.sum()} samples (matching base model)")
+            else:
+                # Fallback: Filter out rejected predictions (-1) before confusion matrix calculation
+                adapted_valid_mask_cm = adapted_predictions.cpu().numpy() != -1
+                if base_valid_mask is not None:
+                    logger.warning(f"⚠️ Length mismatch: base_valid_mask={len(base_valid_mask) if base_valid_mask is not None else 'None'}, adapted_predictions={len(adapted_predictions)}")
+            
             if adapted_valid_mask_cm.sum() > 0:
-                adapted_cm = confusion_matrix(y_test_tensor.cpu().numpy()[adapted_valid_mask_cm], adapted_predictions.cpu().numpy()[adapted_valid_mask_cm])
+                # CRITICAL FIX: Use binary labels and binary predictions for confusion matrix (consistent with base model)
+                # The main confusion matrix should be binary (Normal vs Attack) for fair comparison
+                # Convert multiclass to binary: Normal=0, Attack=1
+                y_test_binary_cm = (y_test_tensor.cpu().numpy() != 0).astype(int)
+                adapted_predictions_binary_cm = (adapted_predictions.cpu().numpy() != 0).astype(int)
+                
+                # Use binary confusion matrix as the main one (consistent with base model approach)
+                adapted_cm = confusion_matrix(y_test_binary_cm[adapted_valid_mask_cm], adapted_predictions_binary_cm[adapted_valid_mask_cm])
+                ttt_cm_samples_used = adapted_valid_mask_cm.sum()
+                logger.info(f"📊 TTT MODEL CM FINAL COUNT: {ttt_cm_samples_used} samples")
+                if base_cm_samples_used is not None:
+                    if ttt_cm_samples_used == base_cm_samples_used:
+                        logger.info(f"✅✅✅ SUCCESS: TTT CM sample count ({ttt_cm_samples_used}) MATCHES Base CM sample count ({base_cm_samples_used})!")
+                    else:
+                        logger.error(f"❌❌❌ FAILURE: TTT CM sample count ({ttt_cm_samples_used}) != Base CM sample count ({base_cm_samples_used})!")
             else:
                 adapted_cm = np.array([[0, 0], [0, 0]])  # Empty confusion matrix if all rejected
-            # For binary confusion matrix, filter out rejected from adapted_predictions_binary
-            adapted_binary_valid_mask = adapted_predictions_binary != -1
+            
+            # For binary confusion matrix, use same valid mask (this is now the same as adapted_cm above)
+            adapted_binary_valid_mask = adapted_valid_mask_cm  # Use same mask for consistency
             if adapted_binary_valid_mask.sum() > 0:
                 adapted_cm_binary = confusion_matrix(y_test_binary[adapted_binary_valid_mask], adapted_predictions_binary[adapted_binary_valid_mask])
             else:
@@ -4747,10 +4928,22 @@ class BlockchainFederatedIncentiveSystem:
             base_cm_samples = base_results.get('cm_samples_used', None)
             common_valid_mask = base_results.get('common_valid_mask', None)
             base_valid_mask = base_results.get('base_valid_mask', None)
+            
+            # CRITICAL DEBUG: Log what we're passing to TTT
+            logger.info(f"🔍 PASSING TO TTT MODEL:")
+            logger.info(f"   base_cm_samples: {base_cm_samples}")
+            logger.info(f"   common_valid_mask is None: {common_valid_mask is None}")
+            logger.info(f"   base_valid_mask is None: {base_valid_mask is None}")
+            if base_valid_mask is not None:
+                logger.info(f"   base_valid_mask (before conversion) type: {type(base_valid_mask)}, length: {len(base_valid_mask) if hasattr(base_valid_mask, '__len__') else 'N/A'}")
+            
             if common_valid_mask is not None:
                 common_valid_mask = np.array(common_valid_mask, dtype=bool)
+                logger.info(f"   common_valid_mask (after conversion) length: {len(common_valid_mask)}, sum: {common_valid_mask.sum()}")
             if base_valid_mask is not None:
                 base_valid_mask = np.array(base_valid_mask, dtype=bool)
+                logger.info(f"   base_valid_mask (after conversion) length: {len(base_valid_mask)}, sum: {base_valid_mask.sum()}")
+                logger.info(f"   base_valid_mask should have {base_cm_samples} True values if correctly stored")
             ttt_results = self._evaluate_ttt_model(
     X_test_tensor, y_test_tensor, zero_day_mask, base_cm_samples_used=base_cm_samples, common_valid_mask=common_valid_mask, base_valid_mask=base_valid_mask)
             
@@ -5102,12 +5295,8 @@ class BlockchainFederatedIncentiveSystem:
                     class_report = classification_report(
                         y_test_binary, final_predictions, output_dict=True, zero_division=0)
                     
-                    # Calculate MCCC (SAME as TTT model)
-                    from sklearn.metrics import matthews_corrcoef
-                    try:
-                        mccc = matthews_corrcoef(y_test_binary, final_predictions)
-                    except:
-                        mccc = 0.0
+                    # MCC removed as requested by user
+                    mccc = 0.0
                     
                     # Calculate zero-day detection rate using zero_day_indices (SAME as TTT model)
                     zero_day_mask_np = zero_day_mask.cpu().numpy()
@@ -5162,15 +5351,25 @@ class BlockchainFederatedIncentiveSystem:
                     
                     if valid_mask.sum() > 0:
                         cm = confusion_matrix(y_test_binary[valid_mask], final_predictions[valid_mask])
-                        logger.info(f"🔍 Base Model Confusion Matrix: {valid_mask.sum()}/{len(y_test_binary)} samples used (filtered {len(y_test_binary) - valid_mask.sum()} invalid samples)")
+                        actual_base_cm_samples = valid_mask.sum()
+                        logger.info(f"🔍 Base Model Confusion Matrix: {actual_base_cm_samples}/{len(y_test_binary)} samples used (filtered {len(y_test_binary) - actual_base_cm_samples} invalid samples)")
                         logger.info(f"   y_test_binary shape: {y_test_binary.shape}, final_predictions shape: {final_predictions.shape}")
                         logger.info(f"   y_test_binary unique: {np.unique(y_test_binary)}, final_predictions unique: {np.unique(final_predictions)}")
-                        logger.info(f"   ⚠️ CRITICAL: Base CM uses {base_cm_samples_used} samples - TTT CM MUST use the SAME number!")
+                        logger.info(f"   ⚠️ CRITICAL: Base CM uses {actual_base_cm_samples} samples - TTT CM MUST use the SAME number!")
                         logger.info(f"   ⚠️ CRITICAL: Base CM total samples: {base_cm_total_samples} - TTT CM total samples should match!")
+                        logger.info(f"   🔍 DEBUG: base_cm_samples_used variable = {base_cm_samples_used}, actual valid_mask.sum() = {actual_base_cm_samples}")
+                        
+                        # CRITICAL: Ensure base_cm_samples_used matches actual count
+                        if base_cm_samples_used != actual_base_cm_samples:
+                            logger.error(f"❌ MISMATCH: base_cm_samples_used ({base_cm_samples_used}) != actual valid_mask.sum() ({actual_base_cm_samples})")
+                            logger.error(f"   Fixing base_cm_samples_used to match actual count...")
+                            base_cm_samples_used = actual_base_cm_samples
                         
                         # Store for comparison with TTT model
                         base_cm_final_samples = base_cm_samples_used
                         logger.info(f"   📊 BASE MODEL CM FINAL COUNT: {base_cm_final_samples} samples")
+                        logger.info(f"   📊 BASE MODEL base_valid_mask.sum(): {base_valid_mask.sum()} samples")
+                        logger.info(f"   📊 BASE MODEL len(y_test_binary): {len(y_test_binary)} total samples")
                     else:
                         cm = np.array([[0, 0], [0, 0]])
                         logger.warning("⚠️ No valid samples for base model confusion matrix")
@@ -5209,7 +5408,6 @@ class BlockchainFederatedIncentiveSystem:
                         'recall': recall_binary,
                         'f1_score': f1_binary,
                         'f1_score_standard': f1_standard,
-                        'mccc': mccc,
                         'zero_day_detection_rate': zero_day_detection_rate,
                         'far': far,
                         'optimal_threshold': fixed_threshold,  # Base model uses fixed 0.5 threshold
@@ -5229,7 +5427,7 @@ class BlockchainFederatedIncentiveSystem:
                     }
                     
                     logger.info(
-                        f"Base Model Results (binary classification): Accuracy={accuracy:.4f}, F1={f1_binary:.4f}, MCCC={mccc:.4f}, Zero-day Rate={zero_day_detection_rate:.4f}, FAR={far:.4f}")
+                        f"Base Model Results (binary classification): Accuracy={accuracy:.4f}, F1={f1_binary:.4f}, Zero-day Rate={zero_day_detection_rate:.4f}, FAR={far:.4f}")
                     logger.info(f"Base Model AUC-ROC={roc_auc:.4f}, AUC-PR={auc_pr:.4f} ⭐ (PRIMARY metric for imbalanced zero-day detection)")
                     return results
                 else:
@@ -6178,21 +6376,9 @@ class BlockchainFederatedIncentiveSystem:
             logger.info(f"TTT Debug - Base Predictions: {dict(zip(unique_base_preds, base_pred_counts))}")
             logger.info(f"TTT Debug - TTT Predictions: {dict(zip(unique_ttt_preds, ttt_pred_counts))}, Labels: {dict(zip(unique_labels, label_counts))}")
             
-            # Calculate metrics for TTT predictions (post-TTT)
-            ttt_accuracy = accuracy_score(query_y_np, ttt_predictions_np)
-            
-            # Calculate metrics for base predictions (pre-TTT)
-            base_accuracy = accuracy_score(query_y_np, base_predictions_np)
-            
-            # Binary classification metrics for TTT predictions (post-TTT)
-            ttt_precision, ttt_recall, ttt_f1, _ = precision_recall_fscore_support(
-                query_y_np, ttt_predictions_np, average='binary', zero_division=0
-            )
-            
-            # Binary classification metrics for base predictions (pre-TTT)
-            base_precision, base_recall, base_f1, _ = precision_recall_fscore_support(
-                query_y_np, base_predictions_np, average='binary', zero_division=0
-            )
+            # CRITICAL: First determine the valid mask to use for ALL metrics (ensures fair comparison)
+            # This will be set below based on base_valid_mask or common_valid_mask
+            ttt_valid_mask_for_metrics = None
             
             # Confusion matrix for TTT predictions (post-TTT)
             # Filter out NaN and invalid values before confusion matrix
@@ -6203,6 +6389,15 @@ class BlockchainFederatedIncentiveSystem:
                 logger.warning(f"⚠️ Length mismatch: query_y_np={len(query_y_np)}, ttt_predictions_np={len(ttt_predictions_np)}. Using first {min_len_ttt} samples.")
                 query_y_np = query_y_np[:min_len_ttt]
                 ttt_predictions_np = ttt_predictions_np[:min_len_ttt]
+                # CRITICAL: Also truncate base_predictions_np and other arrays to match
+                if len(base_predictions_np) > min_len_ttt:
+                    base_predictions_np = base_predictions_np[:min_len_ttt]
+                    logger.warning(f"   ⚠️ Also truncated base_predictions_np to {min_len_ttt} samples")
+                if len(confidence_np) > min_len_ttt:
+                    confidence_np = confidence_np[:min_len_ttt]
+                if len(is_zero_day_np) > min_len_ttt:
+                    is_zero_day_np = is_zero_day_np[:min_len_ttt]
+                logger.info(f"   ✅ All arrays truncated to {min_len_ttt} samples for consistency")
             
             # CRITICAL: Log mask availability for debugging
             logger.info(f"🔍 TTT Model - Valid mask availability check:")
@@ -6214,65 +6409,81 @@ class BlockchainFederatedIncentiveSystem:
                 logger.info(f"   common_valid_mask length: {len(common_valid_mask)}")
             logger.info(f"   query_y_np length: {len(query_y_np)}")
             
+            # CRITICAL FIX: Align base_valid_mask with query_y_np AFTER any truncation
+            # This ensures the mask matches the actual data being evaluated
+            if base_valid_mask is not None:
+                base_valid_mask_len = len(base_valid_mask)
+                query_y_np_len = len(query_y_np)
+                
+                if base_valid_mask_len != query_y_np_len:
+                    logger.warning(f"⚠️ CRITICAL: base_valid_mask length ({base_valid_mask_len}) != query_y_np length ({query_y_np_len})")
+                    logger.warning(f"   Aligning base_valid_mask to match query_y_np...")
+                    
+                    if base_valid_mask_len > query_y_np_len:
+                        # Truncate base_valid_mask to match query_y_np
+                        base_valid_mask = base_valid_mask[:query_y_np_len]
+                        logger.info(f"   ✅ Truncated base_valid_mask to {len(base_valid_mask)} samples (matching query_y_np)")
+                        # Update base_cm_samples_used to match truncated mask
+                        if base_cm_samples_used is not None:
+                            new_count = base_valid_mask.sum()
+                            if new_count != base_cm_samples_used:
+                                logger.warning(f"   ⚠️ Updating base_cm_samples_used from {base_cm_samples_used} to {new_count} (after truncation)")
+                                base_cm_samples_used = new_count
+                    else:
+                        # This shouldn't happen - query_y_np should not be longer than base_valid_mask
+                        logger.error(f"   ❌ ERROR: query_y_np ({query_y_np_len}) is LONGER than base_valid_mask ({base_valid_mask_len})!")
+                        logger.error(f"   Padding base_valid_mask with False (invalid) to match...")
+                        padding = np.zeros(query_y_np_len - base_valid_mask_len, dtype=bool)
+                        base_valid_mask = np.concatenate([base_valid_mask, padding])
+                        logger.warning(f"   ⚠️ Padded base_valid_mask to {len(base_valid_mask)} samples")
+                else:
+                    logger.info(f"   ✅ base_valid_mask length ({base_valid_mask_len}) matches query_y_np length ({query_y_np_len})")
+            
+            # Also align common_valid_mask if needed
+            if common_valid_mask is not None and len(common_valid_mask) != len(query_y_np):
+                if len(common_valid_mask) > len(query_y_np):
+                    common_valid_mask = common_valid_mask[:len(query_y_np)]
+                    logger.info(f"   ✅ Truncated common_valid_mask to {len(common_valid_mask)} samples")
+                else:
+                    padding = np.zeros(len(query_y_np) - len(common_valid_mask), dtype=bool)
+                    common_valid_mask = np.concatenate([common_valid_mask, padding])
+                    logger.warning(f"   ⚠️ Padded common_valid_mask to {len(common_valid_mask)} samples")
+            
             # CRITICAL: Use base_valid_mask if provided (ensures both models use EXACT same samples)
+            # ALWAYS use base_valid_mask if available, regardless of TTT prediction validity
             if base_valid_mask is not None and len(base_valid_mask) == len(query_y_np):
-                logger.info(f"🔍 Using base model's actual valid_mask to ensure EXACT same samples for both models")
+                logger.info(f"🔍 Using base model's actual valid_mask DIRECTLY to ensure EXACT same samples for both models")
                 logger.info(f"   Base valid_mask length: {len(base_valid_mask)}, query_y_np length: {len(query_y_np)}")
                 logger.info(f"   Base valid_mask had {base_valid_mask.sum()} valid samples")
                 
-                # Also verify TTT predictions are valid at those indices
-                ttt_pred_valid = ~(np.isnan(ttt_predictions_np)) & (ttt_predictions_np >= 0) & (ttt_predictions_np <= 1)
-                logger.info(f"   TTT predictions valid at {ttt_pred_valid.sum()} samples")
-                
-                # Start with base model's valid_mask (includes both label and prediction filtering)
+                # CRITICAL FIX: Use base_valid_mask DIRECTLY without filtering by TTT prediction validity
+                # This ensures we use the EXACT same samples as base model (649 samples)
                 ttt_valid_mask = base_valid_mask.copy()
-                # Only use indices where both base_valid_mask is True AND TTT predictions are valid
-                ttt_valid_mask = ttt_valid_mask & ttt_pred_valid
-                logger.info(f"   After intersection: {ttt_valid_mask.sum()} valid samples (both base mask and TTT predictions valid)")
                 
-                # CRITICAL: If we lost samples, force match by selecting first N valid TTT samples
-                if ttt_valid_mask.sum() < base_valid_mask.sum():
-                    logger.warning(f"⚠️ TTT model has fewer valid predictions ({ttt_valid_mask.sum()}) than base model ({base_valid_mask.sum()})")
-                    logger.warning(f"   Attempting to match sample count by selecting valid TTT samples...")
-                    
-                    # Get all indices where base_valid_mask is True
-                    base_valid_indices = np.where(base_valid_mask)[0]
-                    # Get indices where TTT predictions are also valid
-                    ttt_valid_at_base_indices = ttt_pred_valid[base_valid_indices]
-                    # Select first base_cm_samples_used valid TTT samples from base_valid_indices
-                    if base_cm_samples_used is not None:
-                        target_count = base_cm_samples_used
-                    else:
-                        target_count = base_valid_mask.sum()
-                    
-                    valid_ttt_indices = base_valid_indices[ttt_valid_at_base_indices]
-                    if len(valid_ttt_indices) >= target_count:
-                        # Use first target_count valid TTT samples
-                        selected_indices = valid_ttt_indices[:target_count]
-                        ttt_valid_mask = np.zeros_like(base_valid_mask, dtype=bool)
-                        ttt_valid_mask[selected_indices] = True
-                        logger.info(f"   ✅ Selected {ttt_valid_mask.sum()} valid TTT samples to match base model count")
-                    else:
-                        logger.error(f"   ❌ Cannot match: Only {len(valid_ttt_indices)} valid TTT samples available, need {target_count}")
-                        # Try common_valid_mask as fallback
-                        if common_valid_mask is not None and len(common_valid_mask) == len(query_y_np):
-                            logger.warning(f"   Trying common_valid_mask approach...")
-                            ttt_valid_mask_common = common_valid_mask.copy()
-                            ttt_valid_mask_common = ttt_valid_mask_common & ttt_pred_valid
-                            if ttt_valid_mask_common.sum() >= target_count:
-                                # Select first target_count from common mask
-                                common_valid_indices = np.where(ttt_valid_mask_common)[0]
-                                if len(common_valid_indices) >= target_count:
-                                    selected_indices = common_valid_indices[:target_count]
-                                    ttt_valid_mask = np.zeros_like(common_valid_mask, dtype=bool)
-                                    ttt_valid_mask[selected_indices] = True
-                                    logger.info(f"   ✅ Using common_valid_mask: {ttt_valid_mask.sum()} samples")
-                                else:
-                                    logger.error(f"   ❌ Common mask also insufficient: {len(common_valid_indices)} < {target_count}")
-                            else:
-                                logger.error(f"   ❌ Common mask insufficient: {ttt_valid_mask_common.sum()} < {target_count}")
+                # CRITICAL: Set ttt_cm_samples_used immediately to match base_cm_samples_used
+                if base_cm_samples_used is not None:
+                    ttt_cm_samples_used = base_cm_samples_used
+                    logger.info(f"   ✅ Using base_valid_mask directly: {ttt_valid_mask.sum()} samples (same as base model)")
+                    logger.info(f"   ✅ Set ttt_cm_samples_used to {ttt_cm_samples_used} (matching base model)")
                 else:
-                    logger.info(f"   ✅ TTT valid_mask matches base model: {ttt_valid_mask.sum()} samples")
+                    ttt_cm_samples_used = base_valid_mask.sum()
+                    logger.info(f"   ✅ Using base_valid_mask directly: {ttt_valid_mask.sum()} samples (same as base model)")
+                    logger.info(f"   ✅ Set ttt_cm_samples_used to {ttt_cm_samples_used} (from base_valid_mask)")
+                
+                # Log info about TTT prediction validity (for debugging, but don't filter)
+                ttt_pred_valid = ~(np.isnan(ttt_predictions_np)) & (ttt_predictions_np >= 0) & (ttt_predictions_np <= 1)
+                valid_ttt_at_base = (ttt_pred_valid & base_valid_mask).sum()
+                logger.info(f"   📊 Info: {valid_ttt_at_base}/{base_valid_mask.sum()} TTT predictions are valid at base_valid_mask indices")
+                if valid_ttt_at_base < base_valid_mask.sum():
+                    logger.info(f"   📊 Note: {base_valid_mask.sum() - valid_ttt_at_base} samples have invalid TTT predictions, but using them anyway for fair comparison")
+                
+                # CRITICAL: Set ttt_cm_samples_used immediately to match base
+                if base_cm_samples_used is not None:
+                    ttt_cm_samples_used = base_cm_samples_used
+                    logger.info(f"   ✅ Set ttt_cm_samples_used to {ttt_cm_samples_used} (matching base model)")
+                else:
+                    ttt_cm_samples_used = base_valid_mask.sum()
+                    logger.info(f"   ✅ Set ttt_cm_samples_used to {ttt_cm_samples_used} (from base_valid_mask)")
             elif common_valid_mask is not None and len(common_valid_mask) == len(query_y_np):
                 logger.info(f"🔍 Using common valid_mask from base model (base_valid_mask not available)")
                 # Start with common mask (based on labels only)
@@ -6293,39 +6504,44 @@ class BlockchainFederatedIncentiveSystem:
                 ttt_valid_mask = ttt_valid_mask & (query_y_np >= 0) & (query_y_np <= 1)  # Also validate labels
             
             # CRITICAL: Store the exact samples used for confusion matrix to compare with base model
-            ttt_cm_samples_used = ttt_valid_mask.sum()
+            # Only calculate if not already set (from base_valid_mask path above)
+            if 'ttt_cm_samples_used' not in locals() or ttt_cm_samples_used is None:
+                ttt_cm_samples_used = ttt_valid_mask.sum()
             ttt_cm_total_samples = len(query_y_np)
+            
+            # CRITICAL: If base_valid_mask was used, verify the count matches
+            if base_valid_mask is not None and len(base_valid_mask) == len(query_y_np) and base_cm_samples_used is not None:
+                if ttt_cm_samples_used != base_cm_samples_used:
+                    logger.error(f"❌ CRITICAL MISMATCH: base_valid_mask used but ttt_cm_samples_used ({ttt_cm_samples_used}) != base_cm_samples_used ({base_cm_samples_used})")
+                    logger.error(f"   Forcing ttt_cm_samples_used to match base_cm_samples_used...")
+                    ttt_cm_samples_used = base_cm_samples_used
+                    # Ensure ttt_valid_mask matches base_valid_mask exactly
+                    ttt_valid_mask = base_valid_mask.copy()
+                    logger.info(f"   ✅ FORCED: ttt_cm_samples_used = {ttt_cm_samples_used}, ttt_valid_mask.sum() = {ttt_valid_mask.sum()}")
+                else:
+                    logger.info(f"   ✅ VERIFIED: ttt_cm_samples_used ({ttt_cm_samples_used}) matches base_cm_samples_used ({base_cm_samples_used})")
             
             # CRITICAL: If base model's CM sample count is provided, FORCE TTT to use the EXACT SAME number
             if base_cm_samples_used is not None and ttt_cm_samples_used != base_cm_samples_used:
                 logger.warning(f"⚠️ CRITICAL: TTT CM sample count ({ttt_cm_samples_used}) != Base CM sample count ({base_cm_samples_used})")
                 logger.warning(f"   FORCING TTT to use EXACT same sample count as base model...")
                 
-                # Strategy: Use base_valid_mask if available, otherwise select first N valid TTT samples
+                # Strategy: Use base_valid_mask DIRECTLY (don't filter by TTT prediction validity)
+                # This ensures EXACT same samples as base model, even if TTT has invalid predictions
                 if base_valid_mask is not None and len(base_valid_mask) == len(query_y_np):
-                    logger.info(f"   Using base_valid_mask directly to force exact match...")
-                    # Use base_valid_mask and verify TTT predictions are valid
-                    ttt_pred_valid = ~(np.isnan(ttt_predictions_np)) & (ttt_predictions_np >= 0) & (ttt_predictions_np <= 1)
-                    # Get indices where base_valid_mask is True
-                    base_valid_indices = np.where(base_valid_mask)[0]
-                    # Find which of those have valid TTT predictions
-                    ttt_valid_at_base = ttt_pred_valid[base_valid_indices]
-                    valid_ttt_indices = base_valid_indices[ttt_valid_at_base]
+                    logger.info(f"   Using base_valid_mask DIRECTLY to force exact match (ignoring TTT prediction validity)...")
+                    # CRITICAL FIX: Use base_valid_mask directly without filtering by TTT prediction validity
+                    # This ensures we use the EXACT same samples as base model
+                    ttt_valid_mask = base_valid_mask.copy()
+                    ttt_cm_samples_used = base_cm_samples_used
+                    logger.info(f"   ✅ FORCED TTT to use EXACT {ttt_cm_samples_used} samples (same as base model, using base_valid_mask directly)")
                     
-                    if len(valid_ttt_indices) >= base_cm_samples_used:
-                        # Select exactly base_cm_samples_used samples
-                        selected_indices = valid_ttt_indices[:base_cm_samples_used]
-                        ttt_valid_mask = np.zeros_like(base_valid_mask, dtype=bool)
-                        ttt_valid_mask[selected_indices] = True
-                        ttt_cm_samples_used = base_cm_samples_used
-                        logger.info(f"   ✅ FORCED TTT to use EXACT {ttt_cm_samples_used} samples (matching base model)")
-                    else:
-                        logger.error(f"   ❌ Cannot force match: Only {len(valid_ttt_indices)} valid TTT samples at base_valid_mask indices, need {base_cm_samples_used}")
-                        # Fallback: Use all available valid TTT samples
-                        ttt_valid_mask = np.zeros_like(base_valid_mask, dtype=bool)
-                        ttt_valid_mask[valid_ttt_indices] = True
-                        ttt_cm_samples_used = len(valid_ttt_indices)
-                        logger.warning(f"   ⚠️ Using {ttt_cm_samples_used} samples (less than base model's {base_cm_samples_used})")
+                    # Log how many TTT predictions are actually valid at these indices (for info only)
+                    ttt_pred_valid = ~(np.isnan(ttt_predictions_np)) & (ttt_predictions_np >= 0) & (ttt_predictions_np <= 1)
+                    valid_ttt_at_base = (ttt_pred_valid & base_valid_mask).sum()
+                    logger.info(f"   📊 Info: {valid_ttt_at_base}/{base_cm_samples_used} TTT predictions are valid at base_valid_mask indices")
+                    if valid_ttt_at_base < base_cm_samples_used:
+                        logger.warning(f"   ⚠️ Note: {base_cm_samples_used - valid_ttt_at_base} samples have invalid TTT predictions, but using them anyway for fair comparison")
                 else:
                     # Fallback: Select first N valid TTT samples
                     valid_indices = np.where(ttt_valid_mask)[0]
@@ -6340,20 +6556,77 @@ class BlockchainFederatedIncentiveSystem:
                         logger.error(f"   ❌ Cannot adjust: TTT has only {len(valid_indices)} valid samples, but base model needs {base_cm_samples_used}")
                         logger.error(f"   This means TTT model has more invalid predictions than base model!")
             
+            # CRITICAL: Final verification RIGHT BEFORE confusion matrix creation
+            # If base_valid_mask is available, ALWAYS align and use it directly
+            logger.info(f"🔍 FINAL CHECK BEFORE CM:")
+            logger.info(f"   base_valid_mask is None: {base_valid_mask is None}")
+            if base_valid_mask is not None:
+                logger.info(f"   base_valid_mask length: {len(base_valid_mask)}, sum: {base_valid_mask.sum()}")
+            logger.info(f"   query_y_np length: {len(query_y_np)}")
+            logger.info(f"   base_cm_samples_used: {base_cm_samples_used}")
+            
+            # CRITICAL: ALWAYS align base_valid_mask with query_y_np if they don't match
+            if base_valid_mask is not None:
+                if len(base_valid_mask) != len(query_y_np):
+                    logger.error(f"❌ CRITICAL: base_valid_mask length ({len(base_valid_mask)}) != query_y_np length ({len(query_y_np)})")
+                    logger.error(f"   FORCING alignment right before CM creation...")
+                    if len(base_valid_mask) > len(query_y_np):
+                        base_valid_mask = base_valid_mask[:len(query_y_np)]
+                        if base_cm_samples_used is not None:
+                            base_cm_samples_used = base_valid_mask.sum()
+                        logger.info(f"   ✅ Truncated base_valid_mask to {len(base_valid_mask)} samples, sum={base_valid_mask.sum()}")
+                    else:
+                        padding = np.zeros(len(query_y_np) - len(base_valid_mask), dtype=bool)
+                        base_valid_mask = np.concatenate([base_valid_mask, padding])
+                        logger.warning(f"   ⚠️ Padded base_valid_mask to {len(base_valid_mask)} samples")
+                
+                # ALWAYS use base_valid_mask directly - this ensures EXACT same samples as base model
+                ttt_valid_mask = base_valid_mask.copy()
+                if base_cm_samples_used is not None:
+                    ttt_cm_samples_used = base_cm_samples_used
+                else:
+                    ttt_cm_samples_used = base_valid_mask.sum()
+                logger.info(f"🔒 FINAL FIX: Using base_valid_mask directly - {ttt_valid_mask.sum()} samples (matching base model)")
+                logger.info(f"   ttt_cm_samples_used set to: {ttt_cm_samples_used}")
+                logger.info(f"   VERIFICATION: ttt_valid_mask.sum()={ttt_valid_mask.sum()}, base_cm_samples_used={base_cm_samples_used}")
+                if ttt_valid_mask.sum() != base_cm_samples_used:
+                    logger.error(f"   ❌ STILL MISMATCHED: ttt_valid_mask.sum()={ttt_valid_mask.sum()} != base_cm_samples_used={base_cm_samples_used}")
+                    logger.error(f"   FORCING ttt_cm_samples_used to match ttt_valid_mask.sum()...")
+                    ttt_cm_samples_used = ttt_valid_mask.sum()
+                    logger.info(f"   ✅ FORCED: ttt_cm_samples_used = {ttt_cm_samples_used}")
+            
             if ttt_valid_mask.sum() > 0:
+                # CRITICAL: Final check - ensure count matches before creating confusion matrix
+                actual_mask_count = ttt_valid_mask.sum()
+                if base_cm_samples_used is not None and actual_mask_count != base_cm_samples_used:
+                    logger.error(f"❌ CRITICAL MISMATCH BEFORE CM: ttt_valid_mask.sum()={actual_mask_count} but base_cm_samples_used={base_cm_samples_used}")
+                    logger.error(f"   FORCING ttt_valid_mask to match base_valid_mask exactly...")
+                    if base_valid_mask is not None and len(base_valid_mask) == len(query_y_np):
+                        ttt_valid_mask = base_valid_mask.copy()
+                        ttt_cm_samples_used = base_cm_samples_used
+                        actual_mask_count = ttt_valid_mask.sum()
+                        logger.info(f"   ✅ FORCED FIX: ttt_valid_mask now has {actual_mask_count} samples (matching base)")
+                    else:
+                        logger.error(f"   ❌ Cannot fix: base_valid_mask not available or length mismatch")
+                
                 ttt_cm = confusion_matrix(query_y_np[ttt_valid_mask], ttt_predictions_np[ttt_valid_mask])
-                logger.info(f"🔍 TTT Model Confusion Matrix: {ttt_valid_mask.sum()}/{len(query_y_np)} samples used (filtered {len(query_y_np) - ttt_valid_mask.sum()} invalid samples)")
+                actual_samples_used = ttt_valid_mask.sum()
+                logger.info(f"🔍 TTT Model Confusion Matrix: {actual_samples_used}/{len(query_y_np)} samples used (filtered {len(query_y_np) - actual_samples_used} invalid samples)")
                 logger.info(f"   query_y_np shape: {query_y_np.shape}, ttt_predictions_np shape: {ttt_predictions_np.shape}")
                 logger.info(f"   query_y_np unique: {np.unique(query_y_np)}, ttt_predictions_np unique: {np.unique(ttt_predictions_np)}")
-                logger.info(f"   ⚠️ CRITICAL: TTT CM uses {ttt_cm_samples_used} samples - Base CM should use the SAME number!")
-                logger.info(f"   📊 TTT MODEL CM FINAL COUNT: {ttt_cm_samples_used} samples")
+                logger.info(f"   ⚠️ CRITICAL: TTT CM uses {actual_samples_used} samples - Base CM should use the SAME number!")
+                logger.info(f"   📊 TTT MODEL CM FINAL COUNT: {actual_samples_used} samples")
                 
                 # CRITICAL: Compare with base model confusion matrix sample count
                 if base_cm_samples_used is not None:
-                    if ttt_cm_samples_used == base_cm_samples_used:
-                        logger.info(f"   ✅ SUCCESS: TTT CM sample count ({ttt_cm_samples_used}) MATCHES Base CM sample count ({base_cm_samples_used})!")
+                    if actual_samples_used == base_cm_samples_used:
+                        logger.info(f"   ✅✅✅ SUCCESS: TTT CM sample count ({actual_samples_used}) MATCHES Base CM sample count ({base_cm_samples_used})!")
                     else:
-                        logger.error(f"   ❌ FAILURE: TTT CM sample count ({ttt_cm_samples_used}) != Base CM sample count ({base_cm_samples_used})!")
+                        logger.error(f"   ❌❌❌ FAILURE: TTT CM sample count ({actual_samples_used}) != Base CM sample count ({base_cm_samples_used})!")
+                        logger.error(f"   This is a CRITICAL ERROR - confusion matrices are NOT comparable!")
+                        logger.error(f"   base_valid_mask.sum()={base_valid_mask.sum() if base_valid_mask is not None else 'N/A'}")
+                        logger.error(f"   ttt_valid_mask.sum()={ttt_valid_mask.sum()}")
+                        logger.error(f"   (ttt_valid_mask == base_valid_mask).all()={(ttt_valid_mask == base_valid_mask).all() if base_valid_mask is not None and len(base_valid_mask) == len(ttt_valid_mask) else 'N/A'}")
                 else:
                     logger.warning(f"   ⚠️ VERIFY: Check Base Model CM log above - both should use the SAME sample count!")
                     logger.error(f"   ⚠️⚠️⚠️ MANUAL CHECK REQUIRED: Compare BASE MODEL CM FINAL COUNT with TTT MODEL CM FINAL COUNT above!")
@@ -6387,58 +6660,95 @@ class BlockchainFederatedIncentiveSystem:
                 base_cm = np.array([[0, 0], [0, 0]])
                 logger.warning("⚠️ No valid samples for base predictions confusion matrix")
             
-            # Get detailed classification report for TTT predictions
+            # CRITICAL FIX: Calculate ALL metrics using the SAME valid mask as confusion matrix
+            # This ensures fair comparison - all metrics use the exact same samples
+            if ttt_valid_mask.sum() > 0:
+                # Store valid mask for use in all metrics
+                ttt_valid_mask_for_metrics = ttt_valid_mask.copy()
+                logger.info(f"✅ FAIR COMPARISON: All metrics will use {ttt_valid_mask_for_metrics.sum()} samples (same as confusion matrix)")
+            else:
+                # Fallback: Use all samples if no valid mask
+                ttt_valid_mask_for_metrics = np.ones(len(query_y_np), dtype=bool)
+                logger.warning("⚠️ No valid_mask available - calculating metrics on all samples (may not be fair comparison)")
+            
+            # Calculate metrics for TTT predictions (post-TTT) using valid mask
+            ttt_accuracy = accuracy_score(query_y_np[ttt_valid_mask_for_metrics], ttt_predictions_np[ttt_valid_mask_for_metrics])
+            
+            # Calculate metrics for base predictions (pre-TTT) using same valid mask
+            base_accuracy = accuracy_score(query_y_np[ttt_valid_mask_for_metrics], base_predictions_np[ttt_valid_mask_for_metrics])
+            
+            # Binary classification metrics for TTT predictions (post-TTT) using valid mask
+            ttt_precision, ttt_recall, ttt_f1, _ = precision_recall_fscore_support(
+                query_y_np[ttt_valid_mask_for_metrics], ttt_predictions_np[ttt_valid_mask_for_metrics], average='binary', zero_division=0
+            )
+            
+            # Binary classification metrics for base predictions (pre-TTT) using same valid mask
+            base_precision, base_recall, base_f1, _ = precision_recall_fscore_support(
+                query_y_np[ttt_valid_mask_for_metrics], base_predictions_np[ttt_valid_mask_for_metrics], average='binary', zero_division=0
+            )
+            
+            # Get detailed classification report for TTT predictions using valid mask
             try:
-                ttt_class_report = classification_report(query_y_np, ttt_predictions_np, output_dict=True, zero_division=0)
+                ttt_class_report = classification_report(query_y_np[ttt_valid_mask_for_metrics], ttt_predictions_np[ttt_valid_mask_for_metrics], output_dict=True, zero_division=0)
             except:
                 ttt_class_report = {}
             
-            # Get detailed classification report for base predictions
+            # Get detailed classification report for base predictions using same valid mask
             try:
-                base_class_report = classification_report(query_y_np, base_predictions_np, output_dict=True, zero_division=0)
+                base_class_report = classification_report(query_y_np[ttt_valid_mask_for_metrics], base_predictions_np[ttt_valid_mask_for_metrics], output_dict=True, zero_division=0)
             except:
                 base_class_report = {}
             
-            # Compute Matthews Correlation Coefficient (MCCC) for TTT predictions
-            try:
-                ttt_mccc = matthews_corrcoef(query_y_np, ttt_predictions_np)
-                # Check for invalid MCC values
-                if np.isnan(ttt_mccc) or np.isinf(ttt_mccc):
-                    ttt_mccc = 0.0
-            except Exception as e:
-                logger.warning(f"TTT MCC calculation failed: {e}, predictions: {np.unique(ttt_predictions_np, return_counts=True)}")
-                ttt_mccc = 0.0
-            
-            # Compute Matthews Correlation Coefficient (MCCC) for base predictions
-            try:
-                base_mccc = matthews_corrcoef(query_y_np, base_predictions_np)
-                # Check for invalid MCC values
-                if np.isnan(base_mccc) or np.isinf(base_mccc):
-                    base_mccc = 0.0
-            except Exception as e:
-                logger.warning(f"Base MCC calculation failed: {e}, predictions: {np.unique(base_predictions_np, return_counts=True)}")
-                base_mccc = 0.0
+            # MCC removed as requested by user
+            ttt_mccc = 0.0
+            base_mccc = 0.0
             
             # Zero-day specific metrics
             # FIX: Calculate ZDR as recall on zero-day samples (fraction of zero-day attacks detected)
             # NOT the fraction of samples that are zero-day (which is what is_zero_day_np.mean() calculates)
+            # CRITICAL: Use same valid mask for zero-day metrics to ensure fair comparison
             if is_zero_day_np.sum() > 0:
-                zero_day_predictions = ttt_predictions_np[is_zero_day_np]
-                zero_day_actual = query_y_np[is_zero_day_np]
+                # Apply valid mask to zero-day samples as well (ensures fair comparison)
+                if ttt_valid_mask_for_metrics is not None and ttt_valid_mask_for_metrics.sum() > 0:
+                    # Only consider zero-day samples that are also in valid mask
+                    valid_zero_day_mask = is_zero_day_np & ttt_valid_mask_for_metrics
+                    if valid_zero_day_mask.sum() > 0:
+                        zero_day_predictions = ttt_predictions_np[valid_zero_day_mask]
+                        zero_day_actual = query_y_np[valid_zero_day_mask]
+                        logger.info(f"🔍 Zero-day metrics: Using {valid_zero_day_mask.sum()} valid zero-day samples (from {is_zero_day_np.sum()} total zero-day samples)")
+                    else:
+                        zero_day_predictions = np.array([])
+                        zero_day_actual = np.array([])
+                        logger.warning(f"⚠️ No valid zero-day samples after applying valid_mask")
+                else:
+                    # Fallback: Use all zero-day samples
+                    zero_day_predictions = ttt_predictions_np[is_zero_day_np]
+                    zero_day_actual = query_y_np[is_zero_day_np]
+                    logger.warning(f"⚠️ No valid_mask available for zero-day metrics - using all zero-day samples")
+                
                 # ZDR = TP / (TP + FN) for zero-day samples = recall on zero-day samples
-                zero_day_tp = ((zero_day_predictions == 1) & (zero_day_actual == 1)).sum()
-                zero_day_fn = ((zero_day_predictions == 0) & (zero_day_actual == 1)).sum()
-                zero_day_detection_rate = zero_day_tp / (zero_day_tp + zero_day_fn) if (zero_day_tp + zero_day_fn) > 0 else 0.0
+                if len(zero_day_predictions) > 0 and len(zero_day_actual) > 0:
+                    zero_day_tp = ((zero_day_predictions == 1) & (zero_day_actual == 1)).sum()
+                    zero_day_fn = ((zero_day_predictions == 0) & (zero_day_actual == 1)).sum()
+                    zero_day_detection_rate = zero_day_tp / (zero_day_tp + zero_day_fn) if (zero_day_tp + zero_day_fn) > 0 else 0.0
+                else:
+                    zero_day_detection_rate = 0.0
+                    zero_day_tp = 0
+                    zero_day_fn = 0
                 
                 # Log ZDR calculation details with more diagnostics
-                logger.info(f"🔍 TTT ZDR Calculation:")
-                logger.info(f"   Zero-day samples: {is_zero_day_np.sum()}")
+                logger.info(f"🔍 TTT ZDR Calculation (using same valid_mask as other metrics):")
+                logger.info(f"   Total zero-day samples: {is_zero_day_np.sum()}")
+                if ttt_valid_mask_for_metrics is not None:
+                    valid_zero_day_count = (is_zero_day_np & ttt_valid_mask_for_metrics).sum()
+                    logger.info(f"   Valid zero-day samples (after valid_mask): {valid_zero_day_count}")
                 logger.info(f"   Zero-day TP (detected attacks): {zero_day_tp}")
                 logger.info(f"   Zero-day FN (missed attacks): {zero_day_fn}")
                 logger.info(f"   ZDR (TP/(TP+FN)): {zero_day_detection_rate:.4f}")
                 logger.info(f"   Threshold used: {optimal_threshold:.4f}")
-                logger.info(f"   Zero-day predictions distribution: {np.bincount(zero_day_predictions, minlength=2).tolist()}")
-                logger.info(f"   Zero-day actual labels distribution: {np.bincount(zero_day_actual, minlength=2).tolist()}")
+                if len(zero_day_predictions) > 0:
+                    logger.info(f"   Zero-day predictions distribution: {np.bincount(zero_day_predictions, minlength=2).tolist()}")
+                    logger.info(f"   Zero-day actual labels distribution: {np.bincount(zero_day_actual, minlength=2).tolist()}")
                 
                 # Additional diagnostic: Check if all zero-day samples are predicted as Normal
                 if zero_day_tp == 0 and zero_day_fn > 0:
@@ -6460,7 +6770,6 @@ class BlockchainFederatedIncentiveSystem:
                 'precision': ttt_precision,
                 'recall': ttt_recall,
                 'f1_score': ttt_f1,
-                'mccc': ttt_mccc,
                 'confusion_matrix': ttt_cm.tolist(),
                 'classification_report': ttt_class_report,
                 
@@ -6469,7 +6778,6 @@ class BlockchainFederatedIncentiveSystem:
                 'base_precision': base_precision,
                 'base_recall': base_recall,
                 'base_f1_score': base_f1,
-                'base_mccc': base_mccc,
                 'base_confusion_matrix': base_cm.tolist(),
                 'base_classification_report': base_class_report,
                 

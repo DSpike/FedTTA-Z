@@ -1096,6 +1096,7 @@ class PerformanceVisualizer:
             if model_key in evaluation_results and 'confusion_matrix' in evaluation_results[model_key]:
                 model_data = evaluation_results[model_key]
                 confusion_data = model_data['confusion_matrix']
+                logger.debug(f"🔍 {model_key} confusion matrix type: {type(confusion_data)}, shape/length: {getattr(confusion_data, 'shape', len(confusion_data) if hasattr(confusion_data, '__len__') else 'N/A')}")
                 
                 # Handle multiple formats for confusion matrix
                 if isinstance(confusion_data, dict):
@@ -1105,14 +1106,47 @@ class PerformanceVisualizer:
                     fn = confusion_data.get('fn', 0)
                     tp = confusion_data.get('tp', 0)
                     cm = np.array([[tn, fp], [fn, tp]])
-                elif isinstance(confusion_data, list) and len(confusion_data) == 2:
-                    # List format: [[tn, fp], [fn, tp]]
-                    cm = np.array(confusion_data)
+                elif isinstance(confusion_data, list):
+                    # List format: [[tn, fp], [fn, tp]] or any 2D list structure
+                    try:
+                        cm = np.array(confusion_data)
+                        # Ensure it's 2D and has valid shape
+                        if cm.ndim == 1:
+                            # 1D list - try to reshape if it has 4 elements
+                            if len(confusion_data) == 4:
+                                cm = cm.reshape(2, 2)
+                            else:
+                                raise ValueError(f"1D list with {len(confusion_data)} elements cannot be reshaped to 2x2")
+                        elif cm.ndim == 2:
+                            # 2D list - validate shape
+                            if cm.shape[0] == 0 or cm.shape[1] == 0:
+                                raise ValueError(f"Empty confusion matrix: shape {cm.shape}")
+                            # If not 2x2, log warning but try to use it
+                            if cm.shape != (2, 2):
+                                logger.warning(f"Confusion matrix shape {cm.shape} is not 2x2, but will attempt to plot")
+                        else:
+                            raise ValueError(f"Confusion matrix has {cm.ndim} dimensions, expected 1 or 2")
+                    except Exception as e:
+                        logger.warning(f"Failed to convert confusion matrix list to numpy array for {model_key}: {e}")
+                        logger.warning(f"Confusion data type: {type(confusion_data)}, value: {confusion_data}")
+                        continue
                 elif isinstance(confusion_data, np.ndarray):
                     # Numpy array format: already in correct shape
                     cm = confusion_data
+                    # Ensure it's 2D
+                    if cm.ndim == 1 and len(cm) == 4:
+                        cm = cm.reshape(2, 2)
+                    elif cm.ndim != 2:
+                        logger.warning(f"Confusion matrix numpy array has {cm.ndim} dimensions, expected 2")
+                        continue
                 else:
                     logger.warning(f"Unsupported confusion matrix format for {model_key}: {type(confusion_data)}")
+                    logger.warning(f"Confusion data value: {confusion_data}")
+                    continue
+                
+                # Validate confusion matrix before plotting
+                if cm.size == 0 or cm.sum() == 0:
+                    logger.warning(f"Empty or all-zero confusion matrix for {model_key}, skipping plot")
                     continue
                 
                 # Plot confusion matrix

@@ -1381,7 +1381,42 @@ class UNSWPreprocessor:
         """
         logger.info(f"Creating sequences with length={sequence_length}, stride={stride}, zero_pad={zero_pad}")
         
+        # Convert to numpy arrays if needed
+        import pandas as pd
+        if isinstance(X, pd.DataFrame):
+            X = X.values
+        elif hasattr(X, 'cpu'):  # PyTorch tensor
+            X = X.cpu().numpy()
+        elif not isinstance(X, np.ndarray):
+            X = np.array(X)
+        
+        if isinstance(y, pd.Series):
+            y = y.values
+        elif hasattr(y, 'cpu'):  # PyTorch tensor
+            y = y.cpu().numpy()
+        elif not isinstance(y, np.ndarray):
+            y = np.array(y)
+        
+        # Ensure X is 2D
+        if X.ndim == 1:
+            X = X.reshape(-1, 1)
+        
+        # Ensure y is 1D
+        if y.ndim > 1:
+            y = y.flatten()
+        
+        # Validate shapes
         n_samples, n_features = X.shape
+        y_len = len(y)
+        
+        if n_samples != y_len:
+            raise ValueError(f"X and y have mismatched lengths: X has {n_samples} samples, y has {y_len} samples")
+        
+        if n_samples < sequence_length:
+            raise ValueError(f"Not enough samples ({n_samples}) to create sequences of length {sequence_length}")
+        
+        logger.info(f"Input shapes: X={X.shape}, y={y.shape}")
+        
         sequences = []
         labels = []
         
@@ -1389,7 +1424,10 @@ class UNSWPreprocessor:
         for i in range(0, n_samples - sequence_length + 1, stride):
             # Extract sequence
             sequence = X[i:i + sequence_length]
-            label = y[i + sequence_length - 1]  # Use label from last timestep
+            label_idx = i + sequence_length - 1
+            if label_idx >= y_len:
+                raise IndexError(f"Label index {label_idx} out of range for y of length {y_len}")
+            label = y[label_idx]  # Use label from last timestep
             
             sequences.append(sequence)
             labels.append(label)

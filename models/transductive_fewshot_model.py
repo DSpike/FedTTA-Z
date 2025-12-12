@@ -2981,10 +2981,18 @@ def create_meta_tasks(data_x, data_y, n_way: int = 2, k_shot: int = 5, n_query: 
     unique_labels = torch.unique(data_y)
     
     # For training phase, exclude zero-day attack if specified
+    # CRITICAL: Only filter zero-day if using multiclass labels, not binary labels
+    # Binary labels (0/1) should not be filtered because preprocessor already excluded zero-day
     if phase in ["training", "validation"] and zero_day_attack_label is not None:
-        # Filter out zero-day attack from available labels
-        available_labels = unique_labels[unique_labels != zero_day_attack_label]
-        logger.info(f"Available labels for {phase}: {available_labels.tolist()}")
+        # Only filter if we have multiclass labels that are different from binary labels
+        if labels_for_attack_types is not None and not torch.equal(labels_for_attack_types, data_y):
+            # Filter out zero-day attack from available labels (using multiclass labels)
+            available_labels = unique_labels[unique_labels != zero_day_attack_label]
+            logger.info(f"Available labels for {phase} (multiclass): {available_labels.tolist()}")
+        else:
+            # Using binary labels - preprocessor already filtered zero-day, so use all available
+            available_labels = unique_labels
+            logger.info(f"Available labels for {phase} (binary, zero-day already filtered by preprocessor): {available_labels.tolist()}")
     else:
         available_labels = unique_labels
         logger.info(f"Available labels for {phase}: {available_labels.tolist()}")
@@ -2995,7 +3003,7 @@ def create_meta_tasks(data_x, data_y, n_way: int = 2, k_shot: int = 5, n_query: 
     
     # For attack samples, exclude zero-day attack if specified
     # Use multiclass labels if available for zero-day exclusion, otherwise use binary
-    if include_all_attack_types_in_support and labels_for_attack_types is not None:
+    if include_all_attack_types_in_support and labels_for_attack_types is not None and not torch.equal(labels_for_attack_types, data_y):
         # Use multiclass labels to exclude zero-day
         if zero_day_attack_label is not None:
             attack_mask = (data_y != 0) & (labels_for_attack_types != zero_day_attack_label)
@@ -3003,10 +3011,10 @@ def create_meta_tasks(data_x, data_y, n_way: int = 2, k_shot: int = 5, n_query: 
             attack_mask = data_y != 0
     else:
         # Use binary labels (fallback)
-        if zero_day_attack_label is not None:
-            attack_mask = (data_y != 0) & (data_y != zero_day_attack_label)
-        else:
-            attack_mask = data_y != 0
+        # CRITICAL: When using binary labels, zero_day_attack_label filtering should NOT be applied
+        # because binary labels are 0/1, and filtering out 1 would remove all attacks
+        # The preprocessor already filtered out zero-day attacks, so binary labels are correct
+        attack_mask = data_y != 0
     attack_indices = torch.where(attack_mask)[0]
     
     for _ in range(n_tasks):
@@ -3043,7 +3051,7 @@ def create_meta_tasks(data_x, data_y, n_way: int = 2, k_shot: int = 5, n_query: 
             
             # 2. Add Attack samples from ONE randomly chosen known attack type (not zero-day)
             # Use multiclass labels if available to distinguish attack types
-            if labels_for_attack_types is not None:
+            if labels_for_attack_types is not None and not torch.equal(labels_for_attack_types, data_y):
                 # Use multiclass labels to get all known attack types (exclude Normal=0 and zero-day)
                 unique_multiclass_labels = torch.unique(labels_for_attack_types)
                 if zero_day_attack_label is not None:
@@ -3052,10 +3060,10 @@ def create_meta_tasks(data_x, data_y, n_way: int = 2, k_shot: int = 5, n_query: 
                     all_attack_labels = unique_multiclass_labels[unique_multiclass_labels != 0]
             else:
                 # Fallback to binary labels (only one attack class available)
-                if zero_day_attack_label is not None:
-                    all_attack_labels = available_labels[(available_labels != 0) & (available_labels != zero_day_attack_label)]
-                else:
-                    all_attack_labels = available_labels[available_labels != 0]
+                # CRITICAL: When using binary labels, zero_day_attack_label filtering should NOT be applied
+                # because binary labels are 0/1, and filtering out 1 would remove all attacks
+                # The preprocessor already filtered out zero-day attacks, so binary labels are correct
+                all_attack_labels = available_labels[available_labels != 0]
             
             if len(all_attack_labels) > 0:
                 # Select ONE random attack type for this task (ProtoNets-style: clean prototype per task)
