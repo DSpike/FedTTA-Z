@@ -26,7 +26,7 @@ from sklearn.metrics import roc_curve, roc_auc_score, precision_recall_curve, av
 
 # Import our components
 #from preprocessing.blockchain_federated_unsw_preprocessor import UNSWPreprocessor
-from blockchain_federated_cicids_preprocessor import CICIDSPreprocessor
+from preprocessing.blockchain_federated_cicids_preprocessor import CICIDSPreprocessor
 from models.transductive_fewshot_model import TransductiveFewShotModel, create_meta_tasks, TransductiveLearner
 from config import get_config, update_config, SystemConfig
 from coordinators.centralized_coordinator import CentralizedCoordinator
@@ -451,14 +451,14 @@ class BlockchainFederatedIncentiveSystem:
             # Check which dataset we're using based on file names
             if 'KDD' in self.config.data_path.upper() or 'KDD' in self.config.test_path.upper():
                 logger.info("Initializing KDDTest+ preprocessor...")
-                from centralized_nids_kdd_preprocessor import KDDPreprocessor
+                from preprocessing.centralized_nids_kdd_preprocessor import KDDPreprocessor
                 self.preprocessor = KDDPreprocessor(
                     data_path=self.config.data_path,
                     test_path=self.config.test_path
                 )
             elif 'CICIOT23' in self.config.data_path or 'CICIDS2023' in self.config.data_path:
                 logger.info("Initializing CICIoT2023 preprocessor...")
-                from blockchain_federated_cicids2023_preprocessor import CICIDS2023Preprocessor
+                from preprocessing.blockchain_federated_cicids2023_preprocessor import CICIDS2023Preprocessor
                 self.preprocessor = CICIDS2023Preprocessor(
                     data_path=self.config.data_path,
                     test_path=self.config.test_path
@@ -882,14 +882,34 @@ class BlockchainFederatedIncentiveSystem:
             logger.info("Preprocessing dataset...")
             
             # Run preprocessing pipeline (support cross-dataset evaluation)
+            # Only KDD preprocessor supports cross-dataset parameters
             source_path = self.config.source_data_path if self.config.use_cross_dataset_evaluation else None
             target_path = self.config.target_test_path if self.config.use_cross_dataset_evaluation else None
             
-            self.preprocessed_data = self.preprocessor.preprocess_unsw_dataset(
-                zero_day_attack=self.config.zero_day_attack,
-                source_data_path=source_path,
-                target_test_path=target_path
-            )
+            # Check if preprocessor supports cross-dataset parameters (only KDDPreprocessor does)
+            if hasattr(self.preprocessor, 'preprocess_unsw_dataset'):
+                # Check method signature to see if it accepts cross-dataset params
+                import inspect
+                sig = inspect.signature(self.preprocessor.preprocess_unsw_dataset)
+                params = list(sig.parameters.keys())
+                
+                if 'source_data_path' in params and 'target_test_path' in params:
+                    # KDD preprocessor - supports cross-dataset evaluation
+                    self.preprocessed_data = self.preprocessor.preprocess_unsw_dataset(
+                        zero_day_attack=self.config.zero_day_attack,
+                        source_data_path=source_path,
+                        target_test_path=target_path
+                    )
+                else:
+                    # CICIDS/UNSW preprocessors - don't support cross-dataset params
+                    self.preprocessed_data = self.preprocessor.preprocess_unsw_dataset(
+                        zero_day_attack=self.config.zero_day_attack
+                    )
+            else:
+                # Fallback for other preprocessors
+                self.preprocessed_data = self.preprocessor.preprocess_dataset(
+                    zero_day_attack=self.config.zero_day_attack
+                )
             
             # Update model architecture based on actual feature count after
             # IGRF-RFE selection
@@ -4083,6 +4103,9 @@ class BlockchainFederatedIncentiveSystem:
                         max_far_target = getattr(self.config, 'max_far_allowed', 0.01)
                         logger.info(f"🔍 FAR-Optimized Strategy: Target FAR ≤ {max_far_target:.2%}")
                         
+                        # Convert zero_day_mask to numpy if needed
+                        zero_day_mask_np = zero_day_mask.cpu().numpy() if isinstance(zero_day_mask, torch.Tensor) else zero_day_mask
+                        
                         # Search from high to low thresholds (high threshold = lower FAR)
                         candidate_thresholds = np.linspace(0.7, 0.99, 500)  # Focus on high thresholds
                         best_threshold = 0.95  # Very conservative default
@@ -4128,13 +4151,21 @@ class BlockchainFederatedIncentiveSystem:
                                     best_zdr = zdr_at_thresh
                                     best_f1 = f1_at_thresh
                         
-                        ttt_optimal_threshold = best_threshold
-                        threshold_source = f"FAR-optimized (FAR ≤ {max_far_target:.2%})"
-                        logger.info(f"✅ Threshold Strategy: FAR-optimized")
-                        logger.info(f"   Selected threshold: {ttt_optimal_threshold:.4f}")
-                        logger.info(f"   Results: FAR={best_far:.4f} ({'✅' if best_far <= max_far_target else '❌'}), ZDR={best_zdr:.3f}, F1={best_f1:.3f}")
-                        if best_far > max_far_target:
-                            logger.warning(f"   ⚠️ Could not achieve FAR ≤ {max_far_target:.2%}, best FAR={best_far:.4f}")
+                        # Check if we found a valid threshold
+                        if best_score > -np.inf:
+                            ttt_optimal_threshold = best_threshold
+                            threshold_source = f"FAR-optimized (FAR ≤ {max_far_target:.2%})"
+                            logger.info(f"✅ Threshold Strategy: FAR-optimized")
+                            logger.info(f"   Selected threshold: {ttt_optimal_threshold:.4f}")
+                            logger.info(f"   Results: FAR={best_far:.4f} ({'✅' if best_far <= max_far_target else '❌'}), ZDR={best_zdr:.3f}, F1={best_f1:.3f}")
+                            if best_far > max_far_target:
+                                logger.warning(f"   ⚠️ Could not achieve FAR ≤ {max_far_target:.2%}, best FAR={best_far:.4f}")
+                        else:
+                            # No threshold found that meets FAR constraint, fallback to PR-optimized
+                            logger.warning(f"⚠️  FAR-optimized strategy: No threshold found with FAR ≤ {max_far_target:.2%}, falling back to PR-optimized")
+                            ttt_optimal_threshold, _, _, _, _ = find_optimal_threshold_pr(
+                                y_test_binary, attack_probs, method='f1', min_recall=0.3, min_precision=0.5)
+                            threshold_source = "PR-optimized (fallback from FAR-optimized)"
                     
                     # Strategy 2: PR-Optimized (F1-optimized using precision-recall curve)
                     # This is the default strategy for balanced performance (precision + recall)
@@ -7707,8 +7738,13 @@ class BlockchainFederatedIncentiveSystem:
 
 def main():
     """Main function to run the enhanced system with incentives"""
-    # Get centralized configuration first to check mode
-    config = get_config()
+    # Try to use dataset-aware config loader if available
+    try:
+        from config_loader import get_dataset_config
+        config = get_dataset_config()  # Auto-detects from --dataset arg or data_path
+    except ImportError:
+        # Fallback to default config if config_loader not available
+        config = get_config()
     use_federated = getattr(config, 'use_federated_learning', True)
     
     if use_federated:

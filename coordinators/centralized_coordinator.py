@@ -253,13 +253,6 @@ class CentralizedCoordinator:
         adapted_model = adapted_model.to(self.device)
         query_x = query_x.to(self.device)
         
-        # Before TTT loop: Store original parameters for L2 regularization (prevents excessive parameter drift)
-        # Only store parameters that require gradients (trainable parameters)
-        original_params = {}
-        for name, param in adapted_model.named_parameters():
-            if param.requires_grad:
-                original_params[name] = param.clone().detach()
-        
         # Set model to training mode for TTT
         if hasattr(adapted_model, 'set_ttt_mode'):
             adapted_model.set_ttt_mode(training=True)
@@ -274,8 +267,49 @@ class CentralizedCoordinator:
         entropy_weight = getattr(ttt_config, 'entropy_weight', 1.0)
         pseudo_weight = getattr(ttt_config, 'pseudo_weight', 1.5)
         
-        # Setup optimizer
-        optimizer = torch.optim.AdamW(adapted_model.parameters(), lr=ttt_lr, weight_decay=1e-4)
+        # ========================================
+        # CRITICAL FIX: TENT-Style Layer Selection
+        # ========================================
+        
+        # FREEZE all parameters first
+        for param in adapted_model.parameters():
+            param.requires_grad = False
+        
+        # UNFREEZE only BatchNorm affine parameters
+        params_to_update = []
+        bn_count = 0
+        
+        for name, module in adapted_model.named_modules():
+            if isinstance(module, (torch.nn.BatchNorm1d, torch.nn.BatchNorm2d)):
+                # Update affine parameters (scale and shift)
+                if module.weight is not None:
+                    module.weight.requires_grad = True
+                    params_to_update.append(module.weight)
+                if module.bias is not None:
+                    module.bias.requires_grad = True
+                    params_to_update.append(module.bias)
+                
+                # Update running statistics
+                module.track_running_stats = True
+                module.momentum = 0.1
+                bn_count += 1
+        
+        total_params = sum(p.numel() for p in params_to_update)
+        frozen_params = sum(p.numel() for p in adapted_model.parameters() if not p.requires_grad)
+        
+        logger.info(f"✅ TENT mode enabled:")
+        logger.info(f"   - Updating {bn_count} BatchNorm layers ({total_params:,} parameters)")
+        logger.info(f"   - Frozen: {frozen_params:,} parameters (TCN, projections, prototypes)")
+        
+        # Before TTT loop: Store original BatchNorm parameters for L2 regularization
+        # (prevents excessive parameter drift and improves generalization)
+        original_params = {}
+        for name, param in adapted_model.named_parameters():
+            if param.requires_grad:  # Only BatchNorm parameters are trainable in TENT mode
+                original_params[name] = param.clone().detach()
+        
+        # Setup optimizer with ONLY BatchNorm parameters
+        optimizer = torch.optim.AdamW(params_to_update, lr=ttt_lr, weight_decay=1e-4)
         
         # Track adaptation data
         adaptation_data = {
@@ -339,8 +373,8 @@ class CentralizedCoordinator:
             # Backward pass
             total_loss.backward()
             
-            # Gradient clipping
-            torch.nn.utils.clip_grad_norm_(adapted_model.parameters(), max_norm=1.0)
+            # Gradient clipping (only on trainable BatchNorm parameters in TENT mode)
+            torch.nn.utils.clip_grad_norm_(params_to_update, max_norm=1.0)
             
             optimizer.step()
             

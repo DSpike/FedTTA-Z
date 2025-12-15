@@ -491,7 +491,7 @@ class SystemConfig:
     feature_selection_ratio: float = 0.8  # Select top 80% of features
     
     # === TCN CONFIGURATION ===
-    use_tcn: bool = True  # Enable/disable TCN feature extraction
+    use_tcn: bool = True  # Enable/disable TCN feature extraction (KDD requires TCN)
     disable_tcn_feature_extraction: bool = False  # If True, replace TCN with simple pooling (for testing)
     sequence_length: int = 22  # Optimized from Optuna Trial 1 (best_hyperparameters.json)
     sequence_stride: int = 12  # Optimized from Optuna Trial 1 (best_hyperparameters.json)
@@ -508,19 +508,19 @@ class SystemConfig:
     
     # === EMBEDDING DISCRIMINATIVENESS IMPROVEMENT (Center Loss & Prototype Margin Loss) ===
     use_center_loss: bool = True  # Enable Center Loss for intra-class compactness (reduces embedding variance)
-    center_loss_weight: float = 0.08  # AGGRESSIVE FOR 90%+ BASE MODEL: Increased from 0.02 → 0.08 (4x increase)
+    center_loss_weight: float = 1.0  # PROTOTYPE-OPTIMIZED: 0.20 * 1.0 = 20% effective weight (critical for tight clusters and low FAR)
     use_prototype_margin_loss: bool = True  # Enable Prototype Margin Loss for inter-class separation
-    margin_loss_weight: float = 0.25  # AGGRESSIVE FOR 90%+ BASE MODEL: Increased from 0.12 → 0.25 (108% increase)
+    margin_loss_weight: float = 1.0  # PROTOTYPE-OPTIMIZED: 0.15 * 1.0 = 15% effective weight (inter-class separation)
     prototype_margin: float = 4.5  # AGGRESSIVE FOR 90%+ BASE MODEL: Increased from 2.5 → 4.5 (80% increase)
     
     # === ADVANCED EMBEDDING TECHNIQUES ===
     use_supervised_contrastive_loss: bool = True  # Enable Supervised Contrastive Loss for better embeddings (ENABLED to improve separability)
-    contrastive_loss_weight: float = 0.3  # Weight for contrastive loss (updated to match patch)
+    contrastive_loss_weight: float = 1.0  # PROTOTYPE-OPTIMIZED: 0.25 * 1.0 = 25% effective weight (inter-class separation)
     contrastive_temperature: float = 0.07  # Temperature for contrastive loss
     
     use_multi_prototype: bool = True  # Enable Multi-Prototype Learning (3 prototypes per class) (ENABLED for better separability)
     prototypes_per_class: int = 3  # Number of prototypes per class for multi-prototype learning
-    multi_prototype_weight: float = 0.2  # Weight for multi-prototype loss
+    multi_prototype_weight: float = 1.0  # PROTOTYPE-OPTIMIZED: Increased from 0.2 → 1.0 for 10% effective weight in loss
     
     use_mixup_augmentation: bool = True  # Enable Mixup data augmentation during training (ENABLED for better generalization)
     mixup_alpha: float = 0.4  # Alpha parameter for Mixup (beta distribution)
@@ -529,11 +529,11 @@ class SystemConfig:
     # === TEST-TIME TRAINING (TTT) CONFIGURATION ===
     # Optimized from Optuna Trial 1 (best_hyperparameters.json)
     # ADJUSTED: Reduced overfitting by increasing regularization and reducing adaptation intensity
-    ttt_base_steps: int = 70  # REDUCED from 85 → 70 (more aggressive prevention of overfitting)
+    ttt_base_steps: int = 100  # INCREASED from 70 → 100 (more adaptation steps for better TTT performance)
     ttt_max_steps: int = 400  # Maximum TTT steps (safety limit)
     ttt_adaptation_query_size: int = 1198  # Optimized from Optuna Trial 1 (best_hyperparameters.json)
     ttt_batch_size: int = 64  # Optimized from Optuna Trial 1 (best_hyperparameters.json)
-    ttt_lr: float = 0.002  # Optimized from Optuna Trial 1 (best_hyperparameters.json)
+    ttt_lr: float = 0.001  # REDUCED from 0.002 → 0.001 (50% reduction to prevent overshooting with tightly clustered embeddings)
     ttt_l2_reg_weight: float = 0.01  # INCREASED from 0.001 → 0.01 (10x increase for stronger regularization)
     confidence_rejection_threshold: float = 0.90  # Increased to 0.90 for stricter FAR control (reject more uncertain predictions)
     

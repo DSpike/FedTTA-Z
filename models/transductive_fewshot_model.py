@@ -53,14 +53,21 @@ class CenterLoss(nn.Module):
             device: Device to store learnable centers
         """
         super(CenterLoss, self).__init__()
-        # Learnable centers for each class - initialized randomly
-        self.centers = nn.Parameter(torch.randn(num_classes, embedding_dim).to(device))
+        # Learnable centers for each class - initialized randomly and normalized to unit sphere
+        centers = torch.randn(num_classes, embedding_dim).to(device)
+        centers = F.normalize(centers, dim=1)  # Initialize on unit sphere for geometric compatibility
+        self.centers = nn.Parameter(centers)
         self.num_classes = num_classes
         self.embedding_dim = embedding_dim
         
     def forward(self, embeddings, labels):
         """
         Compute center loss: mean squared distance from embeddings to their class centers
+        
+        CRITICAL FIX: Normalize both embeddings and centers to unit sphere for geometric 
+        compatibility with ContrastiveLoss (which also uses normalized embeddings).
+        Without this, CenterLoss and ContrastiveLoss operate in different geometric spaces
+        and fight each other, preventing proper clustering.
         
         Args:
             embeddings: (N, embedding_dim) - embeddings to pull toward centers
@@ -74,11 +81,15 @@ class CenterLoss(nn.Module):
         if batch_size == 0:
             return torch.tensor(0.0, device=embeddings.device)
         
-        # Get centers for each sample's class
-        # index_select: Select rows from self.centers based on labels
-        centers_batch = self.centers.index_select(0, labels.long())
+        # GEOMETRIC COMPATIBILITY FIX: Normalize embeddings and centers to unit sphere
+        # This ensures CenterLoss and ContrastiveLoss work in the same geometric space
+        embeddings = F.normalize(embeddings, dim=1)  # Normalize embeddings to unit sphere
+        centers_normalized = F.normalize(self.centers, dim=1)  # Normalize centers to unit sphere
         
-        # Compute squared Euclidean distance from embeddings to their class centers
+        # Get normalized centers for each sample's class
+        centers_batch = centers_normalized.index_select(0, labels.long())
+        
+        # Compute squared Euclidean distance from normalized embeddings to normalized centers
         distances_squared = ((embeddings - centers_batch) ** 2).sum(dim=1)  # (N,)
         
         # Average distance across batch
@@ -2113,14 +2124,20 @@ class TransductiveLearner(nn.Module):
                         _, proto_loss_value = self.multi_prototype(all_embeddings_for_proto, all_labels_for_proto)
                         self._last_prototype_loss = proto_loss_value
                     
-                    # NEW TOTAL LOSS: Balanced weights with all components
+                    # PROTOTYPE-OPTIMIZED LOSS: Prioritizes embedding quality (70%) over classification (30%)
+                    # For prototype-based zero-day detection, embedding quality is critical for TTT adaptation
+                    # Distribution: Base=30%, SupCon=25%, Center=20%, Margin=15%, Multi-proto=10% (sums to 100%)
                     total_loss = (
-                        0.25 * base_loss +
-                        0.30 * supcon_weight * supcon_loss_value +
-                        0.20 * multi_proto_weight * proto_loss_value +
-                        0.10 * center_loss_weight * center_loss_value +
-                        0.15 * margin_loss_weight * margin_loss_value
+                        0.30 * base_loss +                                          # 30% - Classification loss
+                        0.25 * supcon_weight * supcon_loss_value +                  # 25% - Supervised contrastive loss (inter-class separation)
+                        0.20 * center_loss_weight * center_loss_value +             # 20% - Center loss (intra-class compactness) ← KEY for low FAR
+                        0.15 * margin_loss_weight * margin_loss_value +             # 15% - Margin loss (minimum class separation)
+                        0.10 * multi_proto_weight * proto_loss_value                # 10% - Multi-prototype loss (intra-class diversity)
                     )
+                    
+                    # Verify weights sum to 1.0
+                    total_weight = 0.30 + 0.25 + 0.20 + 0.15 + 0.10
+                    assert abs(total_weight - 1.0) < 1e-6, f"Loss weights don't sum to 1.0: {total_weight}"
                     
                     # Optional: Log individual losses for debugging
                     if hasattr(self, 'training') and self.training and epoch % 10 == 0:
