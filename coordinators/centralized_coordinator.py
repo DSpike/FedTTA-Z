@@ -322,17 +322,58 @@ class CentralizedCoordinator:
         
         logger.info(f"🔄 Starting TTT adaptation ({method}) for {ttt_steps} steps...")
         
+        # CRITICAL FIX: For prototype-based models, we need to compute prototypes first
+        # The model's forward() returns embeddings, not logits!
+        # We need to use forward_with_prototypes() or compute logits from embeddings + prototypes
+        use_prototype_based = hasattr(adapted_model, 'forward_with_prototypes')
+        
+        if use_prototype_based:
+            # For prototype-based models, compute prototypes from a small support set
+            # Use a subset of query data as "support" for prototype computation during TTT
+            # This is a common approach in few-shot learning TTT
+            support_size = min(50, len(query_x) // 10)  # Use 10% of query data as support
+            support_indices = torch.randperm(len(query_x))[:support_size]
+            support_x_ttt = query_x[support_indices]
+            
+            # Get initial predictions to create pseudo-labels for support set
+            adapted_model.eval()  # Temporarily set to eval for initial prototype computation
+            with torch.no_grad():
+                # Get initial embeddings
+                support_embeddings_init = adapted_model(support_x_ttt)  # Returns embeddings
+                # Create pseudo-labels using simple 2-class clustering on embeddings
+                # Use k-means-like approach: split based on distance to mean
+                if support_embeddings_init.size(0) > 1:
+                    # Compute mean embedding
+                    mean_embedding = support_embeddings_init.mean(dim=0, keepdim=True)  # (1, embedding_dim)
+                    # Compute squared distances to mean
+                    distances_sq = ((support_embeddings_init - mean_embedding) ** 2).sum(dim=1)  # (support_size,)
+                    # Split into 2 classes based on median distance
+                    median_dist = distances_sq.median()
+                    support_y_ttt = (distances_sq > median_dist).long()
+                else:
+                    support_y_ttt = torch.zeros(support_size, dtype=torch.long, device=support_x_ttt.device)
+            
+            # Compute initial prototypes from support set
+            prototypes_ttt, _ = adapted_model.compute_prototypes(support_x_ttt, support_y_ttt)
+            adapted_model.train()  # Set back to training mode for TTT
+            logger.info(f"   Using {support_size} samples as support set for prototype computation during TTT")
+            logger.info(f"   Initial prototypes shape: {prototypes_ttt.shape}, num_classes: {len(torch.unique(support_y_ttt))}")
+        
         # TTT adaptation loop
         for step in range(ttt_steps):
             optimizer.zero_grad()
             
-            # Forward pass
-            outputs = adapted_model(query_x)
-            
-            if isinstance(outputs, tuple):
-                logits = outputs[0]
+            # Forward pass - handle prototype-based models correctly
+            if use_prototype_based:
+                # Use forward_with_prototypes() to get logits (not embeddings)
+                logits = adapted_model.forward_with_prototypes(query_x, prototypes_ttt)
             else:
-                logits = outputs
+                # Standard model that returns logits directly
+                outputs = adapted_model(query_x)
+                if isinstance(outputs, tuple):
+                    logits = outputs[0]
+                else:
+                    logits = outputs
             
             probs = F.softmax(logits, dim=1)
             
