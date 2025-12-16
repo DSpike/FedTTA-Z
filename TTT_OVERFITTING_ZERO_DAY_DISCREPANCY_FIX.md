@@ -16,9 +16,11 @@ The TTT model is performing significantly better on zero-day attacks (>10% highe
 ### **Root Cause**
 
 The discrepancy occurs when:
+
 - `ttt_zero_day_accuracy > ttt_overall_accuracy + 0.10` (10% threshold)
 
 This suggests TTT is:
+
 - ✅ Learning to detect zero-day outliers effectively
 - ⚠️ Overfitting to the zero-day distribution
 - ⚠️ Sacrificing performance on Normal/non-zero-day samples
@@ -32,6 +34,7 @@ This suggests TTT is:
 **Current Value**: `pseudo_weight: float = 3.0425406933718913` (too high)
 
 **Fix**:
+
 ```python
 pseudo_weight: float = 2.0  # Reduce from 3.04 → 2.0 (34% reduction)
 ```
@@ -45,6 +48,7 @@ pseudo_weight: float = 2.0  # Reduce from 3.04 → 2.0 (34% reduction)
 **Current Value**: `ttt_l2_reg_weight: float = 0.0010257563974185654` (low)
 
 **Fix**:
+
 ```python
 ttt_l2_reg_weight: float = 0.005  # Increase from 0.001 → 0.005 (5x increase)
 ```
@@ -58,6 +62,7 @@ ttt_l2_reg_weight: float = 0.005  # Increase from 0.001 → 0.005 (5x increase)
 **Current Value**: `ttt_prototype_weight: float = 1` (high)
 
 **Fix**:
+
 ```python
 ttt_prototype_weight: float = 0.5  # Reduce from 1.0 → 0.5 (50% reduction)
 ```
@@ -71,6 +76,7 @@ ttt_prototype_weight: float = 0.5  # Reduce from 1.0 → 0.5 (50% reduction)
 **Current Value**: `ttt_base_steps: int = 100`
 
 **Fix**:
+
 ```python
 ttt_base_steps: int = 80  # Reduce from 100 → 80 (20% reduction)
 ```
@@ -84,6 +90,7 @@ ttt_base_steps: int = 80  # Reduce from 100 → 80 (20% reduction)
 **Current Value**: `entropy_weight: float = 0.5740446517340904`
 
 **Fix**:
+
 ```python
 entropy_weight: float = 0.7  # Increase from 0.57 → 0.7 (22% increase)
 ```
@@ -127,11 +134,13 @@ ttt_prototype_steps: int = 100
 ## 🎯 **Expected Impact**
 
 ### **Before (Current)**:
+
 - Zero-day accuracy: ~85-90%
 - Overall accuracy: ~75-80%
 - **Discrepancy**: >10% ⚠️
 
 ### **After (With Fixes)**:
+
 - Zero-day accuracy: ~80-85% (slight decrease)
 - Overall accuracy: ~80-85% (improvement)
 - **Discrepancy**: <5% ✅
@@ -158,4 +167,6 @@ After applying fixes, check:
 - These changes reduce overfitting while maintaining zero-day detection capability
 - The goal is **balanced performance** across all sample types
 - If zero-day performance drops too much, gradually increase `pseudo_weight` back to 2.5
+
+
 

@@ -244,12 +244,48 @@ class CentralizedCoordinator:
         if query_x is None:
             logger.error("❌ No query/test data provided for TTT adaptation")
             return self.model
-        
+
+        # CRITICAL: Verify validation data is available for FIXED prototypes
+        if self.train_data is None or self.train_labels is None:
+            error_msg = (
+                "CRITICAL: Validation data not loaded for TTT adaptation!\n"
+                "TTT requires validation data to compute FIXED prototypes.\n"
+                "Call distribute_data() before adapt_to_test_data().\n"
+                f"Status: train_data={self.train_data is not None}, train_labels={self.train_labels is not None}"
+            )
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        # Verify we're not accidentally using test labels (should always be None)
+        if query_y is not None:
+            logger.warning("⚠️ Test labels provided to TTT but will be IGNORED (TTT is unsupervised)")
+            query_y = None  # Ensure labels are not used
+
         # Use config from parameter or instance
         ttt_config = config if config is not None else self.config
-        
-        # Clone model for adaptation
-        adapted_model = copy.deepcopy(self.model)
+
+        # Clone model for adaptation (avoid modifying base model)
+        # Use torch.save / torch.load to handle weight_norm / graph-leaf issues
+        import io
+        buffer = io.BytesIO()
+        adapted_model = None
+        try:
+            torch.save(self.model, buffer)
+            buffer.seek(0)
+            adapted_model = torch.load(buffer, map_location=self.device, weights_only=False)
+            logger.info("✅ Model cloned successfully via torch.save/torch.load")
+        except Exception as e:
+            logger.warning(f"⚠️ torch.save/torch.load cloning failed ({e}), falling back to state_dict clone")
+            try:
+                from copy import deepcopy
+                # Fallback: create a new instance of the same class using state_dict
+                adapted_model = deepcopy(self.model)
+                adapted_model.load_state_dict(self.model.state_dict())
+                logger.info("✅ Model cloned via state_dict deepcopy")
+            except Exception as e2:
+                logger.error(f"❌ State_dict cloning also failed ({e2}) - adapting in-place as last resort")
+                adapted_model = self.model
+
         adapted_model = adapted_model.to(self.device)
         query_x = query_x.to(self.device)
         
@@ -275,31 +311,50 @@ class CentralizedCoordinator:
         for param in adapted_model.parameters():
             param.requires_grad = False
         
-        # UNFREEZE only BatchNorm affine parameters
+        # UNFREEZE BatchNorm affine parameters AND classifier/projection layers
         params_to_update = []
         bn_count = 0
+        classifier_count = 0
+        
+        # Track added params to avoid duplicates
+        added_param_ids = set()
         
         for name, module in adapted_model.named_modules():
             if isinstance(module, (torch.nn.BatchNorm1d, torch.nn.BatchNorm2d)):
                 # Update affine parameters (scale and shift)
                 if module.weight is not None:
                     module.weight.requires_grad = True
-                    params_to_update.append(module.weight)
+                    if id(module.weight) not in added_param_ids:
+                        params_to_update.append(module.weight)
+                        added_param_ids.add(id(module.weight))
                 if module.bias is not None:
                     module.bias.requires_grad = True
-                    params_to_update.append(module.bias)
-                
-                # Update running statistics
+                    if id(module.bias) not in added_param_ids:
+                        params_to_update.append(module.bias)
+                        added_param_ids.add(id(module.bias))
+
+                # Update running statistics with HIGH momentum for fast test-time adaptation
+                # Default PyTorch momentum (0.1) is too slow for TTT on small test sets
+                # Higher momentum (0.8) means 80% weight to current batch statistics
                 module.track_running_stats = True
-                module.momentum = 0.1
+                module.momentum = 0.8  # INCREASED from 0.1 → 0.8 for effective test-time adaptation
                 bn_count += 1
+            
+            # Also unfreeze classifier/projection layers
+            if "classifier" in name or "projection" in name:
+                for _, param in module.named_parameters(recurse=False):
+                    param.requires_grad = True
+                    if id(param) not in added_param_ids:
+                        params_to_update.append(param)
+                        added_param_ids.add(id(param))
+                        classifier_count += 1
         
         total_params = sum(p.numel() for p in params_to_update)
         frozen_params = sum(p.numel() for p in adapted_model.parameters() if not p.requires_grad)
         
-        logger.info(f"✅ TENT mode enabled:")
-        logger.info(f"   - Updating {bn_count} BatchNorm layers ({total_params:,} parameters)")
-        logger.info(f"   - Frozen: {frozen_params:,} parameters (TCN, projections, prototypes)")
+        logger.info(f"✅ TENT+Classifier mode enabled:")
+        logger.info(f"   - Updating {bn_count} BatchNorm layers and {classifier_count} Classifier layers ({total_params:,} parameters)")
+        logger.info(f"   - Frozen: {frozen_params:,} parameters (TCN feature extractor)")
         
         # Before TTT loop: Store original BatchNorm parameters for L2 regularization
         # (prevents excessive parameter drift and improves generalization)
@@ -328,37 +383,97 @@ class CentralizedCoordinator:
         use_prototype_based = hasattr(adapted_model, 'forward_with_prototypes')
         
         if use_prototype_based:
-            # For prototype-based models, compute prototypes from a small support set
-            # Use a subset of query data as "support" for prototype computation during TTT
-            # This is a common approach in few-shot learning TTT
-            support_size = min(50, len(query_x) // 10)  # Use 10% of query data as support
-            support_indices = torch.randperm(len(query_x))[:support_size]
-            support_x_ttt = query_x[support_indices]
-            
-            # Get initial predictions to create pseudo-labels for support set
-            adapted_model.eval()  # Temporarily set to eval for initial prototype computation
-            with torch.no_grad():
-                # Get initial embeddings
-                support_embeddings_init = adapted_model(support_x_ttt)  # Returns embeddings
-                # Create pseudo-labels using simple 2-class clustering on embeddings
-                # Use k-means-like approach: split based on distance to mean
-                if support_embeddings_init.size(0) > 1:
-                    # Compute mean embedding
-                    mean_embedding = support_embeddings_init.mean(dim=0, keepdim=True)  # (1, embedding_dim)
-                    # Compute squared distances to mean
-                    distances_sq = ((support_embeddings_init - mean_embedding) ** 2).sum(dim=1)  # (support_size,)
-                    # Split into 2 classes based on median distance
-                    median_dist = distances_sq.median()
-                    support_y_ttt = (distances_sq > median_dist).long()
-                else:
-                    support_y_ttt = torch.zeros(support_size, dtype=torch.long, device=support_x_ttt.device)
-            
-            # Compute initial prototypes from support set
-            prototypes_ttt, _ = adapted_model.compute_prototypes(support_x_ttt, support_y_ttt)
-            adapted_model.train()  # Set back to training mode for TTT
-            logger.info(f"   Using {support_size} samples as support set for prototype computation during TTT")
-            logger.info(f"   Initial prototypes shape: {prototypes_ttt.shape}, num_classes: {len(torch.unique(support_y_ttt))}")
-        
+            # =====================================================================
+            # TRUE TEST-TIME TRAINING (TTT): Unsupervised Adaptation
+            # =====================================================================
+            # THEORETICAL BACKGROUND (Sun et al. 2020, Wang et al. 2021):
+            # 1. TTT adapts feature extractor using UNSUPERVISED losses on test data
+            # 2. NO labels are used during adaptation (entropy minimization only)
+            # 3. Prototypes are computed from BASE model using validation support
+            # 4. After adaptation: adapted features + FIXED base prototypes
+            #
+            # KEY INSIGHT: Separate feature adaptation (TTT) from classification (prototypes)
+            # - Feature extractor adapts to test distribution (unsupervised)
+            # - Prototypes remain fixed from base model (supervised from validation)
+
+            logger.info("   🎯 TRUE TTT: Unsupervised feature adaptation + Fixed prototypes")
+
+            # Step 1: Compute FIXED reference prototypes from BASE model (before adaptation)
+            # These are computed ONCE using validation support and NEVER updated during TTT
+            if self.train_data is not None and self.train_labels is not None:
+                logger.info("   📊 Computing FIXED base prototypes from validation support...")
+
+                # Sample balanced support from validation (known attacks only)
+                n_shots_per_class = 50
+                classes = torch.unique(self.train_labels)
+
+                support_indices_ref = []
+                for c in classes:
+                    indices = (self.train_labels == c).nonzero(as_tuple=True)[0]
+                    if len(indices) >= n_shots_per_class:
+                        perm = torch.randperm(len(indices))[:n_shots_per_class]
+                        support_indices_ref.append(indices[perm])
+                    else:
+                        support_indices_ref.append(indices)
+
+                support_indices_ref = torch.cat(support_indices_ref)
+                support_x_ref = self.train_data[support_indices_ref].to(self.device)
+                support_y_ref = self.train_labels[support_indices_ref].to(self.device)
+
+                # Compute prototypes using BASE model (BEFORE adaptation)
+                with torch.no_grad():
+                    self.model.eval()  # Base model in eval mode
+                    support_embeddings_ref = self.model(support_x_ref)
+
+                    # Compute prototypes for each class
+                    prototypes_ref = []
+                    for c in classes:
+                        class_mask = (support_y_ref == c)
+                        class_embeddings = support_embeddings_ref[class_mask]
+                        class_prototype = class_embeddings.mean(dim=0)
+                        prototypes_ref.append(class_prototype)
+
+                    # FIXED prototypes for classification
+                    prototypes_ttt = torch.stack(prototypes_ref).detach()
+
+                # Store the support labels for later use (renaming to match expected variable)
+                support_y_ttt = support_y_ref  # These are the TRUE labels from validation
+
+                logger.info(f"   ✅ FIXED prototypes: shape={prototypes_ttt.shape}, classes={len(classes)}")
+                logger.info(f"   ✅ Distribution: {torch.bincount(support_y_ref).tolist()}")
+                logger.info(f"   ⚠️ These prototypes are FROZEN during TTT")
+                logger.info(f"   ⚠️ TTT adapts features ONLY via entropy minimization on test data")
+            else:
+                # CRITICAL ERROR: No validation data available for TTT
+                # Cannot compute prototypes from test data (violates zero-day isolation)
+                error_msg = (
+                    "=" * 80 + "\n"
+                    "CRITICAL ERROR: No validation data available for TTT adaptation!\n"
+                    "=" * 80 + "\n"
+                    "TTT requires validation data to compute FIXED prototypes.\n"
+                    "\n"
+                    "WHY THIS IS CRITICAL:\n"
+                    "1. Using test data would violate zero-day isolation protocol\n"
+                    "2. K-means clustering on test data can include zero-day samples\n"
+                    "3. This compromises scientific validity of zero-day evaluation\n"
+                    "\n"
+                    "SOLUTION:\n"
+                    "Ensure validation data is properly loaded via distribute_data().\n"
+                    "Check that self.train_data and self.train_labels are set.\n"
+                    "\n"
+                    "DEBUG INFO:\n"
+                    f"- self.train_data is None: {self.train_data is None}\n"
+                    f"- self.train_labels is None: {self.train_labels is None}\n"
+                    "=" * 80
+                )
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+
+                # OLD FALLBACK CODE REMOVED (Lines 432-544)
+                # This fallback used K-means clustering on test data which:
+                # - Could include zero-day samples in support set
+                # - Violated zero-day isolation protocol
+                # - Compromised scientific validity
         # TTT adaptation loop
         for step in range(ttt_steps):
             optimizer.zero_grad()
@@ -418,14 +533,38 @@ class CentralizedCoordinator:
             torch.nn.utils.clip_grad_norm_(params_to_update, max_norm=1.0)
             
             optimizer.step()
-            
+
+            # =====================================================================
+            # CRITICAL FIX: DO NOT update prototypes during TTT adaptation
+            # =====================================================================
+            # INCORRECT APPROACH (previous code):
+            #   - Recomputed prototypes every 10 steps using adapted features
+            #   - This causes "moving target" problem - prototypes drift with features
+            #   - On zero-day: drifting prototypes amplify any initial misalignment
+            #
+            # CORRECT APPROACH (TTT theory):
+            #   - Prototypes are FIXED from base model (computed from validation)
+            #   - TTT adapts ONLY feature extractor via unsupervised losses
+            #   - Classification uses: adapted_features(test) + FIXED_prototypes(validation)
+            #
+            # WHY THIS FIXES ZERO-DAY PERFORMANCE:
+            #   - Zero-day samples have correct prototypes from validation (known attacks)
+            #   - Feature adaptation improves separation WITHOUT changing prototypes
+            #   - No risk of prototypes drifting away from correct positions
+
+            # NOTE: Prototypes are FROZEN - computed once and never updated
+            # No periodic recomputation during TTT loop
+            pass  # Explicitly show we're NOT updating prototypes
+
+            # OLD CODE REMOVED: Periodic prototype updates caused zero-day performance issues
+
             # Store metrics
             adaptation_data['steps'].append(step + 1)
             adaptation_data['total_losses'].append(total_loss.item())
             adaptation_data['entropy_losses'].append(entropy_loss.item())
             adaptation_data['pseudo_losses'].append(pseudo_loss.item())
             adaptation_data['l2_reg_losses'].append(reg_loss.item())
-            
+
             if (step + 1) % 20 == 0:
                 logger.info(f"  TTT Step {step + 1}/{ttt_steps}: Loss={total_loss.item():.4f}, "
                           f"Entropy={entropy_loss.item():.4f}, Pseudo={pseudo_loss.item():.4f}, "
@@ -447,10 +586,32 @@ class CentralizedCoordinator:
             'final_loss': adaptation_data['total_losses'][-1] if adaptation_data['total_losses'] else 0.0,
             'adaptation_steps': len(adaptation_data['steps'])
         }
-        
+
+        # CRITICAL FIX: Store TTT prototypes for consistent evaluation
+        # The adapted model MUST be evaluated using the SAME prototypes it was adapted with
+        # Otherwise, embedding space mismatch causes performance degradation
+        logger.info(f"🔍 DEBUG: use_prototype_based = {use_prototype_based}")
+        logger.info(f"🔍 DEBUG: prototypes_ttt type = {type(prototypes_ttt) if 'prototypes_ttt' in locals() else 'NOT DEFINED'}")
+        if use_prototype_based:
+            if 'prototypes_ttt' not in locals() or prototypes_ttt is None:
+                logger.error(f"❌ CRITICAL: prototypes_ttt is not defined! Cannot store prototypes!")
+            else:
+                adapted_model.ttt_prototypes = prototypes_ttt.detach().clone()
+                adapted_model.ttt_support_labels = support_y_ttt.detach().clone() if isinstance(support_y_ttt, torch.Tensor) else support_y_ttt
+                logger.info(f"   ✅ Stored TTT prototypes (shape: {prototypes_ttt.shape}) for consistent evaluation")
+                logger.info(f"   ⚠️  IMPORTANT: Evaluation MUST use these prototypes, not recomputed ones!")
+
+                # VERIFY the attribute was actually stored
+                if hasattr(adapted_model, 'ttt_prototypes'):
+                    logger.info(f"   ✅ VERIFIED: adapted_model.ttt_prototypes exists (shape: {adapted_model.ttt_prototypes.shape})")
+                else:
+                    logger.error(f"   ❌ CRITICAL: Failed to store ttt_prototypes on adapted_model!")
+        else:
+            logger.warning(f"   ⚠️ NOT storing TTT prototypes (use_prototype_based={use_prototype_based})")
+
         logger.info(f"✅ TTT adaptation completed: {len(adaptation_data['steps'])} steps, "
                    f"final loss: {adaptation_data['total_losses'][-1]:.4f}")
-        
+
         return adapted_model
     
     def evaluate_with_flow_wrapper(
@@ -559,4 +720,3 @@ class CentralizedCoordinator:
     def set_attack_types(self, attack_types: Dict[str, int]):
         """Set attack types mapping (for compatibility)"""
         self.attack_types = attack_types
-

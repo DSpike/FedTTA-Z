@@ -36,6 +36,7 @@ zero_day_attack: str = "DoS"  # Zero-day attack for target dataset
 ### **1. Feature Alignment**
 
 When cross-dataset evaluation is enabled:
+
 - ✅ **Common features** between source and target datasets are automatically identified
 - ✅ **Missing features** are logged with warnings
 - ✅ **Only common features** are used for training and testing
@@ -166,4 +167,6 @@ When cross-dataset evaluation is enabled, you'll see:
 - **Transfer Learning**: Evaluate pre-trained models on new datasets
 - **Robustness Testing**: Test model performance on different data distributions
 - **Research**: Compare performance across different NIDS datasets
+
+
 

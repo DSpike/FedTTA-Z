@@ -61,11 +61,13 @@ The following configuration changes have been applied to reduce TTT overfitting:
 ## 📊 **Expected Impact**
 
 ### **Before (Current)**:
+
 - Zero-day accuracy: ~85-90%
 - Overall accuracy: ~75-80%
 - **Discrepancy**: >10% ⚠️
 
 ### **After (With Fixes)**:
+
 - Zero-day accuracy: ~80-85% (slight decrease)
 - Overall accuracy: ~80-85% (improvement)
 - **Discrepancy**: <5% ✅
@@ -116,4 +118,6 @@ entropy_weight: float = 0.7  # Increased from 0.57
 - These changes reduce overfitting while maintaining zero-day detection capability
 - The goal is **balanced performance** across all sample types
 - If zero-day performance drops too much, gradually increase `pseudo_weight` back to 2.5
+
+
 

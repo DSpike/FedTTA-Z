@@ -1,0 +1,1994 @@
+2025-12-16 08:09:02,521 - INFO - 🚀 Federated Learning System (No Blockchain)
+2025-12-16 08:09:02,521 - INFO - ================================================================================
+2025-12-16 08:09:02,521 - INFO - ✅ Configuration validation passed
+2025-12-16 08:09:02,521 - INFO - 🔧 System Configuration:
+2025-12-16 08:09:02,521 - INFO -    zero_day_attack: PortScan
+2025-12-16 08:09:02,521 - INFO -    use_tcn: True
+2025-12-16 08:09:02,521 - INFO -    sequence_length: 25
+2025-12-16 08:09:02,521 - INFO -    sequence_stride: 12
+2025-12-16 08:09:02,521 - INFO -    local_epochs: 10
+2025-12-16 08:09:02,521 - INFO -    learning_rate: 0.0015751320499779737
+2025-12-16 08:09:02,521 - INFO -    ttt_base_steps: 194
+2025-12-16 08:09:02,521 - INFO -    ttt_max_steps: 400
+2025-12-16 08:09:02,521 - INFO -    ttt_batch_size: 64
+2025-12-16 08:09:02,521 - INFO -    ttt_lr: 0.01
+2025-12-16 08:09:02,521 - INFO -    mode: Grouped
+2025-12-16 08:09:02,521 - INFO -    num_classes: 7
+2025-12-16 08:09:02,521 - INFO -    zero_day_label: 4
+2025-12-16 08:09:02,521 - INFO -    zero_day_category: PortScan
+2025-12-16 08:09:02,521 - INFO - Initializing Enhanced Centralized Learning System
+2025-12-16 08:09:02,521 - INFO - Device: cpu
+2025-12-16 08:09:02,521 - INFO - Enhanced system initialization completed
+2025-12-16 08:09:02,521 - INFO - Initializing enhanced system components...
+2025-12-16 08:09:02,521 - INFO - Initializing CICIDS2017 preprocessor...
+2025-12-16 08:09:02,521 - INFO - UNSW-NB15 Preprocessor initialized
+2025-12-16 08:09:02,521 - INFO - CICIDS2017 Preprocessor initialized
+2025-12-16 08:09:02,521 - INFO - Initializing TCN-based transductive few-shot model...
+2025-12-16 08:09:02,523 - INFO - ✅ UnifiedDilatedTCN initialized with kernel_size=3 (dilations=[1,2,4], RF=[3,7,15])
+2025-12-16 08:09:02,523 - INFO - Initializing centralized learning coordinator...
+2025-12-16 08:09:02,523 - INFO - ✅ Centralized Coordinator model moved to device: cpu
+2025-12-16 08:09:02,523 - INFO - Centralized Coordinator initialized on device: cpu
+2025-12-16 08:09:02,523 - INFO - ✅ Centralized learning coordinator initialized
+2025-12-16 08:09:02,523 - INFO - ✅ Enhanced system initialization completed successfully!
+2025-12-16 08:09:02,523 - INFO - Preprocessing dataset...
+2025-12-16 08:09:02,523 - INFO - Starting CICIDS2017 preprocessing (Zero-Day Target: PortScan)
+2025-12-16 08:09:02,523 - INFO - Loading CSV file: CICIDS2017_train.csv
+2025-12-16 08:09:02,523 - INFO -    Reading CSV header to determine structure...
+2025-12-16 08:09:02,533 - INFO -    Sample shape: (1000, 79), columns: 79
+2025-12-16 08:09:02,533 - INFO -    Loading full CSV with optimized dtypes (using chunking for large files)...
+2025-12-16 08:09:02,533 - INFO -    File size: 736.7 MB
+2025-12-16 08:09:02,533 - INFO -    File is large (736.7 MB), using chunked reading from the start...
+2025-12-16 08:09:02,533 - INFO -    Using chunked reading...
+2025-12-16 08:09:02,533 - INFO -    Attempting chunked reading with chunk_size=50000...
+2025-12-16 08:09:05,773 - INFO -    Processed 10 chunks (500,000 rows)...
+2025-12-16 08:09:09,203 - INFO -    Processed 20 chunks (1,000,000 rows)...
+2025-12-16 08:09:12,500 - INFO -    Processed 30 chunks (1,500,000 rows)...
+2025-12-16 08:09:15,749 - INFO -    Processed 40 chunks (2,000,000 rows)...
+2025-12-16 08:09:17,548 - INFO -    Concatenating 46 chunks...
+2025-12-16 08:09:17,878 - INFO -    ✅ CSV loaded via chunking (chunk_size=50000): (2262300, 79), memory: 594.0 MB
+2025-12-16 08:09:17,919 - INFO - Loading CSV file: CICIDS2017_test.csv
+2025-12-16 08:09:17,919 - INFO -    Reading CSV header to determine structure...
+2025-12-16 08:09:17,933 - INFO -    Sample shape: (1000, 79), columns: 79
+2025-12-16 08:09:17,940 - INFO -    Loading full CSV with optimized dtypes (using chunking for large files)...
+2025-12-16 08:09:17,940 - INFO -    File size: 184.1 MB
+2025-12-16 08:09:21,851 - INFO -    ✅ CSV loaded in one pass: (565576, 79), memory: 151.2 MB
+2025-12-16 08:09:22,829 - INFO - 🔍 Normalized training Label column. Unique values: {'BENIGN': 1817055, 'DoS Hulk': 184099, 'PortScan': 127043, 'DDoS': 102420, 'DoS GoldenEye': 8234, 'FTP-Patator': 6348, 'SSH-Patator': 4717, 'DoS slowloris': 4637, 'DoS Slowhttptest': 4399, 'Bot': 1565, 'Web Attack  Brute Force': 1206, 'Web Attack  XSS': 522, 'Infiltration': 29, 'Web Attack  Sql Injection': 17, 'Heartbleed': 9}
+2025-12-16 08:09:22,829 - INFO - 🔍 DEBUG: Label distribution in test data BEFORE normalization:
+2025-12-16 08:09:22,879 - INFO -    Raw unique labels (15 types): ['BENIGN', 'DDoS', 'DoS Hulk', 'PortScan', 'FTP-Patator', 'SSH-Patator', 'DoS GoldenEye', 'DoS Slowhttptest', 'DoS slowloris', 'Web Attack � XSS', 'Web Attack � Brute Force', 'Bot', 'Infiltration', 'Heartbleed', 'Web Attack � Sql Injection']
+2025-12-16 08:09:22,880 - WARNING -    ⚠️ Labels that may NOT match attack_types mapping: ['Web Attack � Brute Force', 'Web Attack � Sql Injection', 'Web Attack � XSS']
+2025-12-16 08:09:23,073 - INFO -    Normalized Label distribution AFTER normalization: {'BENIGN': 454265, 'DoS Hulk': 46025, 'PortScan': 31761, 'DDoS': 25605, 'DoS GoldenEye': 2059, 'FTP-Patator': 1587, 'SSH-Patator': 1180, 'DoS slowloris': 1159, 'DoS Slowhttptest': 1100, 'Bot': 391, 'Web Attack  Brute Force': 301, 'Web Attack  XSS': 130, 'Infiltration': 7, 'Web Attack  Sql Injection': 4, 'Heartbleed': 2}
+2025-12-16 08:09:23,116 - INFO -    BENIGN: 454265, Attacks: 111311
+2025-12-16 08:09:23,116 - WARNING - ⚠️ Training dataset is large (2262300 samples). Sampling 50000 samples for memory efficiency...
+2025-12-16 08:09:23,269 - INFO - ✅ Sampled training data: 50000 samples
+2025-12-16 08:09:23,269 - WARNING - ⚠️ Test dataset is large (565576 samples). Sampling 20000 samples for memory efficiency...
+2025-12-16 08:09:23,283 - INFO -    Label distribution BEFORE sampling: {'BENIGN': 454265, 'DoS Hulk': 46025, 'PortScan': 31761, 'DDoS': 25605, 'DoS GoldenEye': 2059, 'FTP-Patator': 1587, 'SSH-Patator': 1180, 'DoS slowloris': 1159, 'DoS Slowhttptest': 1100, 'Bot': 391, 'Web Attack  Brute Force': 301, 'Web Attack  XSS': 130, 'Infiltration': 7, 'Web Attack  Sql Injection': 4, 'Heartbleed': 2}
+2025-12-16 08:09:23,289 - INFO -    Sampling strategy: 1333 samples per class (from 15 classes)
+2025-12-16 08:09:23,401 - INFO -    Sampled 8000 BENIGN samples (target: 8000)
+2025-12-16 08:09:23,401 - INFO -    Distributing 12000 samples across 14 attack types (~857 per type)
+2025-12-16 08:09:23,423 - INFO -    Sampled 857 samples from 'DDoS' class (total available: 25605)
+2025-12-16 08:09:23,454 - INFO -    Sampled 857 samples from 'DoS Hulk' class (total available: 46025)
+2025-12-16 08:09:23,478 - INFO -    Sampled 857 samples from 'PortScan' class (total available: 31761)
+2025-12-16 08:09:23,492 - INFO -    Sampled 857 samples from 'FTP-Patator' class (total available: 1587)
+2025-12-16 08:09:23,509 - INFO -    Sampled 857 samples from 'SSH-Patator' class (total available: 1180)
+2025-12-16 08:09:23,529 - INFO -    Sampled 857 samples from 'DoS GoldenEye' class (total available: 2059)
+2025-12-16 08:09:23,545 - INFO -    Sampled 857 samples from 'DoS Slowhttptest' class (total available: 1100)
+2025-12-16 08:09:23,558 - INFO -    Sampled 857 samples from 'DoS slowloris' class (total available: 1159)
+2025-12-16 08:09:23,571 - INFO -    Sampled 130 samples from 'Web Attack  XSS' class (total available: 130)
+2025-12-16 08:09:23,583 - INFO -    Sampled 301 samples from 'Web Attack  Brute Force' class (total available: 301)
+2025-12-16 08:09:23,589 - INFO -    Sampled 391 samples from 'Bot' class (total available: 391)
+2025-12-16 08:09:23,609 - INFO -    Sampled 7 samples from 'Infiltration' class (total available: 7)
+2025-12-16 08:09:23,622 - INFO -    Sampled 2 samples from 'Heartbleed' class (total available: 2)
+2025-12-16 08:09:23,635 - INFO -    Sampled 4 samples from 'Web Attack  Sql Injection' class (total available: 4)
+2025-12-16 08:09:23,650 - INFO -    Label distribution AFTER sampling: {'BENIGN': 8000, 'DDoS': 857, 'DoS Hulk': 857, 'PortScan': 857, 'FTP-Patator': 857, 'SSH-Patator': 857, 'DoS GoldenEye': 857, 'DoS Slowhttptest': 857, 'DoS slowloris': 857, 'Bot': 391, 'Web Attack  Brute Force': 301, 'Web Attack  XSS': 130, 'Infiltration': 7, 'Web Attack  Sql Injection': 4, 'Heartbleed': 2}
+2025-12-16 08:09:23,650 - INFO - ✅ Sampled test data: 15691 samples
+2025-12-16 08:09:23,650 - INFO - 🔍 DEBUG: Checking Label distribution in test data...
+2025-12-16 08:09:23,650 - INFO -    Test DataFrame columns: ['Destination Port', 'Flow Duration', 'Total Fwd Packets', 'Total Backward Packets', 'Total Length of Fwd Packets', 'Total Length of Bwd Packets', 'Fwd Packet Length Max', 'Fwd Packet Length Min', 'Fwd Packet Length Mean', 'Fwd Packet Length Std']...
+2025-12-16 08:09:23,653 - INFO -    Label column found! Unique labels in test (15 types):
+2025-12-16 08:09:23,653 - INFO -       'BENIGN': 8000 samples
+2025-12-16 08:09:23,653 - INFO -       'DDoS': 857 samples
+2025-12-16 08:09:23,653 - INFO -       'DoS Hulk': 857 samples
+2025-12-16 08:09:23,653 - INFO -       'PortScan': 857 samples
+2025-12-16 08:09:23,653 - INFO -       'FTP-Patator': 857 samples
+2025-12-16 08:09:23,653 - INFO -       'SSH-Patator': 857 samples
+2025-12-16 08:09:23,653 - INFO -       'DoS GoldenEye': 857 samples
+2025-12-16 08:09:23,653 - INFO -       'DoS Slowhttptest': 857 samples
+2025-12-16 08:09:23,653 - INFO -       'DoS slowloris': 857 samples
+2025-12-16 08:09:23,653 - INFO -       'Bot': 391 samples
+2025-12-16 08:09:23,653 - INFO -       'Web Attack  Brute Force': 301 samples
+2025-12-16 08:09:23,653 - INFO -       'Web Attack  XSS': 130 samples
+2025-12-16 08:09:23,653 - INFO -       'Infiltration': 7 samples
+2025-12-16 08:09:23,653 - INFO -       'Web Attack  Sql Injection': 4 samples
+2025-12-16 08:09:23,653 - INFO -       'Heartbleed': 2 samples
+2025-12-16 08:09:23,653 - INFO -    Total test samples: 15691
+2025-12-16 08:09:23,654 - INFO -    BENIGN count: 8000
+2025-12-16 08:09:23,654 - INFO -    Attack types in data matching our mapping: ['BENIGN', 'Bot', 'DDoS', 'DoS GoldenEye', 'DoS Hulk', 'DoS Slowhttptest', 'DoS slowloris', 'FTP-Patator', 'Heartbleed', 'Infiltration', 'PortScan', 'SSH-Patator', 'Web Attack  Brute Force', 'Web Attack  Sql Injection', 'Web Attack  XSS']
+2025-12-16 08:09:23,654 - WARNING -    ⚠️ Attack types in mapping but NOT in test data: ['Web Attack', 'Web Attack - Brute Force', 'Web Attack - Sql Injection', 'Web Attack - XSS', 'Web Attack Brute Force', 'Web Attack Sql Injection', 'Web Attack XSS', 'Web Attack – Brute Force', 'Web Attack – Sql Injection', 'Web Attack – XSS']
+2025-12-16 08:09:23,654 - INFO -    Attack count (non-BENIGN): 7691
+2025-12-16 08:09:23,671 - INFO - 🔍 DEBUG: Final attack_cat distribution in test data (after mapping):
+2025-12-16 08:09:23,672 - INFO -    'BENIGN': 8000 samples
+2025-12-16 08:09:23,672 - INFO -    'DDoS': 857 samples
+2025-12-16 08:09:23,672 - INFO -    'DoS Hulk': 857 samples
+2025-12-16 08:09:23,672 - INFO -    'PortScan': 857 samples
+2025-12-16 08:09:23,672 - INFO -    'FTP-Patator': 857 samples
+2025-12-16 08:09:23,672 - INFO -    'SSH-Patator': 857 samples
+2025-12-16 08:09:23,672 - INFO -    'DoS GoldenEye': 857 samples
+2025-12-16 08:09:23,672 - INFO -    'DoS Slowhttptest': 857 samples
+2025-12-16 08:09:23,672 - INFO -    'DoS slowloris': 857 samples
+2025-12-16 08:09:23,672 - INFO -    'Bot': 391 samples
+2025-12-16 08:09:23,672 - INFO -    'Web Attack  Brute Force': 301 samples
+2025-12-16 08:09:23,672 - INFO -    'Web Attack  XSS': 130 samples
+2025-12-16 08:09:23,672 - INFO -    'Infiltration': 7 samples
+2025-12-16 08:09:23,672 - INFO -    'Web Attack  Sql Injection': 4 samples
+2025-12-16 08:09:23,672 - INFO -    'Heartbleed': 2 samples
+2025-12-16 08:09:23,672 - INFO -    Total: 15691 samples
+2025-12-16 08:09:23,672 - INFO -    BENIGN: 8000
+2025-12-16 08:09:23,673 - INFO -    Attacks (non-BENIGN): 7691
+2025-12-16 08:09:23,673 - INFO - Step 1: Data Quality Assessment
+2025-12-16 08:09:23,758 - INFO -   Memory usage: 13.13 MB
+2025-12-16 08:09:23,758 - INFO -   Shape: (50000, 79)
+2025-12-16 08:09:23,758 - INFO -   Missing values: 0
+2025-12-16 08:09:23,758 - INFO -   Duplicate rows: 1582
+2025-12-16 08:09:23,758 - INFO -   Infinite values: 0
+2025-12-16 08:09:23,758 - INFO - Step 2: Feature Engineering (Adapting to CICIDS2017 features)
+2025-12-16 08:09:23,760 - INFO - Step 3: Data Cleaning (Preserving Attack Signatures)
+2025-12-16 08:09:23,760 - INFO -   Initial shape: (50000, 82)
+2025-12-16 08:09:23,829 - INFO -   Removed 1582 duplicate rows
+2025-12-16 08:09:23,848 - INFO -   Converted 2 infinite values to NaN
+2025-12-16 08:09:23,851 - INFO -   Processing 81 numeric and 1 categorical columns
+2025-12-16 08:09:23,858 - INFO -     packets_per_second: filled 2 missing values with median 49.5003
+2025-12-16 08:09:23,863 - INFO -   ✅ All missing values successfully imputed
+2025-12-16 08:09:23,863 - INFO -   Data cleaning summary:
+2025-12-16 08:09:23,863 - INFO -     - Duplicates removed: 1582
+2025-12-16 08:09:23,863 - INFO -     - Infinite values converted: 2
+2025-12-16 08:09:23,863 - INFO -     - Numeric missing values filled: 2
+2025-12-16 08:09:23,863 - INFO -     - Categorical missing values filled: 0
+2025-12-16 08:09:23,863 - INFO -     - Final shape: (48418, 82)
+2025-12-16 08:09:23,864 - INFO - Step 4: Categorical Encoding (Handling Protocol)
+2025-12-16 08:09:23,864 - INFO - Step 1: Data Quality Assessment
+2025-12-16 08:09:23,883 - INFO -   Memory usage: 4.22 MB
+2025-12-16 08:09:23,883 - INFO -   Shape: (15691, 79)
+2025-12-16 08:09:23,883 - INFO -   Missing values: 0
+2025-12-16 08:09:23,883 - INFO -   Duplicate rows: 734
+2025-12-16 08:09:23,883 - INFO -   Infinite values: 0
+2025-12-16 08:09:23,883 - INFO - Step 2: Feature Engineering (Adapting to CICIDS2017 features)
+2025-12-16 08:09:23,889 - INFO - Step 3: Data Cleaning (Preserving Attack Signatures)
+2025-12-16 08:09:23,889 - INFO -   Initial shape: (15691, 82)
+2025-12-16 08:09:23,908 - INFO -   Removed 734 duplicate rows
+2025-12-16 08:09:23,914 - INFO -   Converted 1 infinite values to NaN
+2025-12-16 08:09:23,914 - INFO -   Processing 81 numeric and 1 categorical columns
+2025-12-16 08:09:23,922 - INFO -     packets_per_second: filled 1 missing values with median 15.9537
+2025-12-16 08:09:23,924 - INFO -   ✅ All missing values successfully imputed
+2025-12-16 08:09:23,924 - INFO -   Data cleaning summary:
+2025-12-16 08:09:23,924 - INFO -     - Duplicates removed: 734
+2025-12-16 08:09:23,924 - INFO -     - Infinite values converted: 1
+2025-12-16 08:09:23,924 - INFO -     - Numeric missing values filled: 1
+2025-12-16 08:09:23,924 - INFO -     - Categorical missing values filled: 0
+2025-12-16 08:09:23,924 - INFO -     - Final shape: (14957, 82)
+2025-12-16 08:09:23,924 - INFO - Step 4 (Transform): Applying encoding to test data
+2025-12-16 08:09:23,925 - INFO - Running Feature Selection...
+2025-12-16 08:09:23,927 - INFO - Step 5: Two-Stage IG + RF Hybrid Feature Selection for Multiclass Zero-Day Detection
+2025-12-16 08:09:23,931 - INFO -   Input features: 82
+2025-12-16 08:09:23,931 - INFO -   Using multiclass target: temp_target (classes: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+2025-12-16 08:09:23,931 - INFO -   Target final features: 43
+2025-12-16 08:09:23,931 - INFO -   Stage 1 (IG): Selecting top 57 features
+2025-12-16 08:09:23,931 - INFO -   Stage 2 (RF): Selecting final 43 features from 57
+2025-12-16 08:09:23,931 - INFO -   Stage 1: Computing Information Gain scores...
+2025-12-16 08:09:23,931 - INFO -   Using all 48,418 samples for IG computation
+2025-12-16 08:09:30,471 - INFO -   Stage 1 complete: Selected 57 features
+2025-12-16 08:09:30,472 - INFO -   Top 10 features by Information Gain:
+2025-12-16 08:09:30,472 - INFO -     temp_target: 0.7429
+2025-12-16 08:09:30,472 - INFO -     Average Packet Size: 0.5772
+2025-12-16 08:09:30,472 - INFO -     Packet Length Std: 0.5574
+2025-12-16 08:09:30,472 - INFO -     Packet Length Variance: 0.5572
+2025-12-16 08:09:30,472 - INFO -     Packet Length Mean: 0.5500
+2025-12-16 08:09:30,472 - INFO -     packet_size_ratio: 0.5421
+2025-12-16 08:09:30,472 - INFO -     Subflow Bwd Bytes: 0.5113
+2025-12-16 08:09:30,472 - INFO -     Total Length of Bwd Packets: 0.5099
+2025-12-16 08:09:30,472 - INFO -     Bwd Packet Length Mean: 0.4980
+2025-12-16 08:09:30,472 - INFO -     Avg Bwd Segment Size: 0.4977
+2025-12-16 08:09:30,472 - INFO -   Stage 2: Training Random Forest for feature importance...
+2025-12-16 08:09:32,982 - INFO -   Stage 2 complete: Selected 43 features
+2025-12-16 08:09:32,983 - INFO -   Top 10 features by Random Forest importance:
+2025-12-16 08:09:32,983 - INFO -     temp_target: 0.2828
+2025-12-16 08:09:32,983 - INFO -     Packet Length Std: 0.0518
+2025-12-16 08:09:32,983 - INFO -     Bwd Packet Length Std: 0.0463
+2025-12-16 08:09:32,983 - INFO -     Bwd Packet Length Mean: 0.0431
+2025-12-16 08:09:32,983 - INFO -     Packet Length Variance: 0.0412
+2025-12-16 08:09:32,989 - INFO -     Average Packet Size: 0.0332
+2025-12-16 08:09:32,989 - INFO -     Subflow Fwd Bytes: 0.0315
+2025-12-16 08:09:32,989 - INFO -     Total Length of Fwd Packets: 0.0302
+2025-12-16 08:09:32,989 - INFO -     Bwd Packet Length Max: 0.0263
+2025-12-16 08:09:32,989 - INFO -     Total Length of Bwd Packets: 0.0246
+2025-12-16 08:09:32,989 - INFO -   Final 43 selected features:
+2025-12-16 08:09:32,989 - INFO -     1. temp_target
+2025-12-16 08:09:32,989 - INFO -     2. Packet Length Std
+2025-12-16 08:09:32,989 - INFO -     3. Bwd Packet Length Std
+2025-12-16 08:09:32,989 - INFO -     4. Bwd Packet Length Mean
+2025-12-16 08:09:32,989 - INFO -     5. Packet Length Variance
+2025-12-16 08:09:32,989 - INFO -     6. Average Packet Size
+2025-12-16 08:09:32,989 - INFO -     7. Subflow Fwd Bytes
+2025-12-16 08:09:32,989 - INFO -     8. Total Length of Fwd Packets
+2025-12-16 08:09:32,989 - INFO -     9. Bwd Packet Length Max
+2025-12-16 08:09:32,989 - INFO -     10. Total Length of Bwd Packets
+2025-12-16 08:09:32,989 - INFO -     11. Avg Bwd Segment Size
+2025-12-16 08:09:32,989 - INFO -     12. Fwd Packet Length Max
+2025-12-16 08:09:32,989 - INFO -     13. Subflow Bwd Bytes
+2025-12-16 08:09:32,989 - INFO -     14. Packet Length Mean
+2025-12-16 08:09:32,989 - INFO -     15. Max Packet Length
+2025-12-16 08:09:32,989 - INFO -     16. packet_size_ratio
+2025-12-16 08:09:32,989 - INFO -     17. Fwd Packet Length Mean
+2025-12-16 08:09:32,989 - INFO -     18. Flow Bytes/s
+2025-12-16 08:09:32,989 - INFO -     19. Destination Port
+2025-12-16 08:09:32,989 - INFO -     20. Bwd Packet Length Min
+2025-12-16 08:09:32,989 - INFO -     21. Avg Fwd Segment Size
+2025-12-16 08:09:32,989 - INFO -     22. Fwd Packet Length Std
+2025-12-16 08:09:32,989 - INFO -     23. min_seg_size_forward
+2025-12-16 08:09:32,989 - INFO -     24. Bwd Header Length
+2025-12-16 08:09:32,989 - INFO -     25. Fwd IAT Max
+2025-12-16 08:09:32,989 - INFO -     26. Bwd Packets/s
+2025-12-16 08:09:32,989 - INFO -     27. act_data_pkt_fwd
+2025-12-16 08:09:32,989 - INFO -     28. Init_Win_bytes_backward
+2025-12-16 08:09:32,989 - INFO -     29. Flow IAT Std
+2025-12-16 08:09:32,989 - INFO -     30. Subflow Fwd Packets
+2025-12-16 08:09:32,989 - INFO -     31. Fwd IAT Total
+2025-12-16 08:09:32,989 - INFO -     32. Fwd IAT Mean
+2025-12-16 08:09:32,989 - INFO -     33. Total Fwd Packets
+2025-12-16 08:09:32,989 - INFO -     34. Fwd IAT Std
+2025-12-16 08:09:32,989 - INFO -     35. Fwd Header Length.1
+2025-12-16 08:09:32,989 - INFO -     36. Init_Win_bytes_forward
+2025-12-16 08:09:32,989 - INFO -     37. Flow Duration
+2025-12-16 08:09:32,989 - INFO -     38. Idle Min
+2025-12-16 08:09:32,989 - INFO -     39. Flow IAT Max
+2025-12-16 08:09:32,989 - INFO -     40. Idle Mean
+2025-12-16 08:09:32,989 - INFO -     41. Subflow Bwd Packets
+2025-12-16 08:09:32,989 - INFO -     42. Flow IAT Mean
+2025-12-16 08:09:32,989 - INFO -     43. Fwd Packets/s
+2025-12-16 08:09:33,004 - INFO -   Final shape: (48418, 44)
+2025-12-16 08:09:33,004 - INFO -   Feature reduction: 82 → 43 (47.6% reduction)
+2025-12-16 08:09:33,008 - INFO - 
+Applying selected features (43 features) to test data...
+2025-12-16 08:09:33,008 - WARNING -   Warning: 1 selected features not found in test data: ['temp_target']...
+2025-12-16 08:09:33,010 - INFO -   Added missing selected feature 'temp_target' to test data (filled with 0)
+2025-12-16 08:09:33,011 - INFO -   Test data shape after feature selection: (14957, 44)
+2025-12-16 08:09:33,011 - INFO - 
+Splitting training data into train/val using stratified sampling (BEFORE rebalancing)...
+2025-12-16 08:09:33,049 - INFO - 
+Applying data rebalancing to TRAINING data only...
+2025-12-16 08:09:33,049 - INFO - Step 7: Complete Data Rebalancing (ADASYN + RandomUnderSampler)
+2025-12-16 08:09:33,049 - INFO -   Input dataset shape: (38734, 45)
+2025-12-16 08:09:33,049 - INFO -   Classes before rebalancing: 11
+2025-12-16 08:09:33,049 - INFO -   Class distribution before rebalancing:
+2025-12-16 08:09:33,049 - INFO -     BENIGN (Label 0): 31,540 samples (81.43%)
+2025-12-16 08:09:33,049 - INFO -     Bot (Label 1): 25 samples (0.06%)
+2025-12-16 08:09:33,049 - INFO -     DDoS (Label 2): 1,807 samples (4.67%)
+2025-12-16 08:09:33,049 - INFO -     DoS GoldenEye (Label 3): 142 samples (0.37%)
+2025-12-16 08:09:33,049 - INFO -     DoS Hulk (Label 4): 2,550 samples (6.58%)
+2025-12-16 08:09:33,049 - INFO -     DoS Slowhttptest (Label 5): 75 samples (0.19%)
+2025-12-16 08:09:33,049 - INFO -     DoS slowloris (Label 6): 87 samples (0.22%)
+2025-12-16 08:09:33,049 - INFO -     FTP-Patator (Label 7): 92 samples (0.24%)
+2025-12-16 08:09:33,049 - INFO -     PortScan (Label 10): 2,298 samples (5.93%)
+2025-12-16 08:09:33,049 - INFO -     SSH-Patator (Label 11): 78 samples (0.20%)
+2025-12-16 08:09:33,049 - INFO -     Web Attack XSS (Label 12): 40 samples (0.10%)
+2025-12-16 08:09:33,049 - INFO -   Imbalance ratio before rebalancing: 1261.60:1
+2025-12-16 08:09:33,049 - INFO -   Target sampling strategy:
+2025-12-16 08:09:33,049 - INFO -     BENIGN: 31,540 → 31,540 (keep)
+2025-12-16 08:09:33,049 - INFO -     Bot: 25 → 4,731 (oversample)
+2025-12-16 08:09:33,049 - INFO -     DDoS: 1,807 → 4,731 (oversample)
+2025-12-16 08:09:33,049 - INFO -     DoS GoldenEye: 142 → 4,731 (oversample)
+2025-12-16 08:09:33,049 - INFO -     DoS Hulk: 2,550 → 4,731 (oversample)
+2025-12-16 08:09:33,049 - INFO -     DoS Slowhttptest: 75 → 4,731 (oversample)
+2025-12-16 08:09:33,049 - INFO -     DoS slowloris: 87 → 4,731 (oversample)
+2025-12-16 08:09:33,049 - INFO -     FTP-Patator: 92 → 4,731 (oversample)
+2025-12-16 08:09:33,049 - INFO -     PortScan: 2,298 → 4,731 (oversample)
+2025-12-16 08:09:33,049 - INFO -     SSH-Patator: 78 → 4,731 (oversample)
+2025-12-16 08:09:33,049 - INFO -     Web Attack XSS: 40 → 4,731 (oversample)
+2025-12-16 08:09:33,049 - INFO -   Step 1: Applying ADASYN oversampling...
+2025-12-16 08:09:35,219 - INFO -   ADASYN completed: 38734 → 78688 samples (for 10 classes)
+2025-12-16 08:09:35,220 - INFO -   Step 2: Applying RandomUnderSampler...
+2025-12-16 08:09:35,220 - INFO -   No classes need undersampling, skipping RandomUnderSampler
+2025-12-16 08:09:35,238 - INFO -   Class distribution after rebalancing:
+2025-12-16 08:09:35,238 - INFO -     BENIGN (Label 0): 31,540 samples (40.08%)
+2025-12-16 08:09:35,238 - INFO -     Bot (Label 1): 4,733 samples (6.01%)
+2025-12-16 08:09:35,238 - INFO -     DDoS (Label 2): 4,748 samples (6.03%)
+2025-12-16 08:09:35,238 - INFO -     DoS GoldenEye (Label 3): 4,739 samples (6.02%)
+2025-12-16 08:09:35,238 - INFO -     DoS Hulk (Label 4): 4,690 samples (5.96%)
+2025-12-16 08:09:35,238 - INFO -     DoS Slowhttptest (Label 5): 4,727 samples (6.01%)
+2025-12-16 08:09:35,238 - INFO -     DoS slowloris (Label 6): 4,720 samples (6.00%)
+2025-12-16 08:09:35,238 - INFO -     FTP-Patator (Label 7): 4,732 samples (6.01%)
+2025-12-16 08:09:35,238 - INFO -     PortScan (Label 10): 4,620 samples (5.87%)
+2025-12-16 08:09:35,238 - INFO -     SSH-Patator (Label 11): 4,718 samples (6.00%)
+2025-12-16 08:09:35,238 - INFO -     Web Attack XSS (Label 12): 4,721 samples (6.00%)
+2025-12-16 08:09:35,238 - INFO -   Imbalance ratio after rebalancing: 6.83:1
+2025-12-16 08:09:35,238 - INFO -   Final dataset shape: (78688, 45)
+2025-12-16 08:09:35,238 - INFO -   Training data: 38734 → 78688 samples (rebalanced)
+2025-12-16 08:09:35,238 - INFO -   Validation data: 9684 samples (unchanged)
+2025-12-16 08:09:35,238 - INFO -   Test data: 14957 samples (unchanged)
+2025-12-16 08:09:35,238 - INFO - 
+Aligning features between train, validation, and test data...
+2025-12-16 08:09:35,247 - INFO - 🔍 VERIFICATION: Test attack_cat distribution after alignment:
+2025-12-16 08:09:35,247 - INFO -    'BENIGN': 7936 samples
+2025-12-16 08:09:35,247 - INFO -    'DDoS': 857 samples
+2025-12-16 08:09:35,248 - INFO -    'DoS GoldenEye': 857 samples
+2025-12-16 08:09:35,248 - INFO -    'PortScan': 853 samples
+2025-12-16 08:09:35,248 - INFO -    'DoS slowloris': 830 samples
+2025-12-16 08:09:35,248 - INFO -    'DoS Slowhttptest': 822 samples
+2025-12-16 08:09:35,248 - INFO -    'FTP-Patator': 707 samples
+2025-12-16 08:09:35,248 - INFO -    'DoS Hulk': 706 samples
+2025-12-16 08:09:35,248 - INFO -    'SSH-Patator': 556 samples
+2025-12-16 08:09:35,248 - INFO -    'Bot': 390 samples
+2025-12-16 08:09:35,249 - INFO -    Total attacks in test_df: 7021 (BENIGN: 7936)
+2025-12-16 08:09:35,249 - INFO -   Final feature count - Train: 46, Val: 46, Test: 46
+2025-12-16 08:09:35,249 - INFO - Creating zero-day split with 'PortScan' as zero-day attack
+2025-12-16 08:09:35,249 - INFO -   Binary labels BEFORE zero-day filtering:
+2025-12-16 08:09:35,257 - INFO -     Training - BENIGN: 31540, Attack: 47148
+2025-12-16 08:09:35,258 - INFO -     Validation - BENIGN: 7886, Attack: 1798
+2025-12-16 08:09:35,260 - INFO -     Test - BENIGN: 7936, Attack: 7021
+2025-12-16 08:09:35,334 - INFO -   Test set composition target: 4487 BENIGN, 10469 attacks
+2025-12-16 08:09:35,336 - INFO -   Available in test data: 7936 BENIGN, 853 zero-day, 6168 other attacks
+2025-12-16 08:09:35,337 - INFO - BENIGN samples for test set sourced exclusively from test_df: 4487 samples
+2025-12-16 08:09:35,342 - INFO -   Training data: 74068 samples
+2025-12-16 08:09:35,346 - INFO -     BENIGN: 31540
+2025-12-16 08:09:35,352 - INFO -     Other attacks (excluding zero-day): 42528
+2025-12-16 08:09:35,352 - INFO -   Validation data: 9110 samples
+2025-12-16 08:09:35,352 - INFO -     BENIGN: 7886
+2025-12-16 08:09:35,352 - INFO -     Other attacks (excluding zero-day): 1224
+2025-12-16 08:09:35,352 - INFO -   Test data: 11508 samples
+2025-12-16 08:09:35,352 - INFO -     BENIGN (30%): 4487
+2025-12-16 08:09:35,352 - INFO -     Zero-day attacks: 853
+2025-12-16 08:09:35,352 - INFO -     Other attacks from test data: 6168
+2025-12-16 08:09:35,352 - INFO -   Data leakage prevention:
+2025-12-16 08:09:35,352 - INFO -     ✓ Train/Val data split: 80/10/10 (no overlap)
+2025-12-16 08:09:35,352 - INFO -     ✓ Test 'other attacks' sampled from test data only
+2025-12-16 08:09:35,352 - INFO -     ✓ Test 'BENIGN samples' sourced exclusively from test data only
+2025-12-16 08:09:35,352 - INFO -     ✓ Zero-day attack completely excluded from train/val
+2025-12-16 08:09:35,366 - INFO -   🔍 CRITICAL VERIFICATION:
+2025-12-16 08:09:35,367 - INFO -     Training data classes: BENIGN=31540, Attack=42528
+2025-12-16 08:09:35,367 - INFO -     ✅ Training data has both BENIGN and Attack samples - GOOD!
+2025-12-16 08:09:35,368 - INFO - Step 6: Feature Scaling
+2025-12-16 08:09:35,449 - INFO -   Scaled 43 features
+2025-12-16 08:09:35,449 - INFO -   Training shape: (74068, 46)
+2025-12-16 08:09:35,449 - INFO -   Validation shape: (9110, 46)
+2025-12-16 08:09:35,449 - INFO -   Test shape: (11508, 46)
+2025-12-16 08:09:35,481 - INFO - 
+CICIDS2017 preprocessing completed successfully!
+2025-12-16 08:09:35,481 - INFO - Final feature count: 43
+2025-12-16 08:09:35,481 - INFO - Training samples: 74068
+2025-12-16 08:09:35,481 - INFO - Training data shape: torch.Size([74068, 43])
+2025-12-16 08:09:35,481 - INFO - Validation samples: 9110
+2025-12-16 08:09:35,481 - INFO - Validation data shape: torch.Size([9110, 43])
+2025-12-16 08:09:35,481 - INFO - Test samples: 11508
+2025-12-16 08:09:35,481 - INFO - Test data shape: torch.Size([11508, 43])
+2025-12-16 08:09:35,481 - INFO - Zero-day samples (PortScan, label=10): 853
+2025-12-16 08:09:35,483 - INFO - 🔍 DEBUG: Unique attack categories in test_attack_cat: ['BENIGN', 'Bot', 'DDoS', 'DoS GoldenEye', 'DoS Hulk', 'DoS Slowhttptest', 'DoS slowloris', 'FTP-Patator', 'Heartbleed', 'Infiltration', 'PortScan', 'SSH-Patator', 'Web Attack  Brute Force', 'Web Attack  Sql Injection', 'Web Attack  XSS']
+2025-12-16 08:09:35,483 - INFO - 🔍 DEBUG: Total test samples: 11508
+2025-12-16 08:09:35,483 - INFO - 🔍 DEBUG: Zero-day attack 'PortScan' count: 853
+2025-12-16 08:09:35,500 - INFO - 🔍 Training multiclass labels: [0, 1, 2, 3, 4, 5, 6, 7, 11, 12] (10 unique)
+2025-12-16 08:09:35,500 - INFO - 🔍 Validation multiclass labels: [0, 1, 2, 3, 4, 5, 6, 7, 11, 12] (10 unique)
+2025-12-16 08:09:35,500 - INFO - 🔍 Test multiclass labels: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] (13 unique)
+2025-12-16 08:09:35,513 - INFO - Updating model architecture: 78 → 43 features
+2025-12-16 08:09:35,513 - INFO - Updating model architecture to 43 features...
+2025-12-16 08:09:35,514 - INFO - ✅ UnifiedDilatedTCN initialized with kernel_size=3 (dilations=[1,2,4], RF=[3,7,15])
+2025-12-16 08:09:35,515 - INFO - ✅ TransductiveLearner updated with 43 input features (TCN kernel sizes: (3, 4, 4))
+2025-12-16 08:09:35,515 - INFO - ✅ Config updated: input_dim = 43
+2025-12-16 08:09:35,515 - INFO - ✅ Model parameters reset to ensure correct dimensions
+2025-12-16 08:09:35,515 - INFO - 🔍 DEBUG: Simple coordinator model updated directly
+2025-12-16 08:09:35,515 - INFO - ✅ Coordinator and all client models updated with new architecture
+2025-12-16 08:09:35,515 - INFO - Creating sequences for TCN processing (length=25)...
+2025-12-16 08:09:35,516 - INFO - Using training subset: 50000 samples (original: 74068)
+2025-12-16 08:09:35,519 - INFO - Creating sequences with length=25, stride=12, zero_pad=True
+2025-12-16 08:09:35,519 - INFO - Input shapes: X=(50000, 43), y=(50000,)
+2025-12-16 08:09:35,529 - INFO - Created 4165 sequences of shape (4165, 25, 43)
+2025-12-16 08:09:35,529 - INFO - Sequence labels shape: (4165,)
+2025-12-16 08:09:35,529 - INFO - ✅ Training sequences created: (4165, 25, 43)
+2025-12-16 08:09:35,538 - INFO - ✅ Mapped training multiclass labels to 4165 sequences
+2025-12-16 08:09:35,538 - INFO - Creating sequences with length=25, stride=12, zero_pad=True
+2025-12-16 08:09:35,538 - INFO - Input shapes: X=(9110, 43), y=(9110,)
+2025-12-16 08:09:35,539 - INFO - Created 758 sequences of shape (758, 25, 43)
+2025-12-16 08:09:35,539 - INFO - Sequence labels shape: (758,)
+2025-12-16 08:09:35,540 - INFO - ✅ Validation sequences created: (758, 25, 43)
+2025-12-16 08:09:35,541 - INFO - 🔍 Using stratified sampling with 35% zero-day target BEFORE sequence creation (will dilute to ~20% after sequences)...
+2025-12-16 08:09:35,541 - INFO - 📊 Adjusted subset size: 2843 (from 10000) to achieve 30.0% zero-day target with 853 available samples
+2025-12-16 08:09:35,546 - INFO - 🔍 Stratified test subset: 2843 samples
+2025-12-16 08:09:35,546 - INFO -    Class distribution: {0: 839, 1: 761, 2: 73, 3: 1, 4: 852, 5: 236, 6: 81}
+2025-12-16 08:09:35,546 - INFO -    Zero-day samples: 852/2843 (30.0%) [TARGET: 30.0%]
+2025-12-16 08:09:35,546 - INFO - Creating sequences with length=25, stride=12, zero_pad=True
+2025-12-16 08:09:35,546 - INFO - Input shapes: X=(2843, 43), y=(2843,)
+2025-12-16 08:09:35,546 - INFO - Created 235 sequences of shape (235, 25, 43)
+2025-12-16 08:09:35,547 - INFO - Sequence labels shape: (235,)
+2025-12-16 08:09:35,547 - INFO - ✅ Test sequences created: (235, 25, 43) (stride=12 for evaluation, matching config.sequence_stride=12)
+2025-12-16 08:09:35,548 - INFO - 🔍 Before post-sequence filtering: 66/235 zero-day sequences (28.1%)
+2025-12-16 08:09:35,548 - INFO - 🔍 DEBUG: Unique labels in mapped sequences: {0, 1, 2, 4, 5, 6}
+2025-12-16 08:09:35,548 - INFO - 📊 Filtering strategy: Using 56 zero-day + 168 non-zero-day = 224 total sequences (target: 25% zero-day)
+2025-12-16 08:09:35,549 - INFO - ✅ After post-sequence filtering: 56/224 zero-day sequences (25.0%) [TARGET: 25%]
+2025-12-16 08:09:35,549 - INFO - ✅ Verified alignment: All test sequences have length 224 after filtering
+2025-12-16 08:09:35,549 - INFO - ✅ Final test sequences after post-sequence filtering: 224 sequences
+2025-12-16 08:09:35,549 - INFO - ✅ Verified test set alignment before storing: 224 sequences and 224 multiclass labels
+2025-12-16 08:09:35,549 - INFO - Created sequences - Training: (4165, 25, 43), Validation: (758, 25, 43), Test: (224, 25, 43)
+2025-12-16 08:09:35,549 - INFO - ✅ Data preprocessing completed successfully!
+2025-12-16 08:09:35,549 - INFO - Training samples: 4165
+2025-12-16 08:09:35,549 - INFO - Validation samples: 758
+2025-12-16 08:09:35,549 - INFO - Test samples: 224
+2025-12-16 08:09:35,549 - INFO - Features: 43
+2025-12-16 08:09:35,549 - INFO - Setting up centralized learning...
+2025-12-16 08:09:35,549 - INFO - ✅ Multiclass labels available: [0, 1, 2] (3 unique labels)
+2025-12-16 08:09:35,549 - INFO - ================================================================================
+2025-12-16 08:09:35,549 - INFO - 📊 CENTRALIZED LEARNING DATA SETUP
+2025-12-16 08:09:35,549 - INFO - ================================================================================
+2025-12-16 08:09:35,549 - INFO - Using FULL dataset for centralized training (no client splitting)
+2025-12-16 08:09:35,549 - INFO - ✅ Full training data stored:
+2025-12-16 08:09:35,549 - INFO -    - Training samples: 4,165
+2025-12-16 08:09:35,549 - INFO -    - Data shape: torch.Size([4165, 25, 43])
+2025-12-16 08:09:35,549 - INFO -    - Labels shape: torch.Size([4165])
+2025-12-16 08:09:35,549 - INFO -    - Class distribution:
+2025-12-16 08:09:35,549 - INFO -      Class 0: 1,733 samples (41.61%)
+2025-12-16 08:09:35,549 - INFO -      Class 1: 2,432 samples (58.39%)
+2025-12-16 08:09:35,549 - INFO - ================================================================================
+2025-12-16 08:09:35,549 - INFO - ✅ Centralized learning setup completed!
+2025-12-16 08:09:35,549 - INFO - Running centralized learning...
+2025-12-16 08:09:35,549 - INFO - 💡 Centralized learning: No rounds needed - just train once, then TTT!
+2025-12-16 08:09:35,549 - INFO - 
+================================================================================
+2025-12-16 08:09:35,549 - INFO - 🎯 CENTRALIZED LEARNING: SINGLE TRAINING PHASE
+2025-12-16 08:09:35,549 - INFO - ================================================================================
+2025-12-16 08:09:35,549 - INFO - No rounds needed - training once on full dataset, then TTT adaptation
+2025-12-16 08:09:35,549 - INFO - ================================================================================
+
+2025-12-16 08:09:35,549 - INFO - ================================================================================
+2025-12-16 08:09:35,549 - INFO - 🚀 CENTRALIZED META-LEARNING TRAINING
+2025-12-16 08:09:35,549 - INFO - ================================================================================
+2025-12-16 08:09:35,549 - INFO - Note: No rounds needed - training once on full dataset, then TTT
+2025-12-16 08:09:35,549 - INFO - 
+📋 Creating meta-tasks from full training dataset...
+2025-12-16 08:09:35,549 - INFO - Meta-learning config - n_way: 2, k_shot: 200, n_query: 10, n_tasks: 46, zero_day_attack: PortScan (label: 4)
+2025-12-16 08:09:35,549 - INFO - Creating 46 meta-learning tasks (2-way, 200-shot) for training phase
+2025-12-16 08:09:35,549 - INFO - Query set will have 80% Normal samples
+2025-12-16 08:09:35,549 - INFO - Excluding zero-day attack (label 4) from training
+2025-12-16 08:09:35,549 - INFO - Available labels for training (binary, zero-day already filtered by preprocessor): [0, 1]
+2025-12-16 08:09:35,549 - INFO - ✅ Binary task support set: Normal (100 shots), Attack type 1 (200 shots)
+2025-12-16 08:09:35,559 - INFO - ✅ Binary support set composition: 300 Normal, 400 Attack (from ONE attack type per task)
+2025-12-16 08:09:35,737 - INFO - Created 46 meta-learning tasks
+2025-12-16 08:09:35,737 - INFO - ✅ Created 46 meta-tasks from full dataset
+2025-12-16 08:09:35,737 - INFO - 
+🎯 Running transductive meta-learning training (22 epochs)...
+2025-12-16 08:09:35,737 - INFO - Starting transductive meta-training for 22 epochs
+2025-12-16 08:09:35,737 - INFO - ✅ Center Loss enabled (weight=1.0) for better embedding discriminativeness
+2025-12-16 08:09:35,737 - INFO - ✅ Prototype Margin Loss enabled (weight=1.0, margin=4.5)
+2025-12-16 08:09:37,490 - INFO - ⚠️ Mixed precision disabled (CPU mode) - using FP32
+2025-12-16 08:09:37,490 - INFO - 🔄 Gradient accumulation: 1 steps (effective batch size: 256)
+2025-12-16 08:09:37,589 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:37,780 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:37,942 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:38,085 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:38,247 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:38,388 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:38,577 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:38,736 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:38,918 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:39,120 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:39,301 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:39,450 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:39,583 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:39,773 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:39,977 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:40,174 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:40,310 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:40,442 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:40,570 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:40,752 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:40,889 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:41,041 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:41,178 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:41,334 - INFO - Prototype refinement converged at iteration 3
+2025-12-16 08:09:41,483 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:41,637 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:41,819 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:41,959 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:42,123 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:42,265 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:42,402 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:42,567 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:42,704 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:42,851 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:43,009 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:43,178 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:43,339 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:43,508 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:43,659 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:43,809 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:43,980 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:44,150 - INFO - Prototype refinement converged at iteration 7
+2025-12-16 08:09:44,325 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:44,503 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:44,673 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:44,855 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:44,931 - INFO - Epoch 0: Loss=2.7112, Accuracy=0.7500
+2025-12-16 08:09:44,989 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:45,208 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:45,378 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:45,533 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:45,690 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:45,819 - INFO - Prototype refinement converged at iteration 3
+2025-12-16 08:09:45,973 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:46,153 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:46,290 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:46,478 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:46,656 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:46,816 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:47,019 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:47,201 - INFO - Prototype refinement converged at iteration 5
+2025-12-16 08:09:47,352 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:47,538 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:47,683 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:47,882 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:48,068 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:48,283 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:48,452 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:48,650 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:48,881 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:49,102 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:49,329 - INFO - Prototype refinement converged at iteration 3
+2025-12-16 08:09:49,484 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:49,676 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:49,832 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:50,011 - INFO - Prototype refinement converged at iteration 3
+2025-12-16 08:09:50,183 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:50,344 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:50,517 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:50,720 - INFO - Prototype refinement converged at iteration 3
+2025-12-16 08:09:50,839 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:51,019 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:51,169 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:51,321 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:51,498 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:51,709 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:51,879 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:52,020 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:52,170 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:52,350 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:52,499 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:52,709 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:52,850 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:53,008 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:53,179 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:53,367 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:53,509 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:53,671 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:53,834 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:54,009 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:54,206 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:54,385 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:54,550 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:54,709 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:54,853 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:55,019 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:55,167 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:55,292 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:55,419 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:55,604 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:09:55,752 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:55,919 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:56,104 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:56,284 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:56,459 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:09:56,603 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:56,743 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:09:56,880 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:57,052 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:57,207 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:57,398 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:57,541 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:57,638 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:57,772 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:09:57,939 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:58,102 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:58,207 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:58,338 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:09:58,446 - INFO - Prototype refinement converged at iteration 3
+2025-12-16 08:09:58,589 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:58,766 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:58,956 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:59,117 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:09:59,319 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:59,472 - INFO - Prototype refinement converged at iteration 4
+2025-12-16 08:09:59,621 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:09:59,809 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:00,013 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:00,217 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:00,414 - INFO - Prototype refinement converged at iteration 4
+2025-12-16 08:10:00,566 - INFO - Prototype refinement converged at iteration 3
+2025-12-16 08:10:00,708 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:00,848 - INFO - Prototype refinement converged at iteration 4
+2025-12-16 08:10:01,029 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:01,154 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:01,295 - INFO - Prototype refinement converged at iteration 3
+2025-12-16 08:10:01,469 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:01,643 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:01,815 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:01,939 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:02,050 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:02,215 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:02,391 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:02,559 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:02,750 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:02,909 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:03,034 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:03,209 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:03,323 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:03,459 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:03,589 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:03,735 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:03,864 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:04,010 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:04,190 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:04,389 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:04,613 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:04,787 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:04,974 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:05,184 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:05,389 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:05,601 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:05,802 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:05,983 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:06,147 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:06,278 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:06,408 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:06,521 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:06,678 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:06,851 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:07,029 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:07,199 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:07,385 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:07,549 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:07,708 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:07,884 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:08,102 - INFO - Prototype refinement converged at iteration 3
+2025-12-16 08:10:08,243 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:08,394 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:08,589 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:08,772 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:08,923 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:09,057 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:09,210 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:09,353 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:09,477 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:09,621 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:09,780 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:09,943 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:10,070 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:10,219 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:10,389 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:10,530 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:10,678 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:10,833 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:10,981 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:11,136 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:11,303 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:11,450 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:11,631 - INFO - Prototype refinement converged at iteration 4
+2025-12-16 08:10:11,775 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:11,890 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:12,059 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:12,259 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:12,438 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:12,612 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:12,768 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:12,975 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:13,150 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:13,304 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:13,436 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:13,578 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:13,739 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:13,929 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:14,089 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:14,289 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:14,405 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:14,605 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:14,767 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:14,913 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:15,086 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:15,235 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:15,374 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:15,519 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:15,692 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:15,849 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:16,019 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:16,152 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:16,289 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:16,508 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:16,719 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:16,904 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:17,083 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:17,286 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:17,471 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:17,643 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:17,819 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:18,009 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:18,194 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:18,348 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:18,495 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:18,685 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:18,842 - INFO - Prototype refinement converged at iteration 3
+2025-12-16 08:10:19,009 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:19,176 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:19,320 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:19,473 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:19,611 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:19,731 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:19,883 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:20,025 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:20,182 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:20,338 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:20,507 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:20,661 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:20,802 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:20,972 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:21,102 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:21,252 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:21,419 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:21,538 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:21,671 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:21,774 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:21,933 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:22,121 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:22,289 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:22,424 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:22,620 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:22,767 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:22,952 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:23,090 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:23,245 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:23,389 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:23,543 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:23,684 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:23,829 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:24,002 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:24,203 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:24,401 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:24,578 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:24,726 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:24,941 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:25,122 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:25,310 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:25,452 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:25,634 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:25,815 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:25,984 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:26,128 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:26,277 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:26,431 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:26,574 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:26,763 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:26,964 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:27,183 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:27,343 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:27,512 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:27,683 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:27,868 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:28,050 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:28,219 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:28,421 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:28,603 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:28,760 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:28,917 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:29,068 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:29,224 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:29,410 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:29,639 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:29,833 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:29,970 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:30,142 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:30,342 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:30,501 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:30,700 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:30,824 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:30,952 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:31,118 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:31,315 - INFO - Prototype refinement converged at iteration 5
+2025-12-16 08:10:31,511 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:31,655 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:31,833 - INFO - Prototype refinement converged at iteration 3
+2025-12-16 08:10:32,012 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:32,192 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:32,346 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:32,529 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:32,686 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:32,844 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:33,072 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:33,277 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:33,424 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:33,596 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:33,792 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:34,014 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:34,232 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:34,450 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:34,648 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:34,815 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:34,989 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:35,187 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:35,359 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:35,505 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:35,682 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:35,873 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:36,000 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:36,176 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:36,350 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:36,589 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:36,803 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:36,962 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:37,150 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:37,316 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:37,473 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:37,680 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:37,881 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:38,090 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:38,240 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:38,448 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:38,625 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:38,769 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:38,905 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:39,020 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:39,156 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:39,293 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:39,434 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:39,569 - INFO - Prototype refinement converged at iteration 4
+2025-12-16 08:10:39,742 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:39,874 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:40,044 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:40,173 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:40,336 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:40,492 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:40,629 - INFO - Prototype refinement converged at iteration 3
+2025-12-16 08:10:40,769 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:40,919 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:41,072 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:41,208 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:41,347 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:41,489 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:41,681 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:41,829 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:42,015 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:42,167 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:42,322 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:42,490 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:42,675 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:42,819 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:42,979 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:43,170 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:43,318 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:43,456 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:43,608 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:43,744 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:43,915 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:44,050 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:44,233 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:44,406 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:44,546 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:44,705 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:44,851 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:44,992 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:45,143 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:45,289 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:45,467 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:45,612 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:45,817 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:45,945 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:46,117 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:46,270 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:46,420 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:46,560 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:46,720 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:46,840 - INFO - Prototype refinement converged at iteration 4
+2025-12-16 08:10:46,989 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:47,142 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:47,284 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:47,407 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:47,539 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:47,698 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:47,846 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:48,027 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:48,195 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:48,334 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:48,519 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:48,659 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:48,833 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:49,012 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:49,225 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:49,384 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:49,551 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:49,715 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:49,870 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:50,045 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:50,218 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:50,352 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:50,519 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:50,681 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:50,819 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:50,959 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:51,105 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:51,253 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:51,388 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:51,584 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:51,788 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:51,974 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:52,153 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:52,320 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:52,559 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:52,802 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:52,977 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:53,134 - INFO - Prototype refinement converged at iteration 3
+2025-12-16 08:10:53,295 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:53,500 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:53,703 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:53,909 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:54,062 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:54,304 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:54,489 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:54,680 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:54,831 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:55,034 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:55,189 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:55,352 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:55,515 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:55,690 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:55,834 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:55,982 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:56,107 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:56,278 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:56,433 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:56,571 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:56,769 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:56,959 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:57,173 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:57,377 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:57,489 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:57,720 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:57,950 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:58,153 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:58,347 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:58,484 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:58,642 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:58,818 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:10:58,990 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:59,164 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:59,331 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:10:59,489 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:59,652 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:10:59,839 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:00,009 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:00,170 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:00,348 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:00,520 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:00,709 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:00,896 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:01,048 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:01,177 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:01,290 - INFO - Epoch 10: Loss=1.8685, Accuracy=0.9098
+2025-12-16 08:11:01,357 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:01,515 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:01,675 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:01,821 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:01,972 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:02,120 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:02,291 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:02,451 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:02,606 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:02,747 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:02,889 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:03,026 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:03,202 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:03,389 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:03,536 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:03,653 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:03,851 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:03,994 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:04,143 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:04,297 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:04,431 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:04,553 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:04,700 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:04,831 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:04,989 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:05,174 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:05,329 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:05,459 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:05,590 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:05,739 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:05,902 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:06,102 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:06,250 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:06,390 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:06,537 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:06,675 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:06,820 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:07,014 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:07,186 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:07,326 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:07,484 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:07,613 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:07,772 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:07,889 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:08,054 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:08,197 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:08,371 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:08,572 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:08,751 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:08,917 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:09,035 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:09,205 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:09,350 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:09,512 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:09,685 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:09,859 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:09,989 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:10,128 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:10,245 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:10,392 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:10,557 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:10,683 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:10,836 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:10,949 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:11,091 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:11,259 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:11,445 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:11,619 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:11,810 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:11,976 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:12,123 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:12,303 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:12,484 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:12,676 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:12,854 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:13,020 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:13,189 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:13,385 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:13,569 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:13,733 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:13,918 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:14,090 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:14,290 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:14,485 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:14,651 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:14,878 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:15,039 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:15,159 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:15,308 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:15,530 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:15,687 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:15,852 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:15,969 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:16,054 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:16,270 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:16,453 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:16,616 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:16,784 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:16,893 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:17,061 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:17,220 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:17,393 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:17,575 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:17,738 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:17,857 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:18,035 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:18,185 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:18,367 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:18,585 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:18,717 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:18,921 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:19,119 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:19,306 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:19,486 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:19,641 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:19,792 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:19,959 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:20,122 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:20,299 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:20,454 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:20,628 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:20,834 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:21,025 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:21,259 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:21,423 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:21,629 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:21,774 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:21,942 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:22,108 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:22,236 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:22,379 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:22,503 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:22,666 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:22,805 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:22,951 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:23,109 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:23,264 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:23,447 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:23,645 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:23,806 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:23,945 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:24,143 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:24,333 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:24,519 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:24,742 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:24,884 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:25,099 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:25,249 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:25,410 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:25,551 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:25,718 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:25,896 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:26,035 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:26,189 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:26,353 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:26,499 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:26,623 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:26,789 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:26,943 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:27,120 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:27,322 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:27,470 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:27,659 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:27,818 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:27,963 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:28,173 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:28,317 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:28,469 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:28,623 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:28,806 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:28,946 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:29,099 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:29,238 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:29,421 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:29,614 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:29,778 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:29,946 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:30,097 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:30,289 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:30,477 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:30,643 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:30,842 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:30,967 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:31,120 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:31,314 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:31,474 - INFO - Prototype refinement converged at iteration 3
+2025-12-16 08:11:31,643 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:31,785 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:31,920 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:32,059 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:32,229 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:32,389 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:32,545 - INFO - Prototype refinement converged at iteration 3
+2025-12-16 08:11:32,702 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:32,864 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:33,051 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:33,294 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:33,502 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:33,660 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:33,852 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:34,025 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:34,199 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:34,389 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:34,582 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:34,774 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:34,951 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:35,118 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:35,312 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:35,448 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:35,608 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:35,779 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:35,959 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:36,152 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:36,359 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:36,579 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:36,833 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:37,013 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:37,219 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:37,451 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:37,671 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:37,865 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:38,037 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:38,214 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:38,376 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:38,538 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:38,719 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:38,916 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:39,103 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:39,325 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:39,507 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:39,668 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:39,873 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:40,019 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:40,272 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:40,450 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:40,575 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:40,695 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:40,834 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:40,959 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:41,073 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:41,188 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:41,307 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:41,424 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:41,551 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:41,708 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:41,853 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:41,966 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:42,112 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:42,252 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:42,389 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:42,519 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:42,653 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:42,806 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:42,975 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:43,103 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:43,219 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:43,361 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:43,522 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:43,712 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:43,904 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:44,053 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:44,251 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:44,452 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:44,652 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:44,822 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:44,959 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:45,139 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:45,290 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:45,445 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:45,612 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:45,789 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:45,962 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:46,152 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:46,360 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:46,568 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:46,729 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:46,951 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:47,106 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:47,310 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:47,513 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:47,722 - INFO - Prototype refinement converged at iteration 3
+2025-12-16 08:11:47,919 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:48,091 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:48,246 - INFO - Prototype refinement converged at iteration 3
+2025-12-16 08:11:48,420 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:48,553 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:48,753 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:48,905 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:49,103 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:49,243 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:49,403 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:49,620 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:49,786 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:49,960 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:50,121 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:50,275 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:50,437 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:50,674 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:50,889 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:51,086 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:51,251 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:51,439 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:51,653 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:51,836 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:52,085 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:52,320 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:52,504 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:52,720 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:52,847 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:53,033 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:53,219 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:53,429 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:53,590 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:53,753 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:53,942 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:54,151 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:54,345 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:54,536 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:54,773 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:55,004 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:55,173 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:55,366 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:55,534 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:55,755 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:55,944 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:56,118 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:56,265 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:56,420 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:56,601 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:56,790 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:56,959 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:57,129 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:57,281 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:57,520 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:11:57,719 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:57,906 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:58,020 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:11:58,218 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:58,413 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:58,638 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:58,800 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:58,984 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:59,154 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:59,303 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:59,436 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:59,593 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:59,745 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:11:59,918 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:00,129 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:00,292 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:00,442 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:00,603 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:00,799 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:00,989 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:01,185 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:01,378 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:12:01,489 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:01,660 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:12:01,850 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:01,959 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:02,101 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:02,290 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:02,522 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:12:02,659 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:02,845 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:03,016 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:03,201 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:03,356 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:03,552 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:12:03,706 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:03,920 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:04,103 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:04,295 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:04,482 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:04,629 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:04,817 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:04,990 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:05,128 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:05,289 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:05,450 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:05,614 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:12:05,770 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:12:05,936 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:06,086 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:06,289 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:06,419 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:12:06,590 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:06,778 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:06,929 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:07,094 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:07,303 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:07,469 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:07,618 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:07,792 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:07,959 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:08,113 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:08,303 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:08,450 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:12:08,589 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:08,759 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:08,942 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:09,078 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:09,237 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:09,391 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:09,539 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:09,729 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:09,919 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:10,089 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:12:10,256 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:10,410 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:10,559 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:10,718 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:10,935 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:11,075 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:11,261 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:11,453 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:11,632 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:11,820 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:11,942 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:12,097 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:12,253 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:12,411 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:12,561 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:12,776 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:12,942 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:13,118 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:12:13,270 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:13,389 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:13,519 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:13,651 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:13,772 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:13,920 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:14,081 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:14,257 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:12:14,397 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:14,554 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:14,670 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:12:14,804 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:14,938 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:15,133 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:12:15,319 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:12:15,461 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:15,604 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:15,771 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:12:15,956 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:16,110 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:16,278 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:16,441 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:12:16,555 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:16,715 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:16,920 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:12:17,084 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:17,261 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:17,407 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:17,541 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:17,696 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:12:17,888 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:18,060 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:12:18,268 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:18,414 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:18,490 - INFO - Epoch 20: Loss=1.8507, Accuracy=0.9609
+2025-12-16 08:12:18,570 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:18,694 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:18,844 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:18,977 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:19,121 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:19,252 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:12:19,379 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:12:19,510 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:19,649 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:12:19,789 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:19,929 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:20,103 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:20,228 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:20,376 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:20,507 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:20,703 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:20,853 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:12:20,991 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:12:21,114 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:21,236 - INFO - Prototype refinement converged at iteration 3
+2025-12-16 08:12:21,438 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:21,607 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:21,796 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:21,933 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:22,076 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:22,198 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:22,352 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:22,523 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:22,674 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:22,829 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:12:23,003 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:23,135 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:12:23,268 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:23,441 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:23,652 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:12:23,780 - INFO - Prototype refinement converged at iteration 0
+2025-12-16 08:12:23,949 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:24,087 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:24,281 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:24,452 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:24,621 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:24,804 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:12:24,948 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:25,109 - INFO - Prototype refinement converged at iteration 2
+2025-12-16 08:12:25,265 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:25,420 - INFO - Prototype refinement converged at iteration 1
+2025-12-16 08:12:25,509 - INFO - Transductive meta-training completed
+2025-12-16 08:12:25,509 - INFO - 
+================================================================================
+2025-12-16 08:12:25,509 - INFO - ✅ CENTRALIZED META-LEARNING TRAINING COMPLETED
+2025-12-16 08:12:25,509 - INFO - ================================================================================
+2025-12-16 08:12:25,509 - INFO -    Training loss: 1.8574
+2025-12-16 08:12:25,509 - INFO -    Validation accuracy: 0.9663
+2025-12-16 08:12:25,509 - INFO - 
+💡 Next step: TTT adaptation on test data
+2025-12-16 08:12:25,509 - INFO - ✅ Centralized training completed successfully
+2025-12-16 08:12:25,509 - INFO -    Training loss: 1.8574
+2025-12-16 08:12:25,509 - INFO -    Validation accuracy: 0.9663
+2025-12-16 08:12:25,509 - INFO - 
+✅ Centralized learning training phase completed!
+2025-12-16 08:12:25,509 - INFO - 
+================================================================================
+2025-12-16 08:12:25,509 - INFO - 📊 PHASE 1: EVALUATING BASE MODEL (Transductive Meta-Learning)
+2025-12-16 08:12:25,509 - INFO - ================================================================================
+2025-12-16 08:12:25,509 - INFO - 🔍 Evaluating Base Model (Transductive Meta-Learning Only)...
+2025-12-16 08:12:25,509 - INFO - 🔍 Using sequence-level multiclass labels (preserves 30% zero-day distribution from stratified sampling)
+2025-12-16 08:12:25,511 - INFO - 🔍 Identified 74 zero-day sequences from 224 sequences (33.0%)
+2025-12-16 08:12:25,511 - INFO - 🔍 Zero-day mask created: 74/224 samples (33.0%)
+2025-12-16 08:12:25,511 - INFO -    Zero-day attack: 'Generic', label: 1
+2025-12-16 08:12:25,514 - INFO -    Test label distribution: tensor([ 65, 159])
+2025-12-16 08:12:25,514 - INFO -    Zero-day samples: 74, Non-zero-day samples: 150
+2025-12-16 08:12:25,514 - INFO - Evaluating base model on 224 test samples with 74 zero-day samples and 150 non-zero-day samples
+2025-12-16 08:12:25,514 - INFO - 🔍 Base model evaluation mode: INCLUDING all test samples (Normal + Known Attacks + Zero-Day)
+2025-12-16 08:12:25,514 - INFO - 🔍 Base Model Evaluation - Test set size: 224 samples
+2025-12-16 08:12:25,514 - INFO -    This should match TTT model query set size for fair comparison
+2025-12-16 08:12:25,514 - INFO - 🔍 Creating support set: 74 samples from 224 test samples
+2025-12-16 08:12:25,543 - INFO - 🔍 Confidence-based rejection: 2/224 samples rejected (confidence < 0.57)
+2025-12-16 08:12:25,547 - INFO - 🔍 DIAGNOSTIC: Test Set and Prediction Distribution
+2025-12-16 08:12:25,547 - INFO -   Test Set Class Distribution (multiclass): {0: 65, 1: 159}
+2025-12-16 08:12:25,548 - INFO -   Prediction Distribution (multiclass): {0: 90, 1: 132}
+2025-12-16 08:12:25,548 - INFO -   Binary Distribution - True: Normal=65, Attack=157
+2025-12-16 08:12:25,548 - INFO -   Binary Distribution - Predicted: Normal=90, Attack=132
+2025-12-16 08:12:25,549 - INFO - 📊 Base Model Probability Analysis:
+  ├─ Attack prob range: [0.0000, 1.0000]
+  ├─ Attack prob mean: 0.5981, std: 0.4825
+  ├─ Attack prob median: 0.9997
+  └─ Samples with prob > 0.9: 132/224 (58.9%)
+2025-12-16 08:12:25,550 - INFO - ✅ Base model ROC curve calculated: AUC=0.9250, 49 points
+2025-12-16 08:12:25,551 - INFO - ✅ Base model PR curve calculated: AUC-PR=0.9637, 151 points
+2025-12-16 08:12:25,551 - INFO - 🔍 Base Model FAR Optimization: Target FAR ≤ 8.00%
+2025-12-16 08:12:26,026 - INFO - ✅ Base Model FAR-Optimized Threshold: 0.9720
+2025-12-16 08:12:26,026 - INFO -    Results: FAR=0.0615 (✅), F1=0.864
+2025-12-16 08:12:26,027 - INFO - 📊 BASE MODEL CM FINAL COUNT: 222 samples
+2025-12-16 08:12:26,031 - INFO - ✅ Zero-day-specific AUC-PR calculated: 0.9794 (calculated on 74 zero-day samples only)
+2025-12-16 08:12:26,031 - INFO - 🔍 DEBUG BASE MODEL - Zero-day predictions: [1, 72]
+2025-12-16 08:12:26,031 - INFO - 🔍 DEBUG BASE MODEL - Zero-day actual labels: [0, 74]
+2025-12-16 08:12:26,031 - INFO - 🔍 DEBUG BASE MODEL - Zero-day prediction distribution: {-1: 1, 0: 1, 1: 72}
+2025-12-16 08:12:26,031 - INFO - 🔍 DEBUG BASE MODEL - Zero-day actual label distribution: {1: 74}
+2025-12-16 08:12:26,031 - INFO - 🔍 DEBUG BASE MODEL - Zero-day confusion matrix: [[0, 0], [1, 72]]
+2025-12-16 08:12:26,031 - INFO - 🔍 DEBUG BASE MODEL - Zero-day precision=1.0000, recall=0.9863, AUC-PR=0.9794
+2025-12-16 08:12:26,032 - INFO - 🔍 DEBUG BASE MODEL - Zero-day prob stats: min=0.0000, max=1.0000, mean=0.9794, median=1.0000
+2025-12-16 08:12:26,035 - INFO - ✅ Base Model Results:
+2025-12-16 08:12:26,035 - INFO -    📊 Overall Performance:
+2025-12-16 08:12:26,035 - INFO -       Accuracy: 0.8423
+2025-12-16 08:12:26,036 - INFO -       F1-Score: 0.8789
+2025-12-16 08:12:26,036 - INFO -       AUC-PR: 0.9637 ⭐ (PRIMARY metric for imbalanced zero-day detection)
+2025-12-16 08:12:26,036 - INFO -       ROC AUC: 0.9250 (secondary metric)
+2025-12-16 08:12:26,036 - INFO -       MCC: 0.0000
+2025-12-16 08:12:26,036 - INFO - 
+   🔴 Zero-Day Attacks Only (74 samples, 33.0% of test set):
+2025-12-16 08:12:26,036 - INFO -       Accuracy: 0.9863
+2025-12-16 08:12:26,036 - INFO -       F1-Score: 0.9931
+2025-12-16 08:12:26,036 - INFO -       Precision: 1.0000
+2025-12-16 08:12:26,036 - INFO -       Recall: 0.9863
+2025-12-16 08:12:26,036 - INFO -       Zero-Day Detection Rate: 0.9863
+2025-12-16 08:12:26,036 - INFO -       Zero-Day-Specific AUC-PR: 0.9794 ⭐ (calculated on zero-day samples only, should match detection rate if perfect)
+2025-12-16 08:12:26,036 - INFO - 
+   🟢 Non-Zero-Day Samples (150 samples, 67.0% of test set):
+2025-12-16 08:12:26,036 - INFO -       Accuracy: 0.7718
+2025-12-16 08:12:26,036 - INFO -       F1-Score: 0.7639
+2025-12-16 08:12:26,036 - INFO -       Precision: 0.9167
+2025-12-16 08:12:26,036 - INFO -       Recall: 0.6548
+2025-12-16 08:12:26,036 - INFO - 
+================================================================================
+2025-12-16 08:12:26,036 - INFO - 🚀 PHASE 2: TTT ADAPTATION AT COORDINATOR SIDE
+2025-12-16 08:12:26,036 - INFO - ================================================================================
+2025-12-16 08:12:26,036 - INFO - 🚀 Performing TTT Adaptation at Coordinator Side...
+2025-12-16 08:12:26,036 - INFO - 📊 Using FILTERED test sequences: 224 samples (with 30% zero-day distribution matching evaluation)
+2025-12-16 08:12:26,036 - INFO -    Verified distribution: 56/224 zero-day sequences (25.0%)
+2025-12-16 08:12:26,037 - INFO - ✅ TTT Query set: 224 samples (sampled from filtered sequences with SAME 30% zero-day distribution as evaluation)
+2025-12-16 08:12:26,037 - INFO - ✅ CONFIRMED: TTT adaptation uses EXACT SAME filtered sequences as evaluation (perfect distribution match)
+2025-12-16 08:12:26,037 - INFO - 🔍 Verifying base model before TTT adaptation...
+2025-12-16 08:12:26,043 - INFO -   Base model predictions (first 10): [82, 82, 82, 111, 82, 82, 111, 111, 82, 82]
+2025-12-16 08:12:26,049 - INFO - ✅ Model cloned successfully via torch.save/torch.load
+2025-12-16 08:12:26,049 - INFO - ✅ TENT+Classifier mode enabled:
+2025-12-16 08:12:26,049 - INFO -    - Updating 4 BatchNorm layers and 2 Classifier layers (8,960 parameters)
+2025-12-16 08:12:26,049 - INFO -    - Frozen: 36,608 parameters (TCN feature extractor)
+2025-12-16 08:12:26,051 - INFO - 🔄 Starting TTT adaptation (tent_pseudo) for 194 steps...
+2025-12-16 08:12:26,062 - INFO -    🔍 DEBUG: train_data available: True, train_labels available: True
+2025-12-16 08:12:26,062 - INFO -    🔍 Attempting to generate anchor prototypes from training data...
+2025-12-16 08:12:26,062 - INFO -    🔍 Found 2 classes in training data: [0, 1]
+2025-12-16 08:12:26,062 - INFO -    🔍 Class 0: 1733 samples, using 5 for anchors
+2025-12-16 08:12:26,062 - INFO -    🔍 Class 1: 2432 samples, using 5 for anchors
+2025-12-16 08:12:26,062 - INFO -    🔍 Total anchor samples: 10
+2025-12-16 08:12:26,062 - INFO -    🔍 Computing embeddings for anchor samples...
+2025-12-16 08:12:26,069 - INFO -    🔍 Anchor embeddings shape: torch.Size([10, 128])
+2025-12-16 08:12:26,069 - INFO -    ✅ Generated anchor prototypes from training data for KMeans alignment
+2025-12-16 08:12:26,069 - INFO -    🔍 Anchor prototypes shape: (2, 128)
+2025-12-16 08:12:26,069 - INFO -    ✅ Using Nearest Anchor assignment (preserves class imbalance)
+2025-12-16 08:12:26,069 - INFO -    ✅ Using k-means clustering for pseudo-labels (k=2)
+2025-12-16 08:12:26,069 - INFO -    Cluster sizes: [20, 24]
+2025-12-16 08:12:26,086 - INFO -    Using 44 samples as support set for prototype computation during TTT
+2025-12-16 08:12:26,086 - INFO -    Initial prototypes shape: torch.Size([2, 128]), num_classes: 2
+2025-12-16 08:12:26,086 - INFO -    Class distribution: [20, 24]
+2025-12-16 08:12:26,611 - INFO -      → Prototypes updated using k-means (step 10)
+2025-12-16 08:12:26,620 - INFO -      → Prototypes updated at step 10 (num_classes: 2)
+2025-12-16 08:12:27,069 - INFO -      → Prototypes updated using k-means (step 20)
+2025-12-16 08:12:27,081 - INFO -      → Prototypes updated at step 20 (num_classes: 2)
+2025-12-16 08:12:27,082 - INFO -   TTT Step 20/194: Loss=0.0522, Entropy=0.0142, Pseudo=0.0043, L2_Reg=1.6619
+2025-12-16 08:12:27,564 - INFO -      → Prototypes updated using k-means (step 30)
+2025-12-16 08:12:27,568 - INFO -      → Prototypes updated at step 30 (num_classes: 2)
+2025-12-16 08:12:28,053 - INFO -      → Prototypes updated using k-means (step 40)
+2025-12-16 08:12:28,060 - INFO -      → Prototypes updated at step 40 (num_classes: 2)
+2025-12-16 08:12:28,060 - INFO -   TTT Step 40/194: Loss=0.0404, Entropy=0.0138, Pseudo=0.0014, L2_Reg=1.5074
+2025-12-16 08:12:28,520 - INFO -      → Prototypes updated using k-means (step 50)
+2025-12-16 08:12:28,531 - INFO -      → Prototypes updated at step 50 (num_classes: 2)
+2025-12-16 08:12:28,997 - INFO -      → Prototypes updated using k-means (step 60)
+2025-12-16 08:12:29,008 - INFO -      → Prototypes updated at step 60 (num_classes: 2)
+2025-12-16 08:12:29,008 - INFO -   TTT Step 60/194: Loss=0.0525, Entropy=0.0219, Pseudo=0.0036, L2_Reg=1.4307
+2025-12-16 08:12:29,465 - INFO -      → Prototypes updated using k-means (step 70)
+2025-12-16 08:12:29,471 - INFO -      → Prototypes updated at step 70 (num_classes: 2)
+2025-12-16 08:12:29,946 - INFO -      → Prototypes updated using k-means (step 80)
+2025-12-16 08:12:29,949 - INFO -      → Prototypes updated at step 80 (num_classes: 2)
+2025-12-16 08:12:29,949 - INFO -   TTT Step 80/194: Loss=0.0539, Entropy=0.0270, Pseudo=0.0029, L2_Reg=1.3998
+2025-12-16 08:12:30,407 - INFO -      → Prototypes updated using k-means (step 90)
+2025-12-16 08:12:30,411 - INFO -      → Prototypes updated at step 90 (num_classes: 2)
+2025-12-16 08:12:30,951 - INFO -      → Prototypes updated using k-means (step 100)
+2025-12-16 08:12:30,959 - INFO -      → Prototypes updated at step 100 (num_classes: 2)
+2025-12-16 08:12:30,959 - INFO -   TTT Step 100/194: Loss=0.0513, Entropy=0.0192, Pseudo=0.0035, L2_Reg=1.5195
+2025-12-16 08:12:31,410 - INFO -      → Prototypes updated using k-means (step 110)
+2025-12-16 08:12:31,415 - INFO -      → Prototypes updated at step 110 (num_classes: 2)
+2025-12-16 08:12:32,040 - INFO -      → Prototypes updated using k-means (step 120)
+2025-12-16 08:12:32,048 - INFO -      → Prototypes updated at step 120 (num_classes: 2)
+2025-12-16 08:12:32,048 - INFO -   TTT Step 120/194: Loss=0.0431, Entropy=0.0173, Pseudo=0.0025, L2_Reg=1.3078
+2025-12-16 08:12:32,578 - INFO -      → Prototypes updated using k-means (step 130)
+2025-12-16 08:12:32,585 - INFO -      → Prototypes updated at step 130 (num_classes: 2)
+2025-12-16 08:12:33,242 - INFO -      → Prototypes updated using k-means (step 140)
+2025-12-16 08:12:33,259 - INFO -      → Prototypes updated at step 140 (num_classes: 2)
+2025-12-16 08:12:33,259 - INFO -   TTT Step 140/194: Loss=0.0662, Entropy=0.0333, Pseudo=0.0051, L2_Reg=1.4413
+2025-12-16 08:12:33,788 - INFO -      → Prototypes updated using k-means (step 150)
+2025-12-16 08:12:33,789 - INFO -      → Prototypes updated at step 150 (num_classes: 2)
+2025-12-16 08:12:34,390 - INFO -      → Prototypes updated using k-means (step 160)
+2025-12-16 08:12:34,393 - INFO -      → Prototypes updated at step 160 (num_classes: 2)
+2025-12-16 08:12:34,393 - INFO -   TTT Step 160/194: Loss=0.0505, Entropy=0.0189, Pseudo=0.0034, L2_Reg=1.5107
+2025-12-16 08:12:34,952 - INFO -      → Prototypes updated using k-means (step 170)
+2025-12-16 08:12:34,959 - INFO -      → Prototypes updated at step 170 (num_classes: 2)
+2025-12-16 08:12:35,490 - INFO -      → Prototypes updated using k-means (step 180)
+2025-12-16 08:12:35,507 - INFO -      → Prototypes updated at step 180 (num_classes: 2)
+2025-12-16 08:12:35,507 - INFO -   TTT Step 180/194: Loss=0.0497, Entropy=0.0214, Pseudo=0.0030, L2_Reg=1.4148
+2025-12-16 08:12:36,097 - INFO -      → Prototypes updated using k-means (step 190)
+2025-12-16 08:12:36,111 - INFO -      → Prototypes updated at step 190 (num_classes: 2)
+2025-12-16 08:12:36,407 - INFO -    ✅ Stored TTT prototypes (shape: torch.Size([2, 128])) for consistent evaluation
+2025-12-16 08:12:36,407 - INFO -    ⚠️  IMPORTANT: Evaluation MUST use these prototypes, not recomputed ones!
+2025-12-16 08:12:36,407 - INFO - ✅ TTT adaptation completed: 194 steps, final loss: 0.0463
+2025-12-16 08:12:36,407 - INFO - 🔍 Verifying adapted model after TTT adaptation...
+2025-12-16 08:12:36,416 - INFO -   Adapted model predictions (first 10): [82, 82, 82, 111, 82, 82, 111, 111, 82, 82]
+2025-12-16 08:12:36,416 - WARNING - ⚠️ Adapted model predictions are IDENTICAL to base model!
+2025-12-16 08:12:36,416 - INFO - ✅ Stored TTT adaptation data: 194 steps
+2025-12-16 08:12:36,416 - INFO - ✅ TTT Adaptation completed at coordinator side
+2025-12-16 08:12:36,416 - INFO - 
+================================================================================
+2025-12-16 08:12:36,416 - INFO - 📈 PHASE 3: EVALUATING ADAPTED MODEL (TTT Enhanced)
+2025-12-16 08:12:36,416 - INFO - ================================================================================
+2025-12-16 08:12:36,416 - INFO - 📈 Evaluating Adapted Model (TTT Enhanced)...
+2025-12-16 08:12:36,416 - INFO - 🔍 Using sequence-level multiclass labels (preserves 30% zero-day distribution from stratified sampling)
+2025-12-16 08:12:36,416 - INFO - 🔍 Identified 74 zero-day sequences from 224 sequences (33.0%)
+2025-12-16 08:12:36,416 - INFO - 🔍 Zero-day mask created: 74/224 samples (33.0%)
+2025-12-16 08:12:36,416 - INFO -    Zero-day attack: 'Generic', label: 1
+2025-12-16 08:12:36,416 - INFO -    Test label distribution: tensor([ 65, 159])
+2025-12-16 08:12:36,416 - INFO -    Zero-day samples: 74, Non-zero-day samples: 150
+2025-12-16 08:12:36,416 - INFO - Evaluating adapted model on 224 test samples with 74 zero-day samples and 150 non-zero-day samples
+2025-12-16 08:12:36,416 - INFO - 🔍 Final verification: Comparing base vs adapted model predictions...
+2025-12-16 08:12:36,458 - INFO -   Prediction match rate: 98.0% (98/100 identical)
+2025-12-16 08:12:36,458 - ERROR - ❌ CRITICAL: Adapted model predictions are 98.0% identical to base model!
+2025-12-16 08:12:36,458 - ERROR -    This indicates TTT adaptation did NOT change the model behavior.
+2025-12-16 08:12:36,458 - ERROR -    Possible causes:
+2025-12-16 08:12:36,458 - ERROR -    1. TTT adaptation failed silently
+2025-12-16 08:12:36,458 - ERROR -    2. Model parameters not updating (check gradients)
+2025-12-16 08:12:36,458 - ERROR -    3. Learning rate too small
+2025-12-16 08:12:36,458 - ERROR -    4. Not enough adaptation steps
+2025-12-16 08:12:36,458 - INFO - 🎯 TTT Adapted Model: Using prototype-based evaluation with test set support
+2025-12-16 08:12:36,458 - INFO - ✅ Using stored TTT prototypes for consistent evaluation (shape: torch.Size([2, 128]))
+2025-12-16 08:12:36,458 - INFO -    → This prevents prototype mismatch between adaptation and evaluation
+2025-12-16 08:12:36,479 - INFO - 🔧 Applied temperature scaling (T=1.91) to calibrate TTT probabilities
+2025-12-16 08:12:36,479 - INFO - 📊 TTT Probability Analysis:
+  ├─ Attack prob range: [0.0000, 1.0000]
+  ├─ Attack prob mean: 0.6023, std: 0.4823
+  ├─ Attack prob median: 0.9961
+  └─ Samples with prob > 0.9: 131/224 (58.5%)
+2025-12-16 08:12:36,479 - INFO - 📊 Threshold Optimization Strategy: balanced_zdr_far (set in config)
+2025-12-16 08:12:36,479 - INFO - 🔍 Balanced ZDR-FAR Optimization: Found 74 zero-day samples
+2025-12-16 08:12:36,479 - INFO -    Target: ZDR ≥ 75.00%, FAR ≤ 8.00%
+2025-12-16 08:12:36,820 - INFO - ✅ Threshold Strategy: Balanced ZDR-FAR
+2025-12-16 08:12:36,820 - INFO -    Selected threshold: 0.8097
+2025-12-16 08:12:36,820 - INFO -    Results: ZDR=0.986, FAR=0.077, F1=0.881
+2025-12-16 08:12:36,820 - INFO -    Target met: ZDR ≥ 75.00% (True), FAR ≤ 8.00% (True)
+2025-12-16 08:12:36,820 - INFO - 📊 Final Threshold: 0.8097 (Balanced ZDR-FAR (Production-Ready))
+2025-12-16 08:12:36,824 - INFO - 🔍 Confidence-based rejection (TTT): 0/224 samples rejected (confidence < 0.57)
+2025-12-16 08:12:36,824 - INFO - 🔍 Using PR-optimized threshold for TTT (threshold=0.8097) - FAR constraint disabled to prevent extreme thresholds
+2025-12-16 08:12:36,824 - INFO - 📊 TTT Prediction Distribution (threshold=0.8097):
+  ├─ Predicted Normal: 90/224 (40.2%)
+  ├─ Predicted Attack: 134/224 (59.8%)
+  ├─ Rejected (Unknown): 0/224 (0.0%)
+  └─ Actual distribution: Normal=False, Attack=159
+2025-12-16 08:12:36,826 - INFO - 🔍 DIAGNOSTIC: TTT Test Set and Prediction Distribution
+2025-12-16 08:12:36,826 - INFO -   Test Set Class Distribution (multiclass): {0: 65, 1: 159}
+2025-12-16 08:12:36,826 - INFO -   Prediction Distribution (multiclass): {0: 90, 1: 134}
+2025-12-16 08:12:36,826 - INFO -   Binary Distribution - True: Normal=65, Attack=159
+2025-12-16 08:12:36,826 - INFO -   Binary Distribution - Predicted: Normal=90, Attack=134
+2025-12-16 08:12:36,830 - INFO - ✅ ROC curve calculated: AUC=0.9347, 54 points
+2025-12-16 08:12:36,830 - ERROR - ❌ ROC/PR curve calculation failed: local variable 'precision_recall_curve' referenced before assignment
+2025-12-16 08:12:36,830 - WARNING - ⚠️ Continuing evaluation without PR/ROC curves - other plots will still be generated
+2025-12-16 08:12:36,830 - INFO - 🔍 RETRIEVED FROM BASE: base_cm_samples_used=222, base_valid_mask length=224
+2025-12-16 08:12:36,830 - INFO - 🔒 USING BASE VALID MASK: 222 samples (matching base model)
+2025-12-16 08:12:36,830 - INFO - 📊 TTT MODEL CM FINAL COUNT: 222 samples
+2025-12-16 08:12:36,830 - INFO - ✅✅✅ SUCCESS: TTT CM sample count (222) MATCHES Base CM sample count (222)!
+2025-12-16 08:12:36,834 - INFO - ✅ Zero-day-specific AUC-PR calculated: 1.0000 (calculated on 74 zero-day samples only)
+2025-12-16 08:12:36,835 - INFO - 🔍 DEBUG TTT MODEL - Zero-day predictions: [1, 73]
+2025-12-16 08:12:36,835 - INFO - 🔍 DEBUG TTT MODEL - Zero-day actual labels: [0, 74]
+2025-12-16 08:12:36,835 - INFO - 🔍 DEBUG TTT MODEL - Zero-day prediction distribution: {0: 1, 1: 73}
+2025-12-16 08:12:36,835 - INFO - 🔍 DEBUG TTT MODEL - Zero-day actual label distribution: {1: 74}
+2025-12-16 08:12:36,835 - INFO - 🔍 DEBUG TTT MODEL - Zero-day confusion matrix: [[0, 0], [1, 73]]
+2025-12-16 08:12:36,835 - INFO - 🔍 DEBUG TTT MODEL - Zero-day precision=1.0000, recall=0.9865, AUC-PR=1.0000
+2025-12-16 08:12:36,835 - INFO - 🔍 DEBUG TTT MODEL - Zero-day prob stats: min=0.0000, max=1.0000, mean=0.9833, median=1.0000
+2025-12-16 08:12:36,838 - INFO - ✅ Adapted Model Results:
+2025-12-16 08:12:36,838 - INFO -    📊 Overall Performance:
+2025-12-16 08:12:36,838 - INFO -       Accuracy: 0.8438
+2025-12-16 08:12:36,838 - INFO -       F1-Score: 0.8805
+2025-12-16 08:12:36,838 - INFO -       FAR: 0.0769 (lower = fewer false alarms)
+2025-12-16 08:12:36,838 - WARNING -       AUC-PR: Not available (calculation failed)
+2025-12-16 08:12:36,838 - WARNING -       ROC AUC: Not available (calculation failed)
+2025-12-16 08:12:36,838 - INFO -       MCC: 0.0000
+2025-12-16 08:12:36,838 - INFO - 
+   🔴 Zero-Day Attacks Only (74 samples, 33.0% of test set):
+2025-12-16 08:12:36,838 - INFO -       Accuracy: 0.9865
+2025-12-16 08:12:36,838 - INFO -       F1-Score: 0.9932
+2025-12-16 08:12:36,839 - INFO -       Precision: 1.0000
+2025-12-16 08:12:36,839 - INFO -       Recall: 0.9865
+2025-12-16 08:12:36,839 - INFO -       Zero-Day Detection Rate: 0.9865
+2025-12-16 08:12:36,839 - INFO -       Zero-Day-Specific AUC-PR: 1.0000 ⭐ (calculated on zero-day samples only, should match detection rate if perfect)
+2025-12-16 08:12:36,839 - INFO - 
+   🟢 Non-Zero-Day Samples (150 samples, 67.0% of test set):
+2025-12-16 08:12:36,839 - INFO -       Accuracy: 0.7733
+2025-12-16 08:12:36,839 - INFO -       F1-Score: 0.7671
+2025-12-16 08:12:36,839 - INFO -       Precision: 0.9180
+2025-12-16 08:12:36,839 - INFO -       Recall: 0.6588
+2025-12-16 08:12:36,841 - INFO - 🔍 Evaluating Base Model (Transductive Meta-Learning Only)...
+2025-12-16 08:12:36,841 - INFO - 🔍 Using sequence-level multiclass labels (preserves 30% zero-day distribution from stratified sampling)
+2025-12-16 08:12:36,841 - INFO - 🔍 Identified 74 zero-day sequences from 224 sequences (33.0%)
+2025-12-16 08:12:36,841 - INFO - 🔍 Zero-day mask created: 74/224 samples (33.0%)
+2025-12-16 08:12:36,841 - INFO -    Zero-day attack: 'Generic', label: 1
+2025-12-16 08:12:36,841 - INFO -    Test label distribution: tensor([ 65, 159])
+2025-12-16 08:12:36,842 - INFO -    Zero-day samples: 74, Non-zero-day samples: 150
+2025-12-16 08:12:36,842 - INFO - Evaluating base model on 224 test samples with 74 zero-day samples and 150 non-zero-day samples
+2025-12-16 08:12:36,842 - INFO - 🔍 Base model evaluation mode: INCLUDING all test samples (Normal + Known Attacks + Zero-Day)
+2025-12-16 08:12:36,842 - INFO - 🔍 Base Model Evaluation - Test set size: 224 samples
+2025-12-16 08:12:36,842 - INFO -    This should match TTT model query set size for fair comparison
+2025-12-16 08:12:36,842 - INFO - 🔍 Creating support set: 74 samples from 224 test samples
+2025-12-16 08:12:36,870 - INFO - 🔍 Confidence-based rejection: 2/224 samples rejected (confidence < 0.57)
+2025-12-16 08:12:36,873 - INFO - 🔍 DIAGNOSTIC: Test Set and Prediction Distribution
+2025-12-16 08:12:36,873 - INFO -   Test Set Class Distribution (multiclass): {0: 65, 1: 159}
+2025-12-16 08:12:36,873 - INFO -   Prediction Distribution (multiclass): {0: 85, 1: 137}
+2025-12-16 08:12:36,873 - INFO -   Binary Distribution - True: Normal=64, Attack=158
+2025-12-16 08:12:36,873 - INFO -   Binary Distribution - Predicted: Normal=85, Attack=137
+2025-12-16 08:12:36,875 - INFO - 📊 Base Model Probability Analysis:
+  ├─ Attack prob range: [0.0000, 1.0000]
+  ├─ Attack prob mean: 0.6182, std: 0.4773
+  ├─ Attack prob median: 1.0000
+  └─ Samples with prob > 0.9: 134/224 (59.8%)
+2025-12-16 08:12:36,876 - INFO - ✅ Base model ROC curve calculated: AUC=0.9261, 44 points
+2025-12-16 08:12:36,877 - INFO - ✅ Base model PR curve calculated: AUC-PR=0.9665, 123 points
+2025-12-16 08:12:36,877 - INFO - 🔍 Base Model FAR Optimization: Target FAR ≤ 8.00%
+2025-12-16 08:12:37,052 - INFO - ✅ Base Model FAR-Optimized Threshold: 0.8755
+2025-12-16 08:12:37,052 - INFO -    Results: FAR=0.0769 (✅), F1=0.881
+2025-12-16 08:12:37,052 - INFO - 📊 BASE MODEL CM FINAL COUNT: 222 samples
+2025-12-16 08:12:37,059 - INFO - ✅ Zero-day-specific AUC-PR calculated: 1.0000 (calculated on 74 zero-day samples only)
+2025-12-16 08:12:37,059 - INFO - 🔍 DEBUG BASE MODEL - Zero-day predictions: [1, 73]
+2025-12-16 08:12:37,059 - INFO - 🔍 DEBUG BASE MODEL - Zero-day actual labels: [0, 74]
+2025-12-16 08:12:37,059 - INFO - 🔍 DEBUG BASE MODEL - Zero-day prediction distribution: {0: 1, 1: 73}
+2025-12-16 08:12:37,059 - INFO - 🔍 DEBUG BASE MODEL - Zero-day actual label distribution: {1: 74}
+2025-12-16 08:12:37,059 - INFO - 🔍 DEBUG BASE MODEL - Zero-day confusion matrix: [[0, 0], [1, 73]]
+2025-12-16 08:12:37,059 - INFO - 🔍 DEBUG BASE MODEL - Zero-day precision=1.0000, recall=0.9865, AUC-PR=1.0000
+2025-12-16 08:12:37,059 - INFO - 🔍 DEBUG BASE MODEL - Zero-day prob stats: min=0.0000, max=1.0000, mean=0.9855, median=1.0000
+2025-12-16 08:12:37,059 - INFO - ✅ Base Model Results:
+2025-12-16 08:12:37,059 - INFO -    📊 Overall Performance:
+2025-12-16 08:12:37,059 - INFO -       Accuracy: 0.8514
+2025-12-16 08:12:37,059 - INFO -       F1-Score: 0.8881
+2025-12-16 08:12:37,059 - INFO -       AUC-PR: 0.9665 ⭐ (PRIMARY metric for imbalanced zero-day detection)
+2025-12-16 08:12:37,059 - INFO -       ROC AUC: 0.9261 (secondary metric)
+2025-12-16 08:12:37,059 - INFO -       MCC: 0.0000
+2025-12-16 08:12:37,059 - INFO - 
+   🔴 Zero-Day Attacks Only (74 samples, 33.0% of test set):
+2025-12-16 08:12:37,059 - INFO -       Accuracy: 0.9865
+2025-12-16 08:12:37,059 - INFO -       F1-Score: 0.9932
+2025-12-16 08:12:37,059 - INFO -       Precision: 1.0000
+2025-12-16 08:12:37,059 - INFO -       Recall: 0.9865
+2025-12-16 08:12:37,059 - INFO -       Zero-Day Detection Rate: 0.9865
+2025-12-16 08:12:37,059 - INFO -       Zero-Day-Specific AUC-PR: 1.0000 ⭐ (calculated on zero-day samples only, should match detection rate if perfect)
+2025-12-16 08:12:37,059 - INFO - 
+   🟢 Non-Zero-Day Samples (150 samples, 67.0% of test set):
+2025-12-16 08:12:37,059 - INFO -       Accuracy: 0.7838
+2025-12-16 08:12:37,059 - INFO -       F1-Score: 0.7838
+2025-12-16 08:12:37,059 - INFO -       Precision: 0.9062
+2025-12-16 08:12:37,059 - INFO -       Recall: 0.6905
+2025-12-16 08:12:37,059 - INFO - 
+================================================================================
+2025-12-16 08:12:37,059 - INFO - TTT OVERFITTING DIAGNOSTIC
+2025-12-16 08:12:37,059 - INFO - ================================================================================
+2025-12-16 08:12:37,059 - INFO - ✅ Status: HEALTHY
+2025-12-16 08:12:37,059 - INFO -    Severity: LOW
+2025-12-16 08:12:37,059 - INFO - 
+📊 Normal Sample Performance:
+2025-12-16 08:12:37,059 - INFO -    Base Model Accuracy: 85.14%
+2025-12-16 08:12:37,059 - INFO -    TTT Model Accuracy:  84.38%
+2025-12-16 08:12:37,059 - WARNING - ⚠️ TTT overfitting check failed: 'accuracy_drop'
+2025-12-16 08:12:37,059 - INFO - 
+================================================================================
+2025-12-16 08:12:37,059 - INFO - 🌊 PHASE 4: FLOW-LEVEL TTT EVALUATION (Comparison)
+2025-12-16 08:12:37,059 - INFO - ================================================================================
+2025-12-16 08:12:37,059 - WARNING - ⚠️  Flow IDs not found in preprocessed data, skipping flow-level evaluation
+2025-12-16 08:12:37,059 - INFO - ⚠️  K-fold CV temporarily disabled for quick run
+2025-12-16 08:12:37,059 - INFO - 
+================================================================================
+2025-12-16 08:12:37,059 - INFO - 🔍 PHASE 4: COMPARING BASE vs ADAPTED MODEL PERFORMANCE
+2025-12-16 08:12:37,059 - INFO - ================================================================================
+2025-12-16 08:12:37,059 - INFO - 🔍 Comparing Base vs Adapted Model Performance...
+2025-12-16 08:12:37,059 - INFO - ✅ Performance Comparison:
+2025-12-16 08:12:37,059 - INFO -    Accuracy Improvement: +0.0014
+2025-12-16 08:12:37,059 - INFO -    F1-Score Improvement: +0.0017
+2025-12-16 08:12:37,059 - INFO -    AUC-PR Improvement: -0.9637 ⭐ (PRIMARY - shows true zero-day detection improvement)
+2025-12-16 08:12:37,059 - INFO -    ROC AUC Improvement: -0.9250 (secondary)
+2025-12-16 08:12:37,059 - INFO -    Zero-day Detection Improvement: +0.0002
+2025-12-16 08:12:37,059 - INFO -    FAR Improvement: +0.0000 (positive = fewer false alarms)
+2025-12-16 08:12:37,059 - INFO -    Statistical Significance: p=0.0000 ✅
+2025-12-16 08:12:37,059 - INFO -    Better Model: adapted
+2025-12-16 08:12:37,059 - INFO -    TTT Beneficial: ✅
+2025-12-16 08:12:37,059 - INFO - ⚠️  IEEE statistical plots temporarily disabled (k-fold CV disabled for quick run)
+2025-12-16 08:12:37,059 - INFO - Evaluating final global model performance...
+2025-12-16 08:12:37,059 - INFO - Using EXACT SAME results as zero-day detection for perfect consistency...
+2025-12-16 08:12:37,059 - INFO - ✅ Final global model evaluation completed!
+2025-12-16 08:12:37,059 - INFO - Final Model Accuracy: 0.8423
+2025-12-16 08:12:37,059 - INFO - Final Model F1-Score: 0.8789
+2025-12-16 08:12:37,059 - INFO - Final Model MCC: 0.0000
+2025-12-16 08:12:37,059 - INFO - Final Model Zero-day Detection Rate: 0.9863
+2025-12-16 08:12:37,059 - INFO - Test Samples: 0
+2025-12-16 08:12:37,059 - INFO - Evaluation Method: Transductive Few-Shot Learning (Identical)
+2025-12-16 08:12:37,059 - INFO - 🎯 PERFECT CONSISTENCY: Using identical results as zero-day detection
+2025-12-16 08:12:37,059 - INFO - Generating performance visualizations (minimal version)...
+2025-12-16 08:12:37,059 - INFO - Creating minimal system data...
+2025-12-16 08:12:37,059 - WARNING - ⚠️ No client_updates in round 1, skipping
+2025-12-16 08:12:37,059 - WARNING - ⚠️ No training metrics available - skipping training history plot
+2025-12-16 08:12:37,059 - INFO - No real blockchain data available - using empty data for visualization
+2025-12-16 08:12:37,059 - INFO - Using real client performance data from training history - AVERAGE across all rounds
+2025-12-16 08:12:37,059 - INFO - Centralized training performance: Accuracy=0.966, F1=0.918
+2025-12-16 08:12:37,059 - INFO - 🔍 DEBUG: Real client results generated: [{'client_id': 'centralized', 'accuracy': 0.966, 'f1_score': 0.918, 'precision': 0.918, 'recall': 0.918}]
+2025-12-16 08:12:37,059 - INFO - ✅ Minimal system data created
+2025-12-16 08:12:37,059 - INFO - Generating essential plots...
+2025-12-16 08:12:37,059 - INFO - ⏭️ Skipping training history plot - no real data available
+2025-12-16 08:12:37,348 - INFO - Confusion matrix plot saved: performance_plots\confusion_matrices_base_model.png
+2025-12-16 08:12:37,348 - INFO - ✅ Base model confusion matrix completed
+2025-12-16 08:12:37,619 - INFO - Confusion matrix plot saved: performance_plots\confusion_matrices_ttt_enhanced_model.png
+2025-12-16 08:12:37,619 - INFO - ✅ Adapted model confusion matrix completed
+2025-12-16 08:12:37,619 - INFO - 🔍 DEBUG: Plotting TTT adaptation data with 194 steps
+2025-12-16 08:12:37,619 - INFO - ================================================================================
+2025-12-16 08:12:37,619 - INFO - 🎨 TTT ADAPTATION PLOT FUNCTION - INPUT VALIDATION
+2025-12-16 08:12:37,619 - INFO - ================================================================================
+2025-12-16 08:12:37,619 - INFO - Input data type: <class 'dict'>
+2025-12-16 08:12:37,619 - INFO - Input data is None: False
+2025-12-16 08:12:37,619 - INFO - Input data is empty: False
+2025-12-16 08:12:37,619 - INFO - Input data keys: ['total_losses', 'entropy_losses', 'pseudo_losses', 'l2_reg_losses', 'steps', 'final_loss', 'adaptation_steps']
+2025-12-16 08:12:37,619 - INFO -   total_losses: type=<class 'list'>, len=194
+2025-12-16 08:12:37,619 - INFO -     First 5: [0.0881187915802002, 0.08453453332185745, 0.07837185263633728, 0.059811074286699295, 0.048124514520168304], Last 5: [0.06532469391822815, 0.05063152313232422, 0.04333196580410004, 0.059765834361314774, 0.04627487435936928]
+2025-12-16 08:12:37,619 - INFO -   entropy_losses: type=<class 'list'>, len=194
+2025-12-16 08:12:37,619 - INFO -     First 5: [0.07359135895967484, 0.05238866060972214, 0.06174903362989426, 0.04356539249420166, 0.033045560121536255], Last 5: [0.03572804853320122, 0.02161121740937233, 0.015784308314323425, 0.028028320521116257, 0.019910305738449097]
+2025-12-16 08:12:37,619 - INFO -   pseudo_losses: type=<class 'list'>, len=194
+2025-12-16 08:12:37,619 - INFO -     First 5: [0.009274326264858246, 0.011600946076214314, 0.008068731985986233, 0.005473017692565918, 0.003904922865331173], Last 5: [0.004261275287717581, 0.003219960955902934, 0.0023694168776273727, 0.004476755391806364, 0.0022073788568377495]
+2025-12-16 08:12:37,619 - INFO -   l2_reg_losses: type=<class 'list'>, len=194
+2025-12-16 08:12:37,619 - INFO -     First 5: [0.0, 0.3793056011199951, 0.21567989885807037, 0.46921518445014954, 0.5706984996795654], Last 5: [1.4196772575378418, 1.414252758026123, 1.416680097579956, 1.4175347089767456, 1.4244873523712158]
+2025-12-16 08:12:37,619 - INFO -   steps: type=<class 'list'>, len=194
+2025-12-16 08:12:37,619 - INFO -     First 5: [1, 2, 3, 4, 5], Last 5: [190, 191, 192, 193, 194]
+2025-12-16 08:12:37,619 - INFO -   final_loss: type=<class 'float'>, len=N/A
+2025-12-16 08:12:37,619 - INFO -   adaptation_steps: type=<class 'int'>, len=N/A
+2025-12-16 08:12:37,619 - INFO - ================================================================================
+2025-12-16 08:12:37,619 - INFO - 🔍 After conversion: steps=194, total_losses=194, entropy_losses=194, pseudo_losses=194
+2025-12-16 08:12:37,619 - INFO -    steps sample: [1.0, 2.0, 3.0] (type: [<class 'float'>, <class 'float'>, <class 'float'>])
+2025-12-16 08:12:37,619 - INFO -    total_losses sample: [0.0881187915802002, 0.08453453332185745, 0.07837185263633728] (type: [<class 'float'>, <class 'float'>, <class 'float'>])
+2025-12-16 08:12:37,619 - INFO - 🔍 TTT plot data validation: steps=194, total_losses=194, entropy_losses=194, pseudo_losses=194
+2025-12-16 08:12:37,619 - INFO - ✅ Data validation passed: 194 steps, 194 losses
+2025-12-16 08:12:37,619 - INFO -    First step: 1.0, Last step: 194.0
+2025-12-16 08:12:37,619 - INFO -    First loss: 0.0881187915802002, Last loss: 0.04627487435936928
+2025-12-16 08:12:37,619 - INFO - TTT adaptation plot: Using 194 data points (steps: 194, losses: 194)
+2025-12-16 08:12:37,619 - INFO - ================================================================================
+2025-12-16 08:12:37,619 - INFO - 🎨 FINAL DATA VERIFICATION BEFORE PLOTTING
+2025-12-16 08:12:37,619 - INFO - ================================================================================
+2025-12-16 08:12:37,619 - INFO - steps (first 10): [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
+2025-12-16 08:12:37,619 - INFO - total_losses (first 10): [0.0881187915802002, 0.08453453332185745, 0.07837185263633728, 0.059811074286699295, 0.048124514520168304, 0.06545206159353256, 0.05666784942150116, 0.043287694454193115, 0.057146258652210236, 0.06378960609436035]
+2025-12-16 08:12:37,619 - INFO - All steps are numeric: True
+2025-12-16 08:12:37,619 - INFO - All losses are numeric: True
+2025-12-16 08:12:37,619 - INFO - Steps range: [1.0, 194.0]
+2025-12-16 08:12:37,619 - INFO - Losses range: [0.02788703329861164, 0.0881187915802002]
+2025-12-16 08:12:37,619 - INFO - ================================================================================
+2025-12-16 08:12:37,619 - INFO - Loss range: [0.0007, 0.0881], ratio: 132.86x - Using log scale
+2025-12-16 08:12:37,619 - INFO - 🔍 Plotting: steps=[1.0, 2.0, 3.0, 4.0, 5.0], total_losses=[0.0881187915802002, 0.08453453332185745, 0.07837185263633728, 0.059811074286699295, 0.048124514520168304]
+2025-12-16 08:12:37,619 - INFO -    Set axis limits: x=[(0.0, 203.65)], y=[(0.024875445384532215, 0.09113037949427963)]
+2025-12-16 08:12:37,619 - INFO -    Data range: x=[1.0, 194.0], y=[0.02788703329861164, 0.0881187915802002]
+2025-12-16 08:12:38,401 - INFO - ✅ TTT adaptation plot saved: performance_plots\ttt_adaptation_.png
+2025-12-16 08:12:38,401 - INFO - ✅ TTT adaptation plot completed
+2025-12-16 08:12:38,748 - INFO - Client performance plot saved: performance_plots\client_performance_.png
+2025-12-16 08:12:38,748 - INFO - ✅ Client performance plot completed
+2025-12-16 08:12:38,748 - INFO - 🔍 Re-evaluating base model EXCLUDING zero-day samples for base model performance plot...
+2025-12-16 08:12:38,748 - INFO -    (Evaluating on Normal + Known Attacks only, excluding zero-day samples)
+2025-12-16 08:12:38,748 - INFO - 🔍 Evaluating Base Model (Transductive Meta-Learning Only)...
+2025-12-16 08:12:38,749 - INFO - 🔍 Using sequence-level multiclass labels (preserves 30% zero-day distribution from stratified sampling)
+2025-12-16 08:12:38,749 - INFO - 🔍 Identified 74 zero-day sequences from 224 sequences (33.0%)
+2025-12-16 08:12:38,749 - INFO - 🔍 Zero-day mask created: 74/224 samples (33.0%)
+2025-12-16 08:12:38,749 - INFO -    Zero-day attack: 'Generic', label: 1
+2025-12-16 08:12:38,749 - INFO -    Test label distribution: tensor([ 65, 159])
+2025-12-16 08:12:38,749 - INFO -    Zero-day samples: 74, Non-zero-day samples: 150
+2025-12-16 08:12:38,749 - INFO - Evaluating base model on 224 test samples with 74 zero-day samples and 150 non-zero-day samples
+2025-12-16 08:12:38,750 - INFO - 🔍 Base model evaluation mode: EXCLUDING zero-day samples (evaluating on Normal + Known Attacks only)
+2025-12-16 08:12:38,750 - INFO -    Original test set: 224 samples (74 zero-day, 150 non-zero-day)
+2025-12-16 08:12:38,750 - INFO -    Filtered test set: 150 samples (excluded 74 zero-day samples)
+2025-12-16 08:12:38,750 - INFO - 🔍 Base Model Evaluation - Test set size: 150 samples
+2025-12-16 08:12:38,750 - INFO -    This should match TTT model query set size for fair comparison
+2025-12-16 08:12:38,750 - INFO - 🔍 Creating support set: 50 samples from 150 test samples
+2025-12-16 08:12:38,782 - INFO - 🔍 Confidence-based rejection: 0/150 samples rejected (confidence < 0.57)
+2025-12-16 08:12:38,785 - INFO - 🔍 DIAGNOSTIC: Test Set and Prediction Distribution
+2025-12-16 08:12:38,785 - INFO -   Test Set Class Distribution (multiclass): {0: 65, 1: 85}
+2025-12-16 08:12:38,785 - INFO -   Prediction Distribution (multiclass): {0: 82, 1: 68}
+2025-12-16 08:12:38,785 - INFO -   Binary Distribution - True: Normal=65, Attack=85
+2025-12-16 08:12:38,785 - INFO -   Binary Distribution - Predicted: Normal=82, Attack=68
+2025-12-16 08:12:38,785 - INFO - 📊 Base Model Probability Analysis:
+  ├─ Attack prob range: [0.0000, 1.0000]
+  ├─ Attack prob mean: 0.4594, std: 0.4816
+  ├─ Attack prob median: 0.1136
+  └─ Samples with prob > 0.9: 64/150 (42.7%)
+2025-12-16 08:12:38,790 - INFO - ✅ Base model ROC curve calculated: AUC=0.8795, 42 points
+2025-12-16 08:12:38,790 - INFO - ✅ Base model PR curve calculated: AUC-PR=0.9018, 120 points
+2025-12-16 08:12:38,790 - INFO - 🔍 Base Model FAR Optimization: Target FAR ≤ 8.00%
+2025-12-16 08:12:38,846 - INFO - ✅ Base Model FAR-Optimized Threshold: 0.9557
+2025-12-16 08:12:38,846 - INFO -    Results: FAR=0.0769 (✅), F1=0.767
+2025-12-16 08:12:38,846 - INFO - 📊 BASE MODEL CM FINAL COUNT: 150 samples
+2025-12-16 08:12:38,849 - INFO - ✅ Base Model Results:
+2025-12-16 08:12:38,849 - INFO -    📊 Overall Performance:
+2025-12-16 08:12:38,849 - INFO -       Accuracy: 0.7933
+2025-12-16 08:12:38,849 - INFO -       F1-Score: 0.7974
+2025-12-16 08:12:38,849 - INFO -       AUC-PR: 0.9018 ⭐ (PRIMARY metric for imbalanced zero-day detection)
+2025-12-16 08:12:38,849 - INFO -       ROC AUC: 0.8795 (secondary metric)
+2025-12-16 08:12:38,850 - INFO -       MCC: 0.0000
+2025-12-16 08:12:38,850 - INFO - 
+   🔴 Zero-Day Attacks Only (0 samples, 0.0% of filtered test set):
+2025-12-16 08:12:38,850 - INFO -       Accuracy: 0.0000
+2025-12-16 08:12:38,850 - INFO -       F1-Score: 0.0000
+2025-12-16 08:12:38,850 - INFO -       Precision: 0.0000
+2025-12-16 08:12:38,850 - INFO -       Recall: 0.0000
+2025-12-16 08:12:38,850 - INFO -       Zero-Day Detection Rate: 0.0000
+2025-12-16 08:12:38,850 - WARNING -       Zero-Day-Specific AUC-PR: Not available
+2025-12-16 08:12:38,850 - INFO - 
+   🟢 Non-Zero-Day Samples (150 samples, 100.0% of filtered test set):
+2025-12-16 08:12:38,850 - INFO -       Accuracy: 0.7933
+2025-12-16 08:12:38,850 - INFO -       F1-Score: 0.7974
+2025-12-16 08:12:38,850 - INFO -       Precision: 0.8971
+2025-12-16 08:12:38,850 - INFO -       Recall: 0.7176
+2025-12-16 08:12:38,850 - INFO - 
+================================================================================
+2025-12-16 08:12:38,850 - INFO - 🔍 EMBEDDING QUALITY DIAGNOSTIC (Recommendation #3)
+2025-12-16 08:12:38,850 - INFO - ================================================================================
+2025-12-16 08:12:38,906 - ERROR - Embedding quality check failed: Object of type int64 is not JSON serializable
+2025-12-16 08:12:38,907 - INFO - ✅ Embedding quality diagnostic completed!
+2025-12-16 08:12:38,907 - INFO -    Prototypes well-separated: False
+2025-12-16 08:12:38,907 - INFO -    Embeddings well-separable: False
+2025-12-16 08:12:38,907 - INFO -    Prototype-based accuracy: 0.0000
+2025-12-16 08:12:38,907 - INFO -    ✅ t-SNE plots added to visualization paths
+2025-12-16 08:12:39,084 - INFO - Base model performance bar chart saved: performance_plots\base_model_performance_barchart_PortScan_.png
+2025-12-16 08:12:39,084 - INFO - ✅ Base model overall performance bar chart completed (centralized model on Normal + Known Attacks only)
+2025-12-16 08:12:39,552 - INFO - Performance comparison plot with annotations saved: performance_plots\performance_comparison_annotated_PortScan_.png
+2025-12-16 08:12:39,552 - INFO - ✅ Performance comparison with annotations completed
+2025-12-16 08:12:39,873 - INFO - Zero-day performance comparison plot saved: performance_plots\zero_day_performance_comparison_PortScan_.png
+2025-12-16 08:12:39,873 - INFO - ✅ Zero-day specific performance comparison completed
+2025-12-16 08:12:39,873 - WARNING - ROC curve data not available in evaluation results for: adapted_model
+2025-12-16 08:12:39,873 - WARNING - PR curve data not available in evaluation results for: adapted_model
+2025-12-16 08:12:39,880 - INFO - Performance metrics saved to JSON: performance_plots\performance_metrics_.json
+2025-12-16 08:12:39,880 - INFO - ✅ Metrics JSON saved
+2025-12-16 08:12:39,880 - INFO - ✅ Performance visualizations generated successfully (minimal version)!
+2025-12-16 08:12:39,880 - INFO - Generated plots: ['confusion_matrix_base', 'confusion_matrix_adapted', 'ttt_adaptation', 'client_performance', 'embedding_quality_tsne', 'embedding_quality_prototypes', 'base_model_performance_barchart', 'performance_comparison_annotated', 'zero_day_performance_comparison', 'metrics_json']
+2025-12-16 08:12:39,880 - INFO - ✅ Generated 10 plots: ['confusion_matrix_base', 'confusion_matrix_adapted', 'ttt_adaptation', 'client_performance', 'embedding_quality_tsne', 'embedding_quality_prototypes', 'base_model_performance_barchart', 'performance_comparison_annotated', 'zero_day_performance_comparison', 'metrics_json']
+2025-12-16 08:12:39,887 - INFO - Enhanced system state saved to enhanced_blockchain_federated_system_state.json
+2025-12-16 08:12:39,887 - INFO - 
+🎉 ENHANCED SYSTEM EXECUTION COMPLETED SUCCESSFULLY!
+2025-12-16 08:12:39,887 - INFO - ================================================================================
+2025-12-16 08:12:39,887 - INFO - Centralized training completed successfully
+2025-12-16 08:12:39,887 - INFO - Zero-day detection accuracy - Base: 0.8423, TTT: 0.8438
+2025-12-16 08:12:39,887 - INFO - Zero-day detection F1-score - Base: 0.8789, TTT: 0.8805
+2025-12-16 08:12:39,887 - INFO - Final Global Model Accuracy: 0.8423
+2025-12-16 08:12:39,887 - INFO - Final Global Model F1-Score: 0.8789
+2025-12-16 08:12:39,887 - INFO - Test Samples Evaluated: 0
+2025-12-16 08:12:39,887 - INFO - Incentives enabled: False
+2025-12-16 08:12:39,887 - INFO - 
+📊 PERFORMANCE VISUALIZATIONS GENERATED:
+2025-12-16 08:12:39,887 - INFO - ==================================================
+2025-12-16 08:12:39,887 - INFO -   confusion_matrix_base: performance_plots\confusion_matrices_base_model.png
+2025-12-16 08:12:39,887 - INFO -   confusion_matrix_adapted: performance_plots\confusion_matrices_ttt_enhanced_model.png
+2025-12-16 08:12:39,887 - INFO -   ttt_adaptation: performance_plots\ttt_adaptation_.png
+2025-12-16 08:12:39,887 - INFO -   client_performance: performance_plots\client_performance_.png
+2025-12-16 08:12:39,887 - INFO -   embedding_quality_tsne: embedding_quality_diagnostics\test_embeddings_tsne.png
+2025-12-16 08:12:39,887 - INFO -   embedding_quality_prototypes: embedding_quality_diagnostics\embeddings_with_prototypes.png
+2025-12-16 08:12:39,887 - INFO -   base_model_performance_barchart: performance_plots\base_model_performance_barchart_PortScan_.png
+2025-12-16 08:12:39,887 - INFO -   performance_comparison_annotated: performance_plots\performance_comparison_annotated_PortScan_.png
+2025-12-16 08:12:39,887 - INFO -   zero_day_performance_comparison: performance_plots\zero_day_performance_comparison_PortScan_.png
+2025-12-16 08:12:39,887 - INFO -   metrics_json: performance_plots\performance_metrics_.json
+2025-12-16 08:12:39,887 - INFO - 🧹 Cleaning up system resources...
+2025-12-16 08:12:39,888 - INFO - ✅ Preprocessed data cleared
+2025-12-16 08:12:39,888 - INFO - ✅ Client data cleared
+2025-12-16 08:12:39,888 - INFO - ✅ System cleanup completed
+2025-12-16 08:12:39,888 - INFO - ✅ Centralized learning system completed
+✅ Loaded configuration for dataset: CICIDS2017
+   Data path: CICIDS2017_train.csv
+   Hidden dim: 512, Embedding dim: 128

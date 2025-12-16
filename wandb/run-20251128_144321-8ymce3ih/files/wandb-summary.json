@@ -1,0 +1,1 @@
+{"_runtime":276,"_step":0,"trial_number":0,"trial_state":"FAILED","error":"local variable 'metric_value' referenced before assignment","_timestamp":1.7643124251506655e+09,"_wandb":{"runtime":276}}

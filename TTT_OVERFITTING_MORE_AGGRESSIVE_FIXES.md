@@ -50,13 +50,13 @@ The "Zero Day Discrepancy" flag is still being triggered, indicating that TTT ze
 
 ## 📊 **Complete Configuration Changes**
 
-| Parameter | Original | First Fix | **New (More Aggressive)** | Total Change |
-|-----------|----------|-----------|---------------------------|--------------|
-| `pseudo_weight` | 3.043 | 2.0 | **1.5** | -51% |
-| `entropy_weight` | 0.574 | 0.7 | **0.8** | +40% |
-| `ttt_base_steps` | 85 | 80 | **70** | -18% |
-| `ttt_l2_reg_weight` | 0.001 | 0.005 | **0.01** | 10x |
-| `ttt_prototype_weight` | 1.0 | 0.5 | **0.5** | -50% |
+| Parameter              | Original | First Fix | **New (More Aggressive)** | Total Change |
+| ---------------------- | -------- | --------- | ------------------------- | ------------ |
+| `pseudo_weight`        | 3.043    | 2.0       | **1.5**                   | -51%         |
+| `entropy_weight`       | 0.574    | 0.7       | **0.8**                   | +40%         |
+| `ttt_base_steps`       | 85       | 80        | **70**                    | -18%         |
+| `ttt_l2_reg_weight`    | 0.001    | 0.005     | **0.01**                  | 10x          |
+| `ttt_prototype_weight` | 1.0      | 0.5       | **0.5**                   | -50%         |
 
 ---
 
@@ -111,4 +111,6 @@ entropy_weight: float = 0.8  # Increased from 0.57 (40% increase)
 2. **Monitor the diagnostic** - "Zero Day Discrepancy" should be resolved
 3. **Check performance metrics** - Overall accuracy should improve
 4. **If still overfitting**: Consider even more aggressive reductions or threshold adjustment
+
+
 

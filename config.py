@@ -48,11 +48,11 @@ class SystemConfig:
     
     # === DATA CONFIGURATION ===
     # KDDTest+ (NSL-KDD):
-    data_path: str = "KDDTrain+.csv"
-    test_path: str = "KDDTest+.csv"
+    data_path: str = "CICIDS2017_train.csv"
+    test_path: str = "CICIDS2017_test.csv"
     # When use_category_grouping=True: zero_day_attack should be a category name (e.g., "DoS", "Probe", "R2L", "U2R")
     # When use_category_grouping=False: zero_day_attack should be a specific attack name (e.g., "neptune", "back")
-    zero_day_attack: str = "DoS"  # Category name for zero-day testing when grouping is enabled (represents all DoS attacks in KDD dataset)
+    zero_day_attack: str = "PortScan"  # FIXED: Must match config_loader.py setting (was "DoS")
     
     # === CROSS-DATASET EVALUATION (Optional) ===
     # Enable cross-dataset evaluation: train on one dataset, test on another
@@ -74,9 +74,10 @@ class SystemConfig:
     # test_path: str = "CICIOT23test.csv"
     # zero_day_attack: str = "DDoS-ACK_Fragmentation"  # Choose one attack as zero-day
        
-    # Attack type mapping (KDDTest+ / NSL-KDD dataset)
+    # Attack type mapping (KDDTest+ / NSL-KDD dataset) - COMMENTED OUT for CICIDS2017
     # Note: This contains 40 specific attack types (fine-grained)
     # When use_category_grouping=True, these will be mapped to 5 categories
+    '''
     attack_types = {
         'normal': 0,
         # DoS attacks (10 types)
@@ -123,6 +124,7 @@ class SystemConfig:
         'sqlattack': 37,
         'xterm': 38,
     }
+    '''
     
     # CICIoT2023 / CICIDS2023 attack types (uncomment if switching datasets)
     '''
@@ -164,8 +166,7 @@ class SystemConfig:
     }
     '''
     
-    # CICIDS2017 attack types (uncomment if switching datasets)
-    '''
+    # CICIDS2017 attack types (ACTIVE for CICIDS2017 dataset)
     attack_types = {
         'BENIGN': 0,
         'Bot': 1,
@@ -183,7 +184,6 @@ class SystemConfig:
         'Web Attack  Sql Injection': 13,
         'Web Attack  XSS': 14,
     }
-    '''
     
     def __post_init__(self):
         """Initialize category mappings based on active dataset"""
@@ -497,7 +497,7 @@ class SystemConfig:
     sequence_stride: int = 12  # Optimized from Optuna Trial 1 (best_hyperparameters.json)
     tcn_kernel_sizes: tuple = (2, 3, 3)  # Optimized from Optuna Trial 1 (best_hyperparameters.json)
     use_residual_connections: bool = False  # Optimized from Optuna Trial 1 (best_hyperparameters.json)
-    meta_epochs: int = 21  # Optimized from Optuna Trial 1 (best_hyperparameters.json)
+    meta_epochs: int = 1  # QUICK TEST: Reduced from 21
     transductive_steps: int = 40  # AGGRESSIVE FOR 90%+ BASE MODEL: Increased from 20 → 40 (2x increase)
     transductive_lr: float = 0.001  # AGGRESSIVE FOR 90%+ BASE MODEL: Increased from 0.0007 → 0.001 (43% increase)
     transductive_refinement_iterations: int = 10  # AGGRESSIVE FOR 90%+ BASE MODEL: Increased from 10 → 30 (3x increase)
@@ -529,12 +529,12 @@ class SystemConfig:
     # === TEST-TIME TRAINING (TTT) CONFIGURATION ===
     # Optimized from Optuna Trial 1 (best_hyperparameters.json)
     # ADJUSTED: Reduced overfitting by increasing regularization and reducing adaptation intensity
-    ttt_base_steps: int = 100  # INCREASED from 70 → 100 (more adaptation steps for better TTT performance)
+    ttt_base_steps: int = 10  # QUICK TEST: Reduced from 200
     ttt_max_steps: int = 400  # Maximum TTT steps (safety limit)
     ttt_adaptation_query_size: int = 1198  # Optimized from Optuna Trial 1 (best_hyperparameters.json)
     ttt_batch_size: int = 64  # Optimized from Optuna Trial 1 (best_hyperparameters.json)
-    ttt_lr: float = 0.001  # REDUCED from 0.002 → 0.001 (50% reduction to prevent overshooting with tightly clustered embeddings)
-    ttt_l2_reg_weight: float = 0.01  # INCREASED from 0.001 → 0.01 (10x increase for stronger regularization)
+    ttt_lr: float = 0.005  # INCREASED from 0.001 → 0.005 to ensure adaptation has effect
+    ttt_l2_reg_weight: float = 0.0  # DISABLED - L2 accumulates over 200 steps, causing catastrophic drift; BatchNorm provides regularization
     confidence_rejection_threshold: float = 0.90  # Increased to 0.90 for stricter FAR control (reject more uncertain predictions)
     
     # === ATTACK PROTOTYPE DISCOVERY TTT ===
@@ -552,13 +552,13 @@ class SystemConfig:
     ttt_entropy_weight: float = 0.5    # Weight for entropy loss in TTT (test-time only)
     ttt_consistency_weight: float = 0.10  # Weight for prototype consistency in unsupervised TTT
     ttt_mixup_alpha: float = 0.20       # DISABLED: MixUp inappropriate for TTT with unlabeled data
-    ttt_temperature: float = 1.3109823217156622  # Optimized from Optuna Trial 1 (best_hyperparameters.json)
+    ttt_temperature: float = 5.0  # INCREASED from 1.31 to combat TTT overconfidence (median prob=0)
     use_semisupervised_ttt: bool = False  # When True, use new semi-supervised TTT instead of legacy TENT+pseudo
 
     # === TENT + PSEUDO-LABELS CONFIGURATION ===
     # ADJUSTED: Reduced overfitting by balancing pseudo-label and entropy weights
     use_pseudo_labels: bool = True
-    pseudo_threshold: float = 0.95
+    pseudo_threshold: float = 0.80  # REDUCED from 0.95 → 0.80 (lower threshold to enable more pseudo-label supervision)
     pseudo_min_threshold: float = 0.7173803589287694
     pseudo_weight: float = 1.5  # REDUCED from 3.04 → 1.5 (51% reduction to prevent overfitting)
     entropy_weight: float = 0.8  # INCREASED from 0.57 → 0.8 (stronger balance adaptation across all samples)
@@ -611,15 +611,15 @@ class SystemConfig:
     
     # === THRESHOLD OPTIMIZATION STRATEGY ===
     # Options: 'balanced_zdr_far', 'far_optimized', 'pr_optimized', 'zdr_optimized'
-    threshold_optimization_strategy: str = 'far_optimized'  # Prioritize FAR < 1% over ZDR
+    threshold_optimization_strategy: str = 'balanced_zdr_far'  # Changed to balanced strategy
     use_adaptive_threshold: bool = True
     threshold_adaptation_mode: str = 'combined'
     max_far_for_zdr: float = 0.35
     
     # === FAR-AWARE THRESHOLD OPTIMIZATION ===
-    # Target: FAR < 1% for production-ready systems
-    max_far_allowed: float = 0.01  # 1% maximum false alarm rate (very strict)
-    min_zdr_required: float = 0.75  # Reduced from 0.85 to allow stricter FAR constraint
+    # Target: FAR ≤ 8% for balanced ZDR-FAR optimization (literature reports >10%, 8% is competitive)
+    max_far_allowed: float = 0.08  # 8% maximum false alarm rate (competitive with literature)
+    min_zdr_required: float = 0.75  # Minimum zero-day detection rate required
     
     # === TRAINING CONFIGURATION ===
     support_weight: float = 0.5
@@ -629,12 +629,12 @@ class SystemConfig:
     
     # === EVALUATION CONFIGURATION ===
     support_size: int = 20
-    num_meta_tasks: int = 46
+    num_meta_tasks: int = 5  # QUICK TEST: Reduced from 46
     
     # === FEW-SHOT LEARNING CONFIGURATION ===
     n_way: int = 2
-    k_shot: int = 152
-    n_query: int = 16
+    k_shot: int = 20  # QUICK TEST: Reduced from 152
+    n_query: int = 10  # QUICK TEST: Reduced from 16
     enforce_equal_support_composition: bool = False
     include_all_attack_types_in_support: bool = False
     

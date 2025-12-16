@@ -1,0 +1,115 @@
+# Safe Debug and Diagnosis Files to Delete
+# (Excluding important system files)
+
+## Debug Files (Safe to Delete):
+- DEBUG_ATTACK_TYPES.py
+- debug_confusion_matrix_visualization.py
+- debug_parsing.py
+- debug_precision_recall.py
+- run_with_debug.py
+
+## Diagnosis Files (Safe to Delete):
+- quick_diagnose_zero_day.py
+- diagnose_adasyn_issue.py
+- diagnose_normal_distribution.py
+- ttt_quick_diagnostic.py
+- diagnostic_false_positive_analysis.py
+- diagnostic_confidence_distribution.py
+- diagnostic_class_distribution.py
+
+## Check Files (Safe to Delete):
+- check_actual_results.py
+- check_all_plots.py
+- check_dataset_composition.py
+- check_embedding_quality.py
+- check_embedding_quality_simple.py
+- check_final_results.py
+- check_latest_entropy.py
+- check_loss_trends.py
+- check_normal_samples.py
+- check_overfitting_corrected.py
+- check_results.py
+- check_test_set_composition.py
+- check_ttt_overfitting.py
+- check_zdr_details.py
+- check_zdr_fix.py
+
+## Investigate Files (Safe to Delete):
+- investigate_all_plots.py
+- investigate_base_model.py
+- investigate_far_causes.py
+- investigate_ttt_performance_gap.py
+- investigate_ttt_performance_tradeoff.py
+- investigate_ttt_zdr_regression.py
+
+## Analyze Files (Safe to Delete):
+- analyze_current_results.py
+- analyze_feature_selection.py
+- analyze_loss_trends.py
+- analyze_optimization_results.py
+- analyze_overfitting.py
+- analyze_performance.py
+- analyze_plots.py
+- analyze_support_query_distribution.py
+
+## Extract Files (Safe to Delete):
+- extract_best_cicids_trial.py
+- extract_full_results.py
+- extract_metrics.py
+- extract_recent_results.py
+
+## Test Files (Safe to Delete - diagnostic tests):
+- test_all_attack_types_in_meta_tasks.py
+- test_backdoor_zero_day.py
+- test_centralized_learning.py
+- test_equal_distribution.py
+- test_evaluation_metrics_correctness.py
+- test_fp16_functionality.py
+- test_optimized_tcn.py
+- test_unified_tcn.py
+
+## Other Diagnostic Files (Safe to Delete):
+- comprehensive_evaluation.py
+- comprehensive_verification.py
+- compare_with_without_feature_selection.py
+- create_clean_test.py
+- create_complete_system.py
+- create_correct_visualizations.py
+- create_final_ieee_tables.py
+- create_real_ieee_tables.py
+- display_current_plots.py
+- display_visualizations.py
+- examine_plot_content.py
+- explain_meta_learning_accuracy.py
+- explain_metamask_necessity.py
+- fair_evaluation_integration.py
+- final_proof_test.py
+- final_system_verification.py
+- final_verification_mcc_standard.py
+- honest_security_audit.py
+- improve_feature_selection.py
+- inspect_cicids2023.py
+- update_cicids_config_manual.py
+- show_test_distribution.py
+- save_current_test_set.py
+- count_zero_day_samples_test.py
+- simple_test.py
+- simple_system_test.py
+
+## Run Files (Safe to Delete - diagnostic):
+- run_cicids_optimization.py
+- run_offline.py
+- run_optimization_example.py
+- run_system.py
+
+## Files to KEEP (Important System Files):
+- optimize_hyperparameters.py (important optimization script)
+- optimize_hyperparameters_cicids.py (important optimization script)
+- main.py (main execution file)
+- switch_dataset_config.py (useful utility)
+- config_loader.py (configuration system)
+- Any files in tests/ folder (unit tests)
+
+
+
+

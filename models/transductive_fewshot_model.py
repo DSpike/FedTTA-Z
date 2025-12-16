@@ -2675,13 +2675,18 @@ class TrueTransductiveLearner(nn.Module):
                 # Backward pass
                 scaled_loss = scaler.scale(total_loss)
                 scaled_loss.backward()
-                
-                # Gradient clipping
-                scaler.unscale_(meta_optimizer)
-                torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
-                
-                scaler.step(meta_optimizer)
-                scaler.update()
+
+                # Gradient clipping (with CPU mode support)
+                if scaler.is_enabled():
+                    # Mixed precision mode (GPU)
+                    scaler.unscale_(meta_optimizer)
+                    torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
+                    scaler.step(meta_optimizer)
+                    scaler.update()
+                else:
+                    # CPU mode - no scaling needed
+                    torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
+                    meta_optimizer.step()
                 
                 # Evaluate accuracy (using ground truth for metrics only)
                 with torch.no_grad():

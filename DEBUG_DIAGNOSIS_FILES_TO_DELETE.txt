@@ -1,0 +1,106 @@
+# Debug and Diagnosis Files to Delete
+
+## Debug Files:
+- DEBUG_ATTACK_TYPES.py
+- run_with_debug.py
+- debug_precision_recall.py
+- debug_parsing.py
+- debug_confusion_matrix_visualization.py
+
+## Diagnosis Files:
+- quick_diagnose_zero_day.py
+- diagnose_adasyn_issue.py
+- diagnose_normal_distribution.py
+- ttt_quick_diagnostic.py
+- diagnostic_false_positive_analysis.py
+- diagnostic_confidence_distribution.py
+- diagnostic_class_distribution.py
+
+## Check Files:
+- check_dataset_composition.py
+- check_embedding_quality_simple.py
+- check_embedding_quality.py
+- check_test_set_composition.py
+- check_ttt_overfitting.py
+- check_normal_samples.py
+- check_latest_entropy.py
+- check_final_results.py
+- check_loss_trends.py
+- check_zdr_details.py
+- check_results.py
+- check_overfitting_corrected.py
+- check_zdr_fix.py
+- check_actual_results.py
+- check_all_plots.py
+
+## Investigate Files:
+- investigate_ttt_performance_tradeoff.py
+- investigate_far_causes.py
+- investigate_ttt_performance_gap.py
+- investigate_ttt_zdr_regression.py
+- investigate_base_model.py
+- investigate_all_plots.py
+
+## Analyze Files:
+- analyze_current_results.py
+- analyze_optimization_results.py
+- analyze_performance.py
+- analyze_loss_trends.py
+- analyze_overfitting.py
+- analyze_support_query_distribution.py
+- analyze_plots.py
+- analyze_feature_selection.py
+
+## Extract Files:
+- extract_best_cicids_trial.py
+- extract_full_results.py
+- extract_recent_results.py
+- extract_metrics.py
+
+## Test Files (diagnostic):
+- test_centralized_learning.py
+- test_fp16_functionality.py
+- test_backdoor_zero_day.py
+- test_equal_distribution.py
+- show_test_distribution.py
+- test_all_attack_types_in_meta_tasks.py
+- save_current_test_set.py
+- count_zero_day_samples_test.py
+- test_unified_tcn.py
+- simple_test.py
+- test_optimized_tcn.py
+- test_evaluation_metrics_correctness.py
+- simple_system_test.py
+- final_proof_test.py
+- create_clean_test.py
+
+## Run Files (diagnostic):
+- run_cicids_optimization.py
+- run_optimization_example.py
+- run_offline.py
+- run_system.py
+
+## Other Diagnostic Files:
+- comprehensive_evaluation.py
+- comprehensive_verification.py
+- compare_with_without_feature_selection.py
+- create_complete_system.py
+- create_correct_visualizations.py
+- create_final_ieee_tables.py
+- create_real_ieee_tables.py
+- display_current_plots.py
+- display_visualizations.py
+- examine_plot_content.py
+- explain_meta_learning_accuracy.py
+- explain_metamask_necessity.py
+- fair_evaluation_integration.py
+- final_system_verification.py
+- final_verification_mcc_standard.py
+- honest_security_audit.py
+- improve_feature_selection.py
+- inspect_cicids2023.py
+- update_cicids_config_manual.py
+
+
+
+

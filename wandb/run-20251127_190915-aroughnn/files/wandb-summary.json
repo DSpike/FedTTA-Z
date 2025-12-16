@@ -1,0 +1,1 @@
+{"_timestamp":1.7642418988723185e+09,"_wandb":{"runtime":151},"_runtime":151,"_step":10,"trial_number":10,"trial_state":"FAILED","error":"Tensors must have same number of dimensions: got 1 and 2"}
