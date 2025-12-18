@@ -232,7 +232,12 @@ class PerformanceVisualizer:
                 plt.close()
                 return ""
         
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+        # Create 2x2 layout: Top row for loss plots, bottom row for scatter plot
+        fig = plt.figure(figsize=(18, 12))
+        ax1 = fig.add_subplot(2, 2, 1)  # Top left: Total Loss
+        ax2 = fig.add_subplot(2, 2, 2)  # Top right: Loss Components
+        ax3 = fig.add_subplot(2, 2, 3)  # Bottom left: Attack vs Normal Scatter (beginning)
+        ax4 = fig.add_subplot(2, 2, 4)  # Bottom right: Attack vs Normal Scatter (end)
         
         # Safely extract data with validation
         steps = ttt_adaptation_data.get('steps', [])
@@ -698,6 +703,184 @@ class PerformanceVisualizer:
                         bbox=dict(boxstyle='round,pad=0.3', facecolor='lightgreen', alpha=0.8, 
                                  edgecolor='black', linewidth=0.5),
                         arrowprops=dict(arrowstyle='->', lw=1, color='black'))
+        
+        # Plot 3 & 4: Attack vs Normal Scatter Plots (beginning and end of adaptation)
+        try:
+            attack_vs_normal_data = ttt_adaptation_data.get('attack_vs_normal_data', [])
+            
+            if attack_vs_normal_data and len(attack_vs_normal_data) > 0:
+                # Get beginning (first step) and end (last step) data
+                beginning_data = attack_vs_normal_data[0]
+                end_data = attack_vs_normal_data[-1]
+                
+                # Plot beginning scatter (ax3)
+                if 'attack_probs' in beginning_data and 'binary_labels' in beginning_data:
+                    attack_probs_begin = np.array(beginning_data['attack_probs'])
+                    binary_labels_begin = np.array(beginning_data['binary_labels'])
+                    sample_indices = np.arange(len(attack_probs_begin))
+                    
+                    # Separate normal and attack samples
+                    normal_mask = binary_labels_begin == 0
+                    attack_mask = binary_labels_begin == 1
+                    
+                    # Plot normal samples (blue)
+                    if normal_mask.sum() > 0:
+                        ax3.scatter(sample_indices[normal_mask], attack_probs_begin[normal_mask],
+                                   c='blue', alpha=0.6, s=30, label='Normal', edgecolors='black', linewidths=0.3)
+                    
+                    # Plot attack samples (red)
+                    if attack_mask.sum() > 0:
+                        ax3.scatter(sample_indices[attack_mask], attack_probs_begin[attack_mask],
+                                   c='red', alpha=0.6, s=30, label='Attack', edgecolors='black', linewidths=0.3)
+                    
+                    ax3.set_xlabel('Sample Index', fontfamily='Times New Roman', fontsize=10)
+                    ax3.set_ylabel('Attack Probability', fontfamily='Times New Roman', fontsize=10)
+                    ax3.set_title(f'Attack vs Normal Separation (Step {beginning_data["step"]})', 
+                                fontweight='bold', fontfamily='Times New Roman', fontsize=11)
+                    ax3.grid(True, alpha=0.3)
+                    ax3.legend(prop={'family': 'Times New Roman'}, loc='upper right', framealpha=0.9)
+                    ax3.set_ylim(-0.05, 1.05)
+                    
+                    # Add statistics
+                    normal_probs = attack_probs_begin[normal_mask] if normal_mask.sum() > 0 else np.array([])
+                    attack_probs_only = attack_probs_begin[attack_mask] if attack_mask.sum() > 0 else np.array([])
+                    
+                    if len(normal_probs) > 0 and len(attack_probs_only) > 0:
+                        separation = attack_probs_only.mean() - normal_probs.mean()
+                        stats_text = (f'Normal Mean: {normal_probs.mean():.3f}\n'
+                                    f'Attack Mean: {attack_probs_only.mean():.3f}\n'
+                                    f'Separation: {separation:.3f}\n'
+                                    f'Normal: {normal_mask.sum()}, Attack: {attack_mask.sum()}')
+                        ax3.text(0.02, 0.98, stats_text, transform=ax3.transAxes,
+                               fontsize=9, verticalalignment='top', fontfamily='Times New Roman',
+                               bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+                        # LOG STATISTICS for analysis
+                        logger.info(f"📊 BEGINNING TTT (Step {beginning_data['step']}) - Attack vs Normal Separation:")
+                        logger.info(f"   Normal Mean Attack Probability: {normal_probs.mean():.4f} (std: {normal_probs.std():.4f})")
+                        logger.info(f"   Attack Mean Attack Probability: {attack_probs_only.mean():.4f} (std: {attack_probs_only.std():.4f})")
+                        logger.info(f"   Separation (Attack - Normal): {separation:.4f}")
+                        logger.info(f"   Normal Samples: {normal_mask.sum()}, Attack Samples: {attack_mask.sum()}")
+                
+                # Plot end scatter (ax4)
+                if 'attack_probs' in end_data and 'binary_labels' in end_data:
+                    attack_probs_end = np.array(end_data['attack_probs'])
+                    binary_labels_end = np.array(end_data['binary_labels'])
+                    sample_indices = np.arange(len(attack_probs_end))
+                    
+                    # Separate normal and attack samples
+                    normal_mask = binary_labels_end == 0
+                    attack_mask = binary_labels_end == 1
+                    
+                    # Plot normal samples (blue)
+                    if normal_mask.sum() > 0:
+                        ax4.scatter(sample_indices[normal_mask], attack_probs_end[normal_mask],
+                                   c='blue', alpha=0.6, s=30, label='Normal', edgecolors='black', linewidths=0.3)
+                    
+                    # Plot attack samples (red)
+                    if attack_mask.sum() > 0:
+                        ax4.scatter(sample_indices[attack_mask], attack_probs_end[attack_mask],
+                                   c='red', alpha=0.6, s=30, label='Attack', edgecolors='black', linewidths=0.3)
+                    
+                    ax4.set_xlabel('Sample Index', fontfamily='Times New Roman', fontsize=10)
+                    ax4.set_ylabel('Attack Probability', fontfamily='Times New Roman', fontsize=10)
+                    ax4.set_title(f'Attack vs Normal Separation (Step {end_data["step"]})', 
+                                 fontweight='bold', fontfamily='Times New Roman', fontsize=11)
+                    ax4.grid(True, alpha=0.3)
+                    ax4.legend(prop={'family': 'Times New Roman'}, loc='upper right', framealpha=0.9)
+                    ax4.set_ylim(-0.05, 1.05)
+                    
+                    # Add statistics
+                    normal_probs = attack_probs_end[normal_mask] if normal_mask.sum() > 0 else np.array([])
+                    attack_probs_only = attack_probs_end[attack_mask] if attack_mask.sum() > 0 else np.array([])
+                    
+                    if len(normal_probs) > 0 and len(attack_probs_only) > 0:
+                        separation = attack_probs_only.mean() - normal_probs.mean()
+                        # Calculate improvement from beginning (if beginning data is available)
+                        improvement = 0.0
+                        if 'attack_probs' in beginning_data and 'binary_labels' in beginning_data:
+                            attack_probs_begin = np.array(beginning_data['attack_probs'])
+                            binary_labels_begin = np.array(beginning_data['binary_labels'])
+                            if len(attack_probs_begin) == len(attack_probs_end):
+                                begin_normal_mask = binary_labels_begin == 0
+                                begin_attack_mask = binary_labels_begin == 1
+                                if begin_normal_mask.sum() > 0 and begin_attack_mask.sum() > 0:
+                                    begin_separation = attack_probs_begin[begin_attack_mask].mean() - attack_probs_begin[begin_normal_mask].mean()
+                                    improvement = separation - begin_separation
+                        stats_text = (f'Normal Mean: {normal_probs.mean():.3f}\n'
+                                    f'Attack Mean: {attack_probs_only.mean():.3f}\n'
+                                    f'Separation: {separation:.3f}\n'
+                                    f'Improvement: {improvement:+.3f}\n'
+                                    f'Normal: {normal_mask.sum()}, Attack: {attack_mask.sum()}')
+                        ax4.text(0.02, 0.98, stats_text, transform=ax4.transAxes,
+                               fontsize=9, verticalalignment='top', fontfamily='Times New Roman',
+                               bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.8))
+                        # LOG STATISTICS for analysis
+                        logger.info(f"📊 END TTT (Step {end_data['step']}) - Attack vs Normal Separation:")
+                        logger.info(f"   Normal Mean Attack Probability: {normal_probs.mean():.4f} (std: {normal_probs.std():.4f})")
+                        logger.info(f"   Attack Mean Attack Probability: {attack_probs_only.mean():.4f} (std: {attack_probs_only.std():.4f})")
+                        logger.info(f"   Separation (Attack - Normal): {separation:.4f}")
+                        logger.info(f"   Separation Improvement: {improvement:+.4f} (from beginning)")
+                        logger.info(f"   Normal Samples: {normal_mask.sum()}, Attack Samples: {attack_mask.sum()}")
+                        # INTERPRETATION
+                        if separation > 0.5:
+                            logger.info(f"   ✅ EXCELLENT: Large separation ({separation:.3f}) - TTT successfully distinguishes attacks from normal")
+                        elif separation > 0.3:
+                            logger.info(f"   ✅ GOOD: Moderate separation ({separation:.3f}) - TTT provides reasonable separation")
+                        elif separation > 0.1:
+                            logger.info(f"   ⚠️  MODERATE: Small separation ({separation:.3f}) - TTT provides some separation but could be better")
+                        else:
+                            logger.info(f"   ❌ POOR: Very small separation ({separation:.3f}) - TTT struggles to distinguish attacks from normal")
+                        
+                        if improvement > 0.05:
+                            logger.info(f"   ✅ TTT ADAPTATION IMPROVED separation by {improvement:.3f} - Adaptation was successful!")
+                        elif improvement > 0:
+                            logger.info(f"   ⚠️  TTT ADAPTATION slightly improved separation by {improvement:.3f} - Marginal improvement")
+                        elif improvement == 0:
+                            logger.info(f"   ⚠️  TTT ADAPTATION did not change separation - No improvement")
+                        else:
+                            logger.info(f"   ❌ TTT ADAPTATION decreased separation by {abs(improvement):.3f} - Adaptation may have hurt performance")
+                        
+                        # Check if attacks are clearly separated
+                        if attack_probs_only.mean() > 0.7 and normal_probs.mean() < 0.3:
+                            logger.info(f"   ✅ CLEAR SEPARATION: Attack samples have high probability ({attack_probs_only.mean():.3f}) while normal samples have low probability ({normal_probs.mean():.3f})")
+                        elif attack_probs_only.mean() > normal_probs.mean():
+                            logger.info(f"   ⚠️  PARTIAL SEPARATION: Attack samples ({attack_probs_only.mean():.3f}) > Normal samples ({normal_probs.mean():.3f}) but gap could be larger")
+                        else:
+                            logger.info(f"   ❌ POOR SEPARATION: Attack samples ({attack_probs_only.mean():.3f}) <= Normal samples ({normal_probs.mean():.3f}) - TTT failed to properly separate")
+            else:
+                # No data available - show message
+                ax3.text(0.5, 0.5, 'Attack vs Normal Data\nNot Available', 
+                        ha='center', va='center', fontsize=10, fontfamily='Times New Roman',
+                        bbox=dict(boxstyle='round', facecolor='lightgray', alpha=0.7))
+                ax3.set_xlim(0, 1)
+                ax3.set_ylim(0, 1)
+                ax3.axis('off')
+                ax4.text(0.5, 0.5, 'Attack vs Normal Data\nNot Available', 
+                        ha='center', va='center', fontsize=10, fontfamily='Times New Roman',
+                        bbox=dict(boxstyle='round', facecolor='lightgray', alpha=0.7))
+                ax4.set_xlim(0, 1)
+                ax4.set_ylim(0, 1)
+                ax4.axis('off')
+        except Exception as scatter_error:
+            logger.error(f"❌ Error creating attack vs normal scatter plot: {scatter_error}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            # Create empty subplots with error message
+            try:
+                ax3.text(0.5, 0.5, f'Error: {str(scatter_error)[:50]}', 
+                        ha='center', va='center', fontsize=9, fontfamily='Times New Roman',
+                        bbox=dict(boxstyle='round', facecolor='lightcoral', alpha=0.7))
+                ax3.set_xlim(0, 1)
+                ax3.set_ylim(0, 1)
+                ax3.axis('off')
+                ax4.text(0.5, 0.5, f'Error: {str(scatter_error)[:50]}', 
+                        ha='center', va='center', fontsize=9, fontfamily='Times New Roman',
+                        bbox=dict(boxstyle='round', facecolor='lightcoral', alpha=0.7))
+                ax4.set_xlim(0, 1)
+                ax4.set_ylim(0, 1)
+                ax4.axis('off')
+            except:
+                pass
         
         try:
             plt.tight_layout()
@@ -1566,9 +1749,13 @@ class PerformanceVisualizer:
             base_values.append(base_val)
             ttt_values.append(ttt_val)
         
-        # Get sample counts for title
+        # Get sample counts for title and display
         base_num_samples = base_zero_day.get('num_samples', 0)
         ttt_num_samples = ttt_zero_day.get('num_samples', 0)
+        
+        # Get total test samples used for evaluation (from overall results if available)
+        base_total_samples = base_results.get('test_samples', base_results.get('num_samples', 0))
+        ttt_total_samples = ttt_results.get('test_samples', ttt_results.get('num_samples', 0))
         
         # Create figure with IEEE standard styling (single plot - improvement analysis removed)
         fig, ax1 = plt.subplots(1, 1, figsize=(12, 8))
@@ -1621,7 +1808,17 @@ class PerformanceVisualizer:
         
         ax1.set_xlabel('Performance Metrics', fontsize=11, fontweight='bold', fontfamily='Times New Roman')
         ax1.set_ylabel('Score', fontsize=11, fontweight='bold', fontfamily='Times New Roman')
-        ax1.set_title(f'Zero-Day Attack Detection Performance Comparison\n({base_num_samples} zero-day samples only)', 
+        
+        # Enhanced title with sample sizes
+        title_parts = [f'Zero-Day Attack Detection Performance Comparison']
+        if base_num_samples > 0:
+            title_parts.append(f'Zero-Day Samples: {base_num_samples}')
+        if ttt_total_samples > 0:
+            title_parts.append(f'TTT Evaluation: {ttt_total_samples} total samples')
+        elif base_total_samples > 0:
+            title_parts.append(f'Evaluation: {base_total_samples} total samples')
+        
+        ax1.set_title('\n'.join(title_parts), 
                      fontsize=13, fontweight='bold', pad=15, fontfamily='Times New Roman')
         ax1.set_xticks(x)
         ax1.set_xticklabels(metric_labels, fontfamily='Times New Roman')
@@ -1632,8 +1829,9 @@ class PerformanceVisualizer:
         # Add note about zero-day specific evaluation
         note_text = ("Note: Metrics calculated on ZERO-DAY SAMPLES ONLY (all samples are attacks).\n"
                     "ZDR (Zero-Day Detection Rate) and Recall are the primary meaningful metrics.\n"
-                    "Precision may be degenerate (FP=0 when only attack samples are present).\n"
-                    "AUC-PR and FAR excluded: Not meaningful when all samples are attacks.\n"
+                    "AUC-PR excluded: Not meaningful when all samples are attacks.\n"
+                    f"Base Model: {base_num_samples} zero-day samples | TTT Model: {ttt_num_samples} zero-day samples.\n"
+                    f"TTT Model evaluated on {ttt_total_samples if ttt_total_samples > 0 else 'N/A'} total test samples.\n"
                     "For overall system performance, see Performance Comparison plot.")
         fig.text(0.5, 0.02, note_text, ha='center', fontsize=9, 
                 fontfamily='Times New Roman', style='italic',

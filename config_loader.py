@@ -89,7 +89,7 @@ DATASET_CONFIGS = {
         # 4. Classification: adapted_features(test) + FIXED_prototypes(validation)
 
         'ttt_lr': 0.001,  # Conservative: 5x safer than 0.005 (gentle adaptation)
-        'ttt_base_steps': 50,  # Conservative: 60% fewer than 120 (prevent overfitting)
+        'ttt_base_steps': 80,  # Increased from 50 to 80 for better adaptation
         'ttt_l2_reg_weight': 0.01,  # Strong: 5x more than 0.002 (stay close to base)
 
         'use_pseudo_labels': True,  # SAFE with FIXED prototypes (no K-means swapping)

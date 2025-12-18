@@ -372,7 +372,8 @@ class CentralizedCoordinator:
             'total_losses': [],
             'entropy_losses': [],
             'pseudo_losses': [],
-            'l2_reg_losses': []  # Track L2 regularization loss
+            'l2_reg_losses': [],  # Track L2 regularization loss
+            'attack_vs_normal_data': []  # NEW: Store predictions for attack vs normal scatter plot
         }
         
         logger.info(f"🔄 Starting TTT adaptation ({method}) for {ttt_steps} steps...")
@@ -408,10 +409,13 @@ class CentralizedCoordinator:
                 classes = torch.unique(self.train_labels)
 
                 support_indices_ref = []
+                # FIXED: Use generator for reproducibility (must be on CPU)
+                generator = torch.Generator(device='cpu')
+                generator.manual_seed(42)  # Use same seed as main.py
                 for c in classes:
                     indices = (self.train_labels == c).nonzero(as_tuple=True)[0]
                     if len(indices) >= n_shots_per_class:
-                        perm = torch.randperm(len(indices))[:n_shots_per_class]
+                        perm = torch.randperm(len(indices), generator=generator)[:n_shots_per_class]
                         support_indices_ref.append(indices[perm])
                     else:
                         support_indices_ref.append(indices)
@@ -564,6 +568,39 @@ class CentralizedCoordinator:
             adaptation_data['entropy_losses'].append(entropy_loss.item())
             adaptation_data['pseudo_losses'].append(pseudo_loss.item())
             adaptation_data['l2_reg_losses'].append(reg_loss.item())
+            
+            # Store predictions for attack vs normal scatter plot (at key steps: beginning, middle, end)
+            # This helps visualize if TTT successfully separates attacks from normal samples
+            store_prediction_data = (
+                step == 0 or  # Beginning
+                step == ttt_steps // 2 or  # Middle
+                step == ttt_steps - 1 or  # End
+                (step + 1) % max(1, ttt_steps // 5) == 0  # Every ~20% of steps
+            )
+            
+            if store_prediction_data:
+                with torch.no_grad():
+                    # Get predictions (normalize to binary: 0=normal, 1=attack)
+                    predictions = torch.argmax(logits, dim=1)
+                    
+                    # For multiclass: attack is any class != 0 (normal)
+                    # For binary: attack is class 1
+                    if logits.shape[1] == 2:
+                        # Binary classification: use class 1 probability as attack probability
+                        attack_probs = probs[:, 1]
+                        binary_labels = predictions  # Already 0 or 1
+                    else:
+                        # Multiclass: sum all non-zero class probabilities as attack probability
+                        attack_probs = (probs[:, 1:].sum(dim=1) if logits.shape[1] > 1 else torch.zeros_like(probs[:, 0]))
+                        binary_labels = (predictions != 0).long()  # 0=normal, 1=attack
+                    
+                    # Store data for visualization
+                    adaptation_data['attack_vs_normal_data'].append({
+                        'step': step + 1,
+                        'attack_probs': attack_probs.cpu().tolist(),
+                        'binary_labels': binary_labels.cpu().tolist(),
+                        'predictions': predictions.cpu().tolist()
+                    })
 
             if (step + 1) % 20 == 0:
                 logger.info(f"  TTT Step {step + 1}/{ttt_steps}: Loss={total_loss.item():.4f}, "
@@ -584,7 +621,8 @@ class CentralizedCoordinator:
             'l2_reg_losses': adaptation_data['l2_reg_losses'],  # Include L2 regularization losses
             'steps': adaptation_data['steps'],
             'final_loss': adaptation_data['total_losses'][-1] if adaptation_data['total_losses'] else 0.0,
-            'adaptation_steps': len(adaptation_data['steps'])
+            'adaptation_steps': len(adaptation_data['steps']),
+            'attack_vs_normal_data': adaptation_data['attack_vs_normal_data']  # NEW: Store for scatter plot
         }
 
         # CRITICAL FIX: Store TTT prototypes for consistent evaluation

@@ -53,6 +53,22 @@ if torch.cuda.is_available():
     except Exception:
         pass
 
+def set_deterministic_seed(seed=42):
+    """
+    Reset all random seeds for reproducibility.
+    Call this before critical random operations to ensure consistent results.
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+        try:
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
+        except Exception:
+            pass
+
 def calculate_roc_curve_safe(y_true, y_scores, normal_class=0):
     """
     Safely calculate ROC curve with proper handling of edge cases and infinite values.
@@ -2187,7 +2203,12 @@ class BlockchainFederatedIncentiveSystem:
                                 test_labels_batch = torch.LongTensor(self.preprocessed_data['y_test']).to(self.device)
                                 test_labels_binary_batch = (test_labels_batch != 0).long()
                                 support_size_batch = min(50, len(test_data_subset))
-                                support_indices_batch = torch.randperm(len(test_data_subset))[:support_size_batch]
+                                # FIXED: Reset seed before sampling for reproducibility
+                                set_deterministic_seed(SEED)
+                                # Generator must be on CPU (torch.randperm works on CPU)
+                                generator = torch.Generator(device='cpu')
+                                generator.manual_seed(SEED)
+                                support_indices_batch = torch.randperm(len(test_data_subset), generator=generator)[:support_size_batch]
                                 support_x_batch = test_data_subset[support_indices_batch]
                                 support_y_batch = test_labels_binary_batch[support_indices_batch]
                                 
@@ -3270,7 +3291,12 @@ class BlockchainFederatedIncentiveSystem:
                     y_val_binary = (y_val_tensor != 0).long()
                     
                     support_size = min(500, len(X_val_tensor))
-                    support_indices = torch.randperm(len(X_val_tensor))[:support_size]
+                    # FIXED: Reset seed before sampling for reproducibility
+                    set_deterministic_seed(SEED)
+                    # Generator must be on CPU (torch.randperm works on CPU)
+                    generator = torch.Generator(device='cpu')
+                    generator.manual_seed(SEED)
+                    support_indices = torch.randperm(len(X_val_tensor), generator=generator)[:support_size]
                     support_x = X_val_tensor[support_indices]
                     support_y = y_val_binary[support_indices]
                     logger.info(f"🎯 Base Model: Using VALIDATION data for support set ({len(support_x)} samples, Known Attacks Only)")
@@ -3280,7 +3306,12 @@ class BlockchainFederatedIncentiveSystem:
                     y_test_filtered_binary = (y_test_filtered != 0).long()
                     support_size = max(1, min(500, len(X_test_filtered) // 3))
                     support_size = min(support_size, len(X_test_filtered))
-                    support_indices = torch.randperm(len(X_test_filtered))[:support_size]
+                    # FIXED: Reset seed before sampling for reproducibility
+                    set_deterministic_seed(SEED)
+                    # Generator must be on CPU (torch.randperm works on CPU)
+                    generator = torch.Generator(device='cpu')
+                    generator.manual_seed(SEED)
+                    support_indices = torch.randperm(len(X_test_filtered), generator=generator)[:support_size]
                     support_x = X_test_filtered[support_indices]
                     support_y = y_test_filtered_binary[support_indices]
                 
@@ -3871,7 +3902,12 @@ class BlockchainFederatedIncentiveSystem:
                 query_size = min(ttt_query_size, len(X_test))
                 
                 # Randomly sample from filtered sequences (maintains 30% zero-day distribution)
-                query_indices = torch.randperm(len(X_test))[:query_size]
+                # FIXED: Reset seed before sampling for reproducibility
+                set_deterministic_seed(SEED)
+                # Generator must be on CPU (torch.randperm works on CPU, then we move indices)
+                generator = torch.Generator(device='cpu')
+                generator.manual_seed(SEED)
+                query_indices = torch.randperm(len(X_test), generator=generator)[:query_size]
                 query_x = torch.FloatTensor(X_test[query_indices]).to(self.device)
                 
                 logger.info(f"✅ TTT Query set: {len(query_x)} samples (sampled from filtered sequences with SAME 30% zero-day distribution as evaluation)")
@@ -4107,7 +4143,12 @@ class BlockchainFederatedIncentiveSystem:
                 # Create support set from TEST data (not validation data)
                 y_test_binary_sample = (y_test_tensor != 0).long()
                 support_size_sample = min(100, len(X_test_tensor))
-                support_indices_sample = torch.randperm(len(X_test_tensor))[:support_size_sample]
+                # FIXED: Reset seed before sampling for reproducibility
+                set_deterministic_seed(SEED)
+                # Generator must be on CPU (torch.randperm works on CPU)
+                generator = torch.Generator(device='cpu')
+                generator.manual_seed(SEED)
+                support_indices_sample = torch.randperm(len(X_test_tensor), generator=generator)[:support_size_sample]
                 support_x_sample = X_test_tensor[support_indices_sample]
                 support_y_sample = y_test_binary_sample[support_indices_sample]
                 
@@ -4162,7 +4203,12 @@ class BlockchainFederatedIncentiveSystem:
                 y_val_binary = (y_val_tensor != 0).long()
                 
                 support_size = min(500, len(X_val_tensor))
-                support_indices = torch.randperm(len(X_val_tensor))[:support_size]
+                # FIXED: Reset seed before sampling for reproducibility
+                set_deterministic_seed(SEED)
+                # Generator must be on CPU (torch.randperm works on CPU)
+                generator = torch.Generator(device='cpu')
+                generator.manual_seed(SEED)
+                support_indices = torch.randperm(len(X_val_tensor), generator=generator)[:support_size]
                 support_x = X_val_tensor[support_indices]
                 support_y = y_val_binary[support_indices]
                 logger.info(f"🎯 TTT Model: Using VALIDATION data for support set ({len(support_x)} samples, Known Attacks Only)")
@@ -5493,7 +5539,12 @@ class BlockchainFederatedIncentiveSystem:
                     
                     # Use test data as support set for prototype computation (not validation data)
                     support_size = min(500, len(X_test_tensor) // 3)  # Increased from 200 to 500 for +7-10% improvement
-                    support_indices = torch.randperm(len(X_test_tensor))[:support_size]
+                    # FIXED: Reset seed before sampling for reproducibility
+                    set_deterministic_seed(SEED)
+                    # Generator must be on CPU (torch.randperm works on CPU)
+                    generator = torch.Generator(device='cpu')
+                    generator.manual_seed(SEED)
+                    support_indices = torch.randperm(len(X_test_tensor), generator=generator)[:support_size]
                     support_x = X_test_tensor[support_indices]
                     support_y = y_test_binary[support_indices]
                     
