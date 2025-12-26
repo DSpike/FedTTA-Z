@@ -1,0 +1,5450 @@
+{
+  "metadata": {
+    "n_episodes": 100,
+    "total_samples": 400,
+    "total_zero_day_samples": 100,
+    "total_non_zero_day_samples": 300,
+    "evaluated_at": "2025-12-26T17:29:31.391934"
+  },
+  "base_model": {
+    "accuracy": {
+      "mean": 1.0,
+      "std": 0.0,
+      "ci_95": 0.0,
+      "min": 1.0,
+      "max": 1.0
+    },
+    "precision": {
+      "mean": 1.0,
+      "std": 0.0,
+      "ci_95": 0.0,
+      "min": 1.0,
+      "max": 1.0
+    },
+    "recall": {
+      "mean": 1.0,
+      "std": 0.0,
+      "ci_95": 0.0,
+      "min": 1.0,
+      "max": 1.0
+    },
+    "zero_day_detection_rate": {
+      "mean": 1.0,
+      "std": 0.0,
+      "ci_95": 0.0,
+      "min": 1.0,
+      "max": 1.0
+    },
+    "false_alarm_rate": {
+      "mean": 0.0,
+      "std": 0.0,
+      "ci_95": 0.0,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "f1_score": {
+      "mean": 1.0,
+      "std": 0.0,
+      "ci_95": 0.0,
+      "min": 1.0,
+      "max": 1.0
+    },
+    "auc_pr": {
+      "mean": 1.0,
+      "std": 0.0,
+      "ci_95": 0.0,
+      "min": 1.0,
+      "max": 1.0
+    },
+    "roc_auc": {
+      "mean": 1.0,
+      "std": 0.0,
+      "ci_95": 0.0,
+      "min": 1.0,
+      "max": 1.0
+    }
+  },
+  "ttt_model": {
+    "accuracy": {
+      "mean": 1.0,
+      "std": 0.0,
+      "ci_95": 0.0,
+      "min": 1.0,
+      "max": 1.0
+    },
+    "precision": {
+      "mean": 1.0,
+      "std": 0.0,
+      "ci_95": 0.0,
+      "min": 1.0,
+      "max": 1.0
+    },
+    "recall": {
+      "mean": 1.0,
+      "std": 0.0,
+      "ci_95": 0.0,
+      "min": 1.0,
+      "max": 1.0
+    },
+    "zero_day_detection_rate": {
+      "mean": 1.0,
+      "std": 0.0,
+      "ci_95": 0.0,
+      "min": 1.0,
+      "max": 1.0
+    },
+    "false_alarm_rate": {
+      "mean": 0.0,
+      "std": 0.0,
+      "ci_95": 0.0,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "f1_score": {
+      "mean": 1.0,
+      "std": 0.0,
+      "ci_95": 0.0,
+      "min": 1.0,
+      "max": 1.0
+    },
+    "auc_pr": {
+      "mean": 1.0,
+      "std": 0.0,
+      "ci_95": 0.0,
+      "min": 1.0,
+      "max": 1.0
+    },
+    "roc_auc": {
+      "mean": 1.0,
+      "std": 0.0,
+      "ci_95": 0.0,
+      "min": 1.0,
+      "max": 1.0
+    }
+  },
+  "improvement": {
+    "zero_day_detection_rate": {
+      "mean": 0.0,
+      "std": 0.0,
+      "ci_95": 0.0,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "accuracy": {
+      "mean": 0.0,
+      "std": 0.0,
+      "ci_95": 0.0,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "roc_auc": {
+      "mean": 0.0,
+      "std": 0.0,
+      "ci_95": 0.0,
+      "min": 0.0,
+      "max": 0.0
+    }
+  },
+  "per_episode_results": [
+    {
+      "episode_id": 0,
+      "episode_seed": 42,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 1,
+      "episode_seed": 43,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 2,
+      "episode_seed": 44,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 3,
+      "episode_seed": 45,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 4,
+      "episode_seed": 46,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 5,
+      "episode_seed": 47,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 6,
+      "episode_seed": 48,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 7,
+      "episode_seed": 49,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 8,
+      "episode_seed": 50,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 9,
+      "episode_seed": 51,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 10,
+      "episode_seed": 52,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 11,
+      "episode_seed": 53,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 12,
+      "episode_seed": 54,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 13,
+      "episode_seed": 55,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 14,
+      "episode_seed": 56,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 15,
+      "episode_seed": 57,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 16,
+      "episode_seed": 58,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 17,
+      "episode_seed": 59,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 18,
+      "episode_seed": 60,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 19,
+      "episode_seed": 61,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 20,
+      "episode_seed": 62,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 21,
+      "episode_seed": 63,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 22,
+      "episode_seed": 64,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 23,
+      "episode_seed": 65,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 24,
+      "episode_seed": 66,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 25,
+      "episode_seed": 67,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 26,
+      "episode_seed": 68,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 27,
+      "episode_seed": 69,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 28,
+      "episode_seed": 70,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 29,
+      "episode_seed": 71,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 30,
+      "episode_seed": 72,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 31,
+      "episode_seed": 73,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 32,
+      "episode_seed": 74,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 33,
+      "episode_seed": 75,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 34,
+      "episode_seed": 76,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 35,
+      "episode_seed": 77,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 36,
+      "episode_seed": 78,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 37,
+      "episode_seed": 79,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 38,
+      "episode_seed": 80,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 39,
+      "episode_seed": 81,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 40,
+      "episode_seed": 82,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 41,
+      "episode_seed": 83,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 42,
+      "episode_seed": 84,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 43,
+      "episode_seed": 85,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 44,
+      "episode_seed": 86,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 45,
+      "episode_seed": 87,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 46,
+      "episode_seed": 88,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 47,
+      "episode_seed": 89,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 48,
+      "episode_seed": 90,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 49,
+      "episode_seed": 91,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 50,
+      "episode_seed": 92,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 51,
+      "episode_seed": 93,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 52,
+      "episode_seed": 94,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 53,
+      "episode_seed": 95,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 54,
+      "episode_seed": 96,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 55,
+      "episode_seed": 97,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 56,
+      "episode_seed": 98,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 57,
+      "episode_seed": 99,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 58,
+      "episode_seed": 100,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 59,
+      "episode_seed": 101,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 60,
+      "episode_seed": 102,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 61,
+      "episode_seed": 103,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 62,
+      "episode_seed": 104,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 63,
+      "episode_seed": 105,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 64,
+      "episode_seed": 106,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 65,
+      "episode_seed": 107,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 66,
+      "episode_seed": 108,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 67,
+      "episode_seed": 109,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 68,
+      "episode_seed": 110,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 69,
+      "episode_seed": 111,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 70,
+      "episode_seed": 112,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 71,
+      "episode_seed": 113,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 72,
+      "episode_seed": 114,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 73,
+      "episode_seed": 115,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 74,
+      "episode_seed": 116,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 75,
+      "episode_seed": 117,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 76,
+      "episode_seed": 118,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 77,
+      "episode_seed": 119,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 78,
+      "episode_seed": 120,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 79,
+      "episode_seed": 121,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 80,
+      "episode_seed": 122,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 81,
+      "episode_seed": 123,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 82,
+      "episode_seed": 124,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 83,
+      "episode_seed": 125,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 84,
+      "episode_seed": 126,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 85,
+      "episode_seed": 127,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 86,
+      "episode_seed": 128,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 87,
+      "episode_seed": 129,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 88,
+      "episode_seed": 130,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 89,
+      "episode_seed": 131,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 90,
+      "episode_seed": 132,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 91,
+      "episode_seed": 133,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 92,
+      "episode_seed": 134,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 93,
+      "episode_seed": 135,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 94,
+      "episode_seed": 136,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 95,
+      "episode_seed": 137,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 96,
+      "episode_seed": 138,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 97,
+      "episode_seed": 139,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 98,
+      "episode_seed": 140,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    },
+    {
+      "episode_id": 99,
+      "episode_seed": 141,
+      "samples": 4,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "base_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "ttt_model": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "zero_day_detection_rate": 1.0,
+        "far": 0.0,
+        "confusion_matrix": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "auc_pr": 1.0,
+        "roc_auc": 1.0
+      },
+      "improvement": {
+        "accuracy": 0.0,
+        "zdr": 0.0,
+        "far": 0.0,
+        "roc_auc": 0.0
+      }
+    }
+  ]
+}

@@ -40,19 +40,21 @@ DATASET_CONFIGS = {
     },
     'UNSW': {
         'input_dim': 43,
-        'hidden_dim': 256,
-        'embedding_dim': 128,
+        'hidden_dim': 512,
+        'embedding_dim': 256,
         'sequence_length': 21,
-        'sequence_stride': 13,
+        'sequence_stride': 10,
         'tcn_kernel_sizes': (3, 3, 6),
-        'meta_epochs': 18,
+        'meta_epochs': 40,
         'k_shot': 118,
-        'n_query': 20,
-        'learning_rate': 0.001096821720752952,
+        'n_query': 100,  # IMPROVED: Moderate increase from 20 → 100 (5× increase, balanced approach)
+        # Previous attempts: n_query=304 degraded base model (74.86% → 63.59%) due to insufficient epochs + high LR
+        # New strategy: Conservative increase with TENT approach (only BN params) for better generalization
+        'learning_rate': 0.0009,  # Slightly reduced from 0.001096 for larger episodes with n_query=100
         'confidence_rejection_threshold': 0.70,
         'data_path': "UNSW_NB15_training-set.csv",
         'test_path': "UNSW_NB15_testing-set.csv",
-        'zero_day_attack': "DoS",
+        'zero_day_attack': "Shellcode",  # UNSW zero-day attack - Testing Shellcode attack type
         'use_category_grouping': False,
     },
     'CICIDS2017': {
@@ -67,10 +69,10 @@ DATASET_CONFIGS = {
         'n_query': 10,  # Optimized from Optuna (was 15)
         'learning_rate': 0.0015751320499779737,  # Optimized from Optuna (was 0.001)
         'confidence_rejection_threshold': 0.5682096494749166,  # Optimized from Optuna (was 0.75)
-        'data_path': "CICIDS2017_train.csv",  # Fixed: was CICIDS2017_training.csv
-        'test_path': "CICIDS2017_test.csv",  # Fixed: was CICIDS2017_testing.csv
-        'zero_day_attack': "PortScan",  # Optimized from Optuna (FIXED: was incorrectly "DoS")
-        'use_category_grouping': True,
+        'data_path': "UNSW_NB15_training-set.csv",  # Switched to UNSW dataset
+        'test_path': "UNSW_NB15_testing-set.csv",  # Switched to UNSW dataset
+        'zero_day_attack': "Backdoor",  # UNSW zero-day attack
+        'use_category_grouping': False,  # UNSW uses fine-grained attack types
         # PROTOTYPE-OPTIMIZED: Loss weights for embedding quality (70% embedding, 30% classification)
         'center_loss_weight': 1.0,  # PROTOTYPE-OPTIMIZED: 0.20 * 1.0 = 20% effective weight (critical for tight clusters and low FAR)
         'contrastive_loss_weight': 1.0,  # PROTOTYPE-OPTIMIZED: 0.25 * 1.0 = 25% effective weight (inter-class separation)
@@ -102,6 +104,26 @@ DATASET_CONFIGS = {
 
         'ttt_batch_size': 64,  # No change (good value)
         'batch_size': 256,  # No change (optimized from Optuna)
+
+        # =====================================================================
+        # Low-Confidence-Only TTT Adaptation (NEW FEATURE)
+        # =====================================================================
+        # Focus TTT adaptation on LOW-CONFIDENCE samples (likely zero-day)
+        # instead of adapting on ALL test samples (70% non-zero-day + 30% zero-day).
+        #
+        # KEY INSIGHT: Zero-day samples have HIGH uncertainty (low confidence)
+        # because the model hasn't seen them before. By focusing adaptation on
+        # uncertain samples, we maximize zero-day detection improvement.
+        #
+        # COMPARISON:
+        # - All-samples TTT: Adapts on 100% of test data (70% non-zero-day dominates gradient)
+        # - Low-confidence TTT: Adapts only on top 30% most uncertain samples (focuses on zero-day)
+        #
+        'use_low_confidence_only_ttt': True,  # Enable low-confidence-only adaptation
+        'low_confidence_method': 'entropy',  # Method: 'entropy', 'probability', 'distance', 'combined'
+        'low_confidence_percentile': 0.70,  # Top 30% most uncertain (0.70 quantile threshold)
+        'low_confidence_min_samples': 100,  # Minimum samples for stable adaptation
+        'low_confidence_max_samples': 750,  # Maximum samples (match ttt_adaptation_query_size)
         
     },
     'CICIDS2023': {

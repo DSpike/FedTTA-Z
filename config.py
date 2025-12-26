@@ -47,12 +47,12 @@ class SystemConfig:
     category_types: Dict[str, int] = field(default_factory=dict)
     
     # === DATA CONFIGURATION ===
-    # KDDTest+ (NSL-KDD):
-    data_path: str = "CICIDS2017_train.csv"
-    test_path: str = "CICIDS2017_test.csv"
+    # UNSW-NB15 (switched from CICIDS2017):
+    data_path: str = "UNSW_NB15_training-set.csv"
+    test_path: str = "UNSW_NB15_testing-set.csv"
     # When use_category_grouping=True: zero_day_attack should be a category name (e.g., "DoS", "Probe", "R2L", "U2R")
     # When use_category_grouping=False: zero_day_attack should be a specific attack name (e.g., "neptune", "back")
-    zero_day_attack: str = "PortScan"  # FIXED: Must match config_loader.py setting (was "DoS")
+    zero_day_attack: str = "Exploits"  # UNSW-NB15 zero-day attack - Testing Exploits for publication
     
     # === CROSS-DATASET EVALUATION (Optional) ===
     # Enable cross-dataset evaluation: train on one dataset, test on another
@@ -165,8 +165,23 @@ class SystemConfig:
         'XSS': 33,
     }
     '''
-    
-    # CICIDS2017 attack types (ACTIVE for CICIDS2017 dataset)
+
+    # UNSW-NB15 attack types (ACTIVE for UNSW-NB15 dataset)
+    attack_types = {
+        'Normal': 0,
+        'Fuzzers': 1,
+        'Analysis': 2,
+        'Backdoor': 3,
+        'DoS': 4,
+        'Exploits': 5,
+        'Generic': 6,
+        'Reconnaissance': 7,
+        'Shellcode': 8,
+        'Worms': 9,
+    }
+
+    # CICIDS2017 attack types (uncomment if switching to CICIDS2017 dataset)
+    '''
     attack_types = {
         'BENIGN': 0,
         'Bot': 1,
@@ -184,6 +199,7 @@ class SystemConfig:
         'Web Attack  Sql Injection': 13,
         'Web Attack  XSS': 14,
     }
+    '''
     
     def __post_init__(self):
         """Initialize category mappings based on active dataset"""
@@ -201,6 +217,9 @@ class SystemConfig:
         elif 'DDoS-ACK_Fragmentation' in self.attack_types or 'Mirai-greeth_flood' in self.attack_types:
             # CICIoT2023 dataset detected
             self._init_ciciot2023_categories()
+        elif 'Backdoor' in self.attack_types and 'Fuzzers' in self.attack_types:
+            # UNSW-NB15 dataset detected
+            self._init_unsw_categories()
         elif 'BENIGN' in self.attack_types and 'Bot' in self.attack_types:
             # CICIDS2017 dataset detected
             self._init_cicids2017_categories()
@@ -347,6 +366,39 @@ class SystemConfig:
             'Scan': 12,
         }
     
+    def _init_unsw_categories(self):
+        """
+        Initialize UNSW-NB15 category mapping
+        10 attack types (already at appropriate granularity for zero-day detection)
+        """
+        # UNSW-NB15: Each attack type is its own category
+        self.attack_category_mapping = {
+            'Normal': 'Normal',
+            'Fuzzers': 'Fuzzers',
+            'Analysis': 'Analysis',
+            'Backdoor': 'Backdoor',
+            'DoS': 'DoS',
+            'Exploits': 'Exploits',
+            'Generic': 'Generic',
+            'Reconnaissance': 'Reconnaissance',
+            'Shellcode': 'Shellcode',
+            'Worms': 'Worms',
+        }
+
+        # Category → integer mapping (same as attack_types)
+        self.category_types = {
+            'Normal': 0,
+            'Fuzzers': 1,
+            'Analysis': 2,
+            'Backdoor': 3,
+            'DoS': 4,
+            'Exploits': 5,
+            'Generic': 6,
+            'Reconnaissance': 7,
+            'Shellcode': 8,
+            'Worms': 9,
+        }
+
     def _init_cicids2017_categories(self):
         """
         Initialize CICIDS2017 category mapping
@@ -356,36 +408,36 @@ class SystemConfig:
         self.attack_category_mapping = {
             # Benign traffic
             'BENIGN': 'Benign',
-            
+
             # DoS attacks (5 types → 1 category)
             'DoS Hulk': 'DoS',
             'DoS GoldenEye': 'DoS',
             'DoS Slowhttptest': 'DoS',
             'DoS slowloris': 'DoS',
             'Heartbleed': 'DoS',  # Grouped with DoS
-            
+
             # DDoS attack
             'DDoS': 'DoS',  # Also grouped with DoS
-            
+
             # Bot attack
             'Bot': 'Bot',
-            
+
             # Infiltration attack
             'Infiltration': 'Infiltration',
-            
+
             # Port scanning
             'PortScan': 'PortScan',
-            
+
             # Brute force attacks (2 types → 1 category)
             'FTP-Patator': 'BruteForce',
             'SSH-Patator': 'BruteForce',
-            
+
             # Web attacks (3 types → 1 category)
             'Web Attack  Brute Force': 'WebAttack',
             'Web Attack  Sql Injection': 'WebAttack',
             'Web Attack  XSS': 'WebAttack',
         }
-        
+
         # Category → integer mapping
         self.category_types = {
             'Benign': 0,
@@ -497,7 +549,7 @@ class SystemConfig:
     sequence_stride: int = 12  # Optimized from Optuna Trial 1 (best_hyperparameters.json)
     tcn_kernel_sizes: tuple = (2, 3, 3)  # Optimized from Optuna Trial 1 (best_hyperparameters.json)
     use_residual_connections: bool = False  # Optimized from Optuna Trial 1 (best_hyperparameters.json)
-    meta_epochs: int = 1  # QUICK TEST: Reduced from 21
+    meta_epochs: int = 21  # PRODUCTION: Restored from quick test (was 1)
     transductive_steps: int = 40  # AGGRESSIVE FOR 90%+ BASE MODEL: Increased from 20 → 40 (2x increase)
     transductive_lr: float = 0.001  # AGGRESSIVE FOR 90%+ BASE MODEL: Increased from 0.0007 → 0.001 (43% increase)
     transductive_refinement_iterations: int = 10  # AGGRESSIVE FOR 90%+ BASE MODEL: Increased from 10 → 30 (3x increase)
@@ -527,13 +579,14 @@ class SystemConfig:
     mixup_probability: float = 0.8  # Probability of applying Mixup (80% of the time)
     
     # === TEST-TIME TRAINING (TTT) CONFIGURATION ===
-    # Optimized from Optuna Trial 1 (best_hyperparameters.json)
-    # ADJUSTED: Reduced overfitting by increasing regularization and reducing adaptation intensity
-    ttt_base_steps: int = 10  # QUICK TEST: Reduced from 200
-    ttt_max_steps: int = 400  # Maximum TTT steps (safety limit)
+    # PHASE 1 IMPROVEMENTS: Ultra-conservative settings for rare attacks (<1,000 samples)
+    # Based on root cause analysis: 583 Backdoor samples insufficient for aggressive TTT
+    # Strategy: Reduce overfitting by minimizing adaptation steps and learning rate
+    ttt_base_steps: int = 10  # Keep for minimum adaptation
+    ttt_max_steps: int = 10  # REDUCED from 400 → 10 (97.5% reduction, prevent oversampling)
     ttt_adaptation_query_size: int = 1198  # Optimized from Optuna Trial 1 (best_hyperparameters.json)
     ttt_batch_size: int = 64  # Optimized from Optuna Trial 1 (best_hyperparameters.json)
-    ttt_lr: float = 0.005  # INCREASED from 0.001 → 0.005 to ensure adaptation has effect
+    ttt_lr: float = 0.0005  # REDUCED from 0.005 → 0.0005 (90% reduction, prevent overshooting)
     ttt_l2_reg_weight: float = 0.0  # DISABLED - L2 accumulates over 200 steps, causing catastrophic drift; BatchNorm provides regularization
     confidence_rejection_threshold: float = 0.90  # Increased to 0.90 for stricter FAR control (reject more uncertain predictions)
     
@@ -555,13 +608,83 @@ class SystemConfig:
     ttt_temperature: float = 5.0  # INCREASED from 1.31 to combat TTT overconfidence (median prob=0)
     use_semisupervised_ttt: bool = False  # When True, use new semi-supervised TTT instead of legacy TENT+pseudo
 
+    # === FAR PENALTY FOR TTT (Reduce False Positives) ===
+    # PHASE 2 IMPROVEMENT: Increase FAR penalty to reduce false alarms
+    # Discovery: TTT has median attack prob of 0.98 (very overconfident) vs base model 0.006
+    # FAR penalty should prevent TTT from becoming so overconfident
+    ttt_far_penalty_weight: float = 0.30  # PHASE 2: Increased from 0.15 → 0.30 (2x increase)
+    ttt_far_confidence_threshold: float = 0.7  # Only penalize high-confidence attack predictions (>70%)
+
+    # === ADAPTIVE DECISION THRESHOLD (Reduce FAR via Threshold Tuning) ===
+    ttt_attack_decision_threshold: float = 0.85  # BASELINE for comparison
+    # Higher threshold → Lower FAR (fewer false positives), slightly lower ZDR
+    # Recommended range: 0.65-0.80 for balanced, 0.80-0.90 for low FAR
+    # TEMPORARILY REVERTED TO 0.85 for baseline comparison
+
+    # === CONFIDENCE REGULARIZATION (New: Key Fix for FAR) ===
+    # PHASE 1 IMPROVEMENT: Maximum regularization to prevent overconfidence
+    # Problem: Entropy minimization makes model OVERCONFIDENT (prob = 0.99 for everything)
+    # Solution: Regularize confidence to target level (0.75 = confident but not extreme)
+    # Effect: Reduces false positives from overconfident wrong predictions
+    ttt_confidence_reg_weight: float = 1.0  # INCREASED from 0.4 → 1.0 (maximum regularization)
+    ttt_target_confidence: float = 0.75  # Target max probability (0.70-0.80 recommended)
+    # Higher weight → more regularization → lower FAR but potentially lower ZDR
+    # Lower weight → less regularization → higher ZDR but potentially higher FAR
+    # Phase 1: Use maximum (1.0) to prevent overconfident wrong predictions
+
+    # === POST-TTT CALIBRATION (New: Reduce FAR via Temperature Scaling) ===
+    # PHASE 1 & 2 IMPROVEMENT: Enable temperature scaling to calibrate overconfidence
+    # Separate from ttt_temperature (used DURING adaptation)
+    # This is applied AFTER adaptation to calibrate overconfident predictions
+    use_post_ttt_calibration: bool = True  # ENABLED for Phase 1 & 2 testing
+    post_ttt_calibration_method: str = 'grid_search'  # Options: 'grid_search', 'gradient', 'threshold_only'
+    post_ttt_target_far: float = 0.30  # PHASE 2: Reduced from 0.40 → 0.30 for more aggressive FAR reduction
+    post_ttt_temperature_range_min: float = 1.0  # Min temperature to search
+    post_ttt_temperature_range_max: float = 4.0  # Max temperature to search
+    post_ttt_temperature_step: float = 0.2  # Step size for grid search
+
+    # === BASE + TTT ENSEMBLE CONFIGURATION (DISABLED: Not bringing advantage) ===
+    # Results showed ensemble does not improve performance:
+    # - Backdoor: Base ZDR 93.33%, TTT ZDR 88.69% (TTT worse, ensemble won't help)
+    # - Ensemble adds complexity without benefit
+    # DECISION: Disabled - use TTT model only
+    use_ensemble: bool = False  # DISABLED: Ensemble not bringing advantage
+    ensemble_method: str = 'confidence_weighted'  # Options: 'weighted_prob', 'confidence_weighted', 'voting'
+
+    # --- Weighted Probability Method ---
+    # Simple linear combination: alpha * base_probs + (1-alpha) * ttt_probs
+    ensemble_base_weight: float = 0.4  # Weight for base model (0.4 = 40% base, 60% TTT)
+
+    # --- Confidence-Weighted Method (RECOMMENDED) ---
+    # Zone-based decision: Use base when it's confident about normal, TTT when confident about attack
+    ensemble_base_conf_threshold: float = 0.85  # Base must be >0.85 confident to override TTT
+    ensemble_ttt_conf_threshold: float = 0.70   # TTT must be >0.70 confident to override base
+    # Logic:
+    # Zone 1: Base very confident normal (>0.85) → Use base (reduces FAR)
+    # Zone 2: TTT confident attack (>0.70) → Use TTT (maintains ZDR)
+    # Zone 3: Uncertain region → Weighted average
+
+    # --- Voting Method ---
+    # Predict attack if EITHER model predicts attack (maximizes recall)
+    # High ZDR but potentially highest FAR of the three methods
+
+    # --- Ensemble Decision Threshold ---
+    ensemble_decision_threshold: float = 0.5  # Threshold for final binary decision
+
+    # Expected Performance:
+    # - FAR reduction: 42.53% → 25-35% (realistic), 15-25% (optimistic)
+    # - ZDR maintenance: 93.99% → 88-92% (realistic), 90-94% (optimistic)
+    # Note: Unlikely to achieve FAR <10% with ensemble alone, but significant improvement expected
+
     # === TENT + PSEUDO-LABELS CONFIGURATION ===
-    # ADJUSTED: Reduced overfitting by balancing pseudo-label and entropy weights
+    # PHASE 1 IMPROVEMENT: Ultra-conservative pseudo-labeling for rare attacks
+    # Problem: With 583 samples, wrong pseudo-labels get reinforced 44x (oversampling)
+    # Solution: Almost disable pseudo-labels, minimal entropy push
     use_pseudo_labels: bool = True
-    pseudo_threshold: float = 0.80  # REDUCED from 0.95 → 0.80 (lower threshold to enable more pseudo-label supervision)
+    pseudo_threshold: float = 0.98  # PHASE 1: INCREASED from 0.80 → 0.98 (almost no pseudo-labels)
     pseudo_min_threshold: float = 0.7173803589287694
-    pseudo_weight: float = 1.5  # REDUCED from 3.04 → 1.5 (51% reduction to prevent overfitting)
-    entropy_weight: float = 0.8  # INCREASED from 0.57 → 0.8 (stronger balance adaptation across all samples)
+    pseudo_weight: float = 0.2  # PHASE 1: REDUCED from 1.5 → 0.2 (minimal influence)
+    entropy_weight: float = 0.1  # PHASE 1: REDUCED from 0.8 → 0.1 (minimal confidence push)
     use_teacher: bool = True
     ema_decay: float = 0.9662140032177797
     
@@ -614,7 +737,7 @@ class SystemConfig:
     threshold_optimization_strategy: str = 'balanced_zdr_far'  # Changed to balanced strategy
     use_adaptive_threshold: bool = True
     threshold_adaptation_mode: str = 'combined'
-    max_far_for_zdr: float = 0.35
+    max_far_for_zdr: float = 0.05  # REDUCED from 0.35 to 0.05 (5% FAR limit) for publication-quality results
     
     # === FAR-AWARE THRESHOLD OPTIMIZATION ===
     # Target: FAR ≤ 8% for balanced ZDR-FAR optimization (literature reports >10%, 8% is competitive)
@@ -629,12 +752,12 @@ class SystemConfig:
     
     # === EVALUATION CONFIGURATION ===
     support_size: int = 20
-    num_meta_tasks: int = 5  # QUICK TEST: Reduced from 46
+    num_meta_tasks: int = 46  # PRODUCTION: Restored from quick test (was 5)
     
     # === FEW-SHOT LEARNING CONFIGURATION ===
     n_way: int = 2
-    k_shot: int = 20  # QUICK TEST: Reduced from 152
-    n_query: int = 10  # QUICK TEST: Reduced from 16
+    k_shot: int = 152  # PRODUCTION: Restored from quick test (was 20)
+    n_query: int = 304  # IMPROVED: Increased from 16 → 304 for balanced 1:1 support:query ratio (was 16, previous 19:1 ratio caused overfitting)
     enforce_equal_support_composition: bool = False
     include_all_attack_types_in_support: bool = False
     

@@ -1,0 +1,5133 @@
+{
+  "metadata": {
+    "total_attacks_evaluated": 9,
+    "attacks_failed": 0,
+    "episodes_per_attack": 10,
+    "generated_at": "2025-12-21T13:02:00.692865"
+  },
+  "overall_statistics": {
+    "base_model": {
+      "zdr_mean": 0.810497532988855,
+      "zdr_std": 0.0,
+      "accuracy_mean": 0.7251497864723205,
+      "f1_mean": 0.6381035077168757,
+      "far_mean": 0.25936599423631124
+    },
+    "ttt_model": {
+      "zdr_mean": 0.9398862695168037,
+      "zdr_std": 1.1102230246251565e-16,
+      "accuracy_mean": 0.699690685722689,
+      "f1_mean": 0.6868515598218071,
+      "far_mean": 0.42525939238976795
+    },
+    "improvement": {
+      "zdr_mean": 0.12938873652794897,
+      "zdr_std": 0.0
+    }
+  },
+  "per_attack_results": {
+    "Fuzzers": {
+      "metadata": {
+        "n_episodes": 10,
+        "total_samples": 5590,
+        "total_zero_day_samples": 851,
+        "total_non_zero_day_samples": 4739,
+        "evaluated_at": "2025-12-21T12:54:40.648274"
+      },
+      "base_model": {
+        "accuracy": {
+          "mean": 0.7251497864723205,
+          "std": 0.012715525949506177,
+          "ci_95": 0.007881164634893282,
+          "min": 0.7014925479888916,
+          "max": 0.7443609237670898
+        },
+        "zero_day_detection_rate": {
+          "mean": 0.810497532988855,
+          "std": 0.03519672186523102,
+          "ci_95": 0.021815154224053675,
+          "min": 0.75,
+          "max": 0.8552631578947368
+        },
+        "false_alarm_rate": {
+          "mean": 0.25936599423631124,
+          "std": 0.0,
+          "ci_95": 0.0,
+          "min": 0.25936599423631124,
+          "max": 0.25936599423631124
+        },
+        "f1_score": {
+          "mean": 0.6381035077168757,
+          "std": 0.02182148107590002,
+          "ci_95": 0.013525094095148711,
+          "min": 0.5979899497487438,
+          "max": 0.6714975845410628
+        }
+      },
+      "ttt_model": {
+        "accuracy": {
+          "mean": 0.699690685722689,
+          "std": 0.007177048821053554,
+          "ci_95": 0.004448380945940069,
+          "min": 0.6832412523020258,
+          "max": 0.7094972067039106
+        },
+        "zero_day_detection_rate": {
+          "mean": 0.9398862695168038,
+          "std": 0.017673522965093034,
+          "ci_95": 0.010954163022401356,
+          "min": 0.9,
+          "max": 0.9662921348314607
+        },
+        "false_alarm_rate": {
+          "mean": 0.42525939238976795,
+          "std": 0.012493408154654431,
+          "ci_95": 0.007743494599338515,
+          "min": 0.40173410404624277,
+          "max": 0.44285714285714284
+        },
+        "f1_score": {
+          "mean": 0.6868515598218071,
+          "std": 0.006545403959150235,
+          "ci_95": 0.004056883404492497,
+          "min": 0.6704980842911877,
+          "max": 0.6923076923076923
+        }
+      },
+      "improvement": {
+        "zero_day_detection_rate": {
+          "mean": 0.12938873652794897,
+          "std": 0.034712174855634624,
+          "ci_95": 0.02151482887603905,
+          "min": 0.08223684210526316,
+          "max": 0.20238095238095233
+        },
+        "accuracy": {
+          "mean": -0.025459100749631636,
+          "std": 0.014112067426579888,
+          "ci_95": 0.008746750010125235,
+          "min": -0.04147785484900568,
+          "max": -0.0033443998407434172
+        }
+      },
+      "per_episode_results": [
+        {
+          "episode_id": 0,
+          "episode_seed": 42,
+          "samples": 559,
+          "zero_day_samples": 84,
+          "non_zero_day_samples": 475,
+          "base_model": {
+            "accuracy": 0.7124060392379761,
+            "precision": 0.5754716981132075,
+            "recall": 0.6594594594594595,
+            "f1_score": 0.6146095717884131,
+            "zero_day_detection_rate": 0.75,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                63,
+                122
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6994535519125683,
+            "precision": 0.5460122699386503,
+            "recall": 0.9128205128205128,
+            "f1_score": 0.6833013435700576,
+            "zero_day_detection_rate": 0.9523809523809523,
+            "far": 0.4180790960451977,
+            "confusion_matrix": [
+              [
+                206,
+                148
+              ],
+              [
+                17,
+                178
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.012952487325407769,
+            "zdr": 0.20238095238095233,
+            "far": -0.15871310180888648
+          }
+        },
+        {
+          "episode_id": 1,
+          "episode_seed": 43,
+          "samples": 559,
+          "zero_day_samples": 80,
+          "non_zero_day_samples": 479,
+          "base_model": {
+            "accuracy": 0.7443609237670898,
+            "precision": 0.6069868995633187,
+            "recall": 0.7513513513513513,
+            "f1_score": 0.6714975845410628,
+            "zero_day_detection_rate": 0.8552631578947368,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                46,
+                139
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7047101449275363,
+            "precision": 0.5512048192771084,
+            "recall": 0.9289340101522843,
+            "f1_score": 0.6918714555765595,
+            "zero_day_detection_rate": 0.9375,
+            "far": 0.4197183098591549,
+            "confusion_matrix": [
+              [
+                206,
+                149
+              ],
+              [
+                14,
+                183
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.03965077883955359,
+            "zdr": 0.08223684210526316,
+            "far": -0.1603523156228437
+          }
+        },
+        {
+          "episode_id": 2,
+          "episode_seed": 44,
+          "samples": 559,
+          "zero_day_samples": 91,
+          "non_zero_day_samples": 468,
+          "base_model": {
+            "accuracy": 0.7344632744789124,
+            "precision": 0.5964125560538116,
+            "recall": 0.7228260869565217,
+            "f1_score": 0.6535626535626535,
+            "zero_day_detection_rate": 0.8409090909090909,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                51,
+                133
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7012987012987013,
+            "precision": 0.5421686746987951,
+            "recall": 0.9523809523809523,
+            "f1_score": 0.690978886756238,
+            "zero_day_detection_rate": 0.9540229885057471,
+            "far": 0.4342857142857143,
+            "confusion_matrix": [
+              [
+                198,
+                152
+              ],
+              [
+                9,
+                180
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.03316457318021104,
+            "zdr": 0.11311389759665613,
+            "far": -0.17491972004940304
+          }
+        },
+        {
+          "episode_id": 3,
+          "episode_seed": 45,
+          "samples": 559,
+          "zero_day_samples": 81,
+          "non_zero_day_samples": 478,
+          "base_model": {
+            "accuracy": 0.721280574798584,
+            "precision": 0.5833333333333334,
+            "recall": 0.6847826086956522,
+            "f1_score": 0.63,
+            "zero_day_detection_rate": 0.8311688311688312,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                58,
+                126
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6972477064220184,
+            "precision": 0.5424242424242425,
+            "recall": 0.927461139896373,
+            "f1_score": 0.6845124282982792,
+            "zero_day_detection_rate": 0.9367088607594937,
+            "far": 0.4289772727272727,
+            "confusion_matrix": [
+              [
+                201,
+                151
+              ],
+              [
+                14,
+                179
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.024032868376565597,
+            "zdr": 0.10554002959066244,
+            "far": -0.16961127849096147
+          }
+        },
+        {
+          "episode_id": 4,
+          "episode_seed": 46,
+          "samples": 559,
+          "zero_day_samples": 91,
+          "non_zero_day_samples": 468,
+          "base_model": {
+            "accuracy": 0.7358490824699402,
+            "precision": 0.5964125560538116,
+            "recall": 0.726775956284153,
+            "f1_score": 0.6551724137931034,
+            "zero_day_detection_rate": 0.8470588235294118,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                50,
+                133
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6959706959706959,
+            "precision": 0.5441176470588235,
+            "recall": 0.9438775510204082,
+            "f1_score": 0.6902985074626866,
+            "zero_day_detection_rate": 0.9662921348314607,
+            "far": 0.44285714285714284,
+            "confusion_matrix": [
+              [
+                195,
+                155
+              ],
+              [
+                11,
+                185
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.039878386499244245,
+            "zdr": 0.11923331130204895,
+            "far": -0.1834911486208316
+          }
+        },
+        {
+          "episode_id": 5,
+          "episode_seed": 47,
+          "samples": 559,
+          "zero_day_samples": 82,
+          "non_zero_day_samples": 477,
+          "base_model": {
+            "accuracy": 0.7247191071510315,
+            "precision": 0.5909090909090909,
+            "recall": 0.6951871657754011,
+            "f1_score": 0.6388206388206388,
+            "zero_day_detection_rate": 0.7974683544303798,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                57,
+                130
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6832412523020258,
+            "precision": 0.5319148936170213,
+            "recall": 0.9067357512953368,
+            "f1_score": 0.6704980842911877,
+            "zero_day_detection_rate": 0.9,
+            "far": 0.44,
+            "confusion_matrix": [
+              [
+                196,
+                154
+              ],
+              [
+                18,
+                175
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.04147785484900568,
+            "zdr": 0.10253164556962024,
+            "far": -0.18063400576368877
+          }
+        },
+        {
+          "episode_id": 6,
+          "episode_seed": 48,
+          "samples": 559,
+          "zero_day_samples": 93,
+          "non_zero_day_samples": 466,
+          "base_model": {
+            "accuracy": 0.7340824007987976,
+            "precision": 0.6,
+            "recall": 0.7219251336898396,
+            "f1_score": 0.6553398058252428,
+            "zero_day_detection_rate": 0.8160919540229885,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                52,
+                135
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7009174311926606,
+            "precision": 0.5487804878048781,
+            "recall": 0.9230769230769231,
+            "f1_score": 0.6883365200764818,
+            "zero_day_detection_rate": 0.946236559139785,
+            "far": 0.4228571428571429,
+            "confusion_matrix": [
+              [
+                202,
+                148
+              ],
+              [
+                15,
+                180
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.03316496960613702,
+            "zdr": 0.13014460511679649,
+            "far": -0.16349114862083164
+          }
+        },
+        {
+          "episode_id": 7,
+          "episode_seed": 49,
+          "samples": 559,
+          "zero_day_samples": 88,
+          "non_zero_day_samples": 471,
+          "base_model": {
+            "accuracy": 0.716946005821228,
+            "precision": 0.5871559633027523,
+            "recall": 0.6736842105263158,
+            "f1_score": 0.6274509803921569,
+            "zero_day_detection_rate": 0.7674418604651163,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                62,
+                128
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7094972067039106,
+            "precision": 0.5559105431309904,
+            "recall": 0.9109947643979057,
+            "f1_score": 0.6904761904761905,
+            "zero_day_detection_rate": 0.9310344827586207,
+            "far": 0.40173410404624277,
+            "confusion_matrix": [
+              [
+                207,
+                139
+              ],
+              [
+                17,
+                174
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.0074487991173174395,
+            "zdr": 0.16359262229350435,
+            "far": -0.14236810980993153
+          }
+        },
+        {
+          "episode_id": 8,
+          "episode_seed": 50,
+          "samples": 559,
+          "zero_day_samples": 84,
+          "non_zero_day_samples": 475,
+          "base_model": {
+            "accuracy": 0.7258979082107544,
+            "precision": 0.5852534562211982,
+            "recall": 0.6978021978021978,
+            "f1_score": 0.6365914786967418,
+            "zero_day_detection_rate": 0.8157894736842105,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                55,
+                127
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7064220183486238,
+            "precision": 0.5538461538461539,
+            "recall": 0.9230769230769231,
+            "f1_score": 0.6923076923076923,
+            "zero_day_detection_rate": 0.9404761904761905,
+            "far": 0.4142857142857143,
+            "confusion_matrix": [
+              [
+                205,
+                145
+              ],
+              [
+                15,
+                180
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.019475889862130558,
+            "zdr": 0.12468671679197996,
+            "far": -0.15491972004940308
+          }
+        },
+        {
+          "episode_id": 9,
+          "episode_seed": 51,
+          "samples": 559,
+          "zero_day_samples": 77,
+          "non_zero_day_samples": 482,
+          "base_model": {
+            "accuracy": 0.7014925479888916,
+            "precision": 0.569377990430622,
+            "recall": 0.6296296296296297,
+            "f1_score": 0.5979899497487438,
+            "zero_day_detection_rate": 0.7837837837837838,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                70,
+                119
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6981481481481482,
+            "precision": 0.5426829268292683,
+            "recall": 0.9319371727748691,
+            "f1_score": 0.6859344894026975,
+            "zero_day_detection_rate": 0.9342105263157895,
+            "far": 0.4297994269340974,
+            "confusion_matrix": [
+              [
+                199,
+                150
+              ],
+              [
+                13,
+                178
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.0033443998407434172,
+            "zdr": 0.15042674253200572,
+            "far": -0.17043343269778616
+          }
+        }
+      ]
+    },
+    "Analysis": {
+      "metadata": {
+        "n_episodes": 10,
+        "total_samples": 5590,
+        "total_zero_day_samples": 851,
+        "total_non_zero_day_samples": 4739,
+        "evaluated_at": "2025-12-21T12:55:38.153203"
+      },
+      "base_model": {
+        "accuracy": {
+          "mean": 0.7251497864723205,
+          "std": 0.012715525949506177,
+          "ci_95": 0.007881164634893282,
+          "min": 0.7014925479888916,
+          "max": 0.7443609237670898
+        },
+        "zero_day_detection_rate": {
+          "mean": 0.810497532988855,
+          "std": 0.03519672186523102,
+          "ci_95": 0.021815154224053675,
+          "min": 0.75,
+          "max": 0.8552631578947368
+        },
+        "false_alarm_rate": {
+          "mean": 0.25936599423631124,
+          "std": 0.0,
+          "ci_95": 0.0,
+          "min": 0.25936599423631124,
+          "max": 0.25936599423631124
+        },
+        "f1_score": {
+          "mean": 0.6381035077168757,
+          "std": 0.02182148107590002,
+          "ci_95": 0.013525094095148711,
+          "min": 0.5979899497487438,
+          "max": 0.6714975845410628
+        }
+      },
+      "ttt_model": {
+        "accuracy": {
+          "mean": 0.699690685722689,
+          "std": 0.007177048821053554,
+          "ci_95": 0.004448380945940069,
+          "min": 0.6832412523020258,
+          "max": 0.7094972067039106
+        },
+        "zero_day_detection_rate": {
+          "mean": 0.9398862695168038,
+          "std": 0.017673522965093034,
+          "ci_95": 0.010954163022401356,
+          "min": 0.9,
+          "max": 0.9662921348314607
+        },
+        "false_alarm_rate": {
+          "mean": 0.42525939238976795,
+          "std": 0.012493408154654431,
+          "ci_95": 0.007743494599338515,
+          "min": 0.40173410404624277,
+          "max": 0.44285714285714284
+        },
+        "f1_score": {
+          "mean": 0.6868515598218071,
+          "std": 0.006545403959150235,
+          "ci_95": 0.004056883404492497,
+          "min": 0.6704980842911877,
+          "max": 0.6923076923076923
+        }
+      },
+      "improvement": {
+        "zero_day_detection_rate": {
+          "mean": 0.12938873652794897,
+          "std": 0.034712174855634624,
+          "ci_95": 0.02151482887603905,
+          "min": 0.08223684210526316,
+          "max": 0.20238095238095233
+        },
+        "accuracy": {
+          "mean": -0.025459100749631636,
+          "std": 0.014112067426579888,
+          "ci_95": 0.008746750010125235,
+          "min": -0.04147785484900568,
+          "max": -0.0033443998407434172
+        }
+      },
+      "per_episode_results": [
+        {
+          "episode_id": 0,
+          "episode_seed": 42,
+          "samples": 559,
+          "zero_day_samples": 84,
+          "non_zero_day_samples": 475,
+          "base_model": {
+            "accuracy": 0.7124060392379761,
+            "precision": 0.5754716981132075,
+            "recall": 0.6594594594594595,
+            "f1_score": 0.6146095717884131,
+            "zero_day_detection_rate": 0.75,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                63,
+                122
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6994535519125683,
+            "precision": 0.5460122699386503,
+            "recall": 0.9128205128205128,
+            "f1_score": 0.6833013435700576,
+            "zero_day_detection_rate": 0.9523809523809523,
+            "far": 0.4180790960451977,
+            "confusion_matrix": [
+              [
+                206,
+                148
+              ],
+              [
+                17,
+                178
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.012952487325407769,
+            "zdr": 0.20238095238095233,
+            "far": -0.15871310180888648
+          }
+        },
+        {
+          "episode_id": 1,
+          "episode_seed": 43,
+          "samples": 559,
+          "zero_day_samples": 80,
+          "non_zero_day_samples": 479,
+          "base_model": {
+            "accuracy": 0.7443609237670898,
+            "precision": 0.6069868995633187,
+            "recall": 0.7513513513513513,
+            "f1_score": 0.6714975845410628,
+            "zero_day_detection_rate": 0.8552631578947368,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                46,
+                139
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7047101449275363,
+            "precision": 0.5512048192771084,
+            "recall": 0.9289340101522843,
+            "f1_score": 0.6918714555765595,
+            "zero_day_detection_rate": 0.9375,
+            "far": 0.4197183098591549,
+            "confusion_matrix": [
+              [
+                206,
+                149
+              ],
+              [
+                14,
+                183
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.03965077883955359,
+            "zdr": 0.08223684210526316,
+            "far": -0.1603523156228437
+          }
+        },
+        {
+          "episode_id": 2,
+          "episode_seed": 44,
+          "samples": 559,
+          "zero_day_samples": 91,
+          "non_zero_day_samples": 468,
+          "base_model": {
+            "accuracy": 0.7344632744789124,
+            "precision": 0.5964125560538116,
+            "recall": 0.7228260869565217,
+            "f1_score": 0.6535626535626535,
+            "zero_day_detection_rate": 0.8409090909090909,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                51,
+                133
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7012987012987013,
+            "precision": 0.5421686746987951,
+            "recall": 0.9523809523809523,
+            "f1_score": 0.690978886756238,
+            "zero_day_detection_rate": 0.9540229885057471,
+            "far": 0.4342857142857143,
+            "confusion_matrix": [
+              [
+                198,
+                152
+              ],
+              [
+                9,
+                180
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.03316457318021104,
+            "zdr": 0.11311389759665613,
+            "far": -0.17491972004940304
+          }
+        },
+        {
+          "episode_id": 3,
+          "episode_seed": 45,
+          "samples": 559,
+          "zero_day_samples": 81,
+          "non_zero_day_samples": 478,
+          "base_model": {
+            "accuracy": 0.721280574798584,
+            "precision": 0.5833333333333334,
+            "recall": 0.6847826086956522,
+            "f1_score": 0.63,
+            "zero_day_detection_rate": 0.8311688311688312,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                58,
+                126
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6972477064220184,
+            "precision": 0.5424242424242425,
+            "recall": 0.927461139896373,
+            "f1_score": 0.6845124282982792,
+            "zero_day_detection_rate": 0.9367088607594937,
+            "far": 0.4289772727272727,
+            "confusion_matrix": [
+              [
+                201,
+                151
+              ],
+              [
+                14,
+                179
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.024032868376565597,
+            "zdr": 0.10554002959066244,
+            "far": -0.16961127849096147
+          }
+        },
+        {
+          "episode_id": 4,
+          "episode_seed": 46,
+          "samples": 559,
+          "zero_day_samples": 91,
+          "non_zero_day_samples": 468,
+          "base_model": {
+            "accuracy": 0.7358490824699402,
+            "precision": 0.5964125560538116,
+            "recall": 0.726775956284153,
+            "f1_score": 0.6551724137931034,
+            "zero_day_detection_rate": 0.8470588235294118,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                50,
+                133
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6959706959706959,
+            "precision": 0.5441176470588235,
+            "recall": 0.9438775510204082,
+            "f1_score": 0.6902985074626866,
+            "zero_day_detection_rate": 0.9662921348314607,
+            "far": 0.44285714285714284,
+            "confusion_matrix": [
+              [
+                195,
+                155
+              ],
+              [
+                11,
+                185
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.039878386499244245,
+            "zdr": 0.11923331130204895,
+            "far": -0.1834911486208316
+          }
+        },
+        {
+          "episode_id": 5,
+          "episode_seed": 47,
+          "samples": 559,
+          "zero_day_samples": 82,
+          "non_zero_day_samples": 477,
+          "base_model": {
+            "accuracy": 0.7247191071510315,
+            "precision": 0.5909090909090909,
+            "recall": 0.6951871657754011,
+            "f1_score": 0.6388206388206388,
+            "zero_day_detection_rate": 0.7974683544303798,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                57,
+                130
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6832412523020258,
+            "precision": 0.5319148936170213,
+            "recall": 0.9067357512953368,
+            "f1_score": 0.6704980842911877,
+            "zero_day_detection_rate": 0.9,
+            "far": 0.44,
+            "confusion_matrix": [
+              [
+                196,
+                154
+              ],
+              [
+                18,
+                175
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.04147785484900568,
+            "zdr": 0.10253164556962024,
+            "far": -0.18063400576368877
+          }
+        },
+        {
+          "episode_id": 6,
+          "episode_seed": 48,
+          "samples": 559,
+          "zero_day_samples": 93,
+          "non_zero_day_samples": 466,
+          "base_model": {
+            "accuracy": 0.7340824007987976,
+            "precision": 0.6,
+            "recall": 0.7219251336898396,
+            "f1_score": 0.6553398058252428,
+            "zero_day_detection_rate": 0.8160919540229885,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                52,
+                135
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7009174311926606,
+            "precision": 0.5487804878048781,
+            "recall": 0.9230769230769231,
+            "f1_score": 0.6883365200764818,
+            "zero_day_detection_rate": 0.946236559139785,
+            "far": 0.4228571428571429,
+            "confusion_matrix": [
+              [
+                202,
+                148
+              ],
+              [
+                15,
+                180
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.03316496960613702,
+            "zdr": 0.13014460511679649,
+            "far": -0.16349114862083164
+          }
+        },
+        {
+          "episode_id": 7,
+          "episode_seed": 49,
+          "samples": 559,
+          "zero_day_samples": 88,
+          "non_zero_day_samples": 471,
+          "base_model": {
+            "accuracy": 0.716946005821228,
+            "precision": 0.5871559633027523,
+            "recall": 0.6736842105263158,
+            "f1_score": 0.6274509803921569,
+            "zero_day_detection_rate": 0.7674418604651163,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                62,
+                128
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7094972067039106,
+            "precision": 0.5559105431309904,
+            "recall": 0.9109947643979057,
+            "f1_score": 0.6904761904761905,
+            "zero_day_detection_rate": 0.9310344827586207,
+            "far": 0.40173410404624277,
+            "confusion_matrix": [
+              [
+                207,
+                139
+              ],
+              [
+                17,
+                174
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.0074487991173174395,
+            "zdr": 0.16359262229350435,
+            "far": -0.14236810980993153
+          }
+        },
+        {
+          "episode_id": 8,
+          "episode_seed": 50,
+          "samples": 559,
+          "zero_day_samples": 84,
+          "non_zero_day_samples": 475,
+          "base_model": {
+            "accuracy": 0.7258979082107544,
+            "precision": 0.5852534562211982,
+            "recall": 0.6978021978021978,
+            "f1_score": 0.6365914786967418,
+            "zero_day_detection_rate": 0.8157894736842105,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                55,
+                127
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7064220183486238,
+            "precision": 0.5538461538461539,
+            "recall": 0.9230769230769231,
+            "f1_score": 0.6923076923076923,
+            "zero_day_detection_rate": 0.9404761904761905,
+            "far": 0.4142857142857143,
+            "confusion_matrix": [
+              [
+                205,
+                145
+              ],
+              [
+                15,
+                180
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.019475889862130558,
+            "zdr": 0.12468671679197996,
+            "far": -0.15491972004940308
+          }
+        },
+        {
+          "episode_id": 9,
+          "episode_seed": 51,
+          "samples": 559,
+          "zero_day_samples": 77,
+          "non_zero_day_samples": 482,
+          "base_model": {
+            "accuracy": 0.7014925479888916,
+            "precision": 0.569377990430622,
+            "recall": 0.6296296296296297,
+            "f1_score": 0.5979899497487438,
+            "zero_day_detection_rate": 0.7837837837837838,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                70,
+                119
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6981481481481482,
+            "precision": 0.5426829268292683,
+            "recall": 0.9319371727748691,
+            "f1_score": 0.6859344894026975,
+            "zero_day_detection_rate": 0.9342105263157895,
+            "far": 0.4297994269340974,
+            "confusion_matrix": [
+              [
+                199,
+                150
+              ],
+              [
+                13,
+                178
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.0033443998407434172,
+            "zdr": 0.15042674253200572,
+            "far": -0.17043343269778616
+          }
+        }
+      ]
+    },
+    "Backdoor": {
+      "metadata": {
+        "n_episodes": 10,
+        "total_samples": 5590,
+        "total_zero_day_samples": 851,
+        "total_non_zero_day_samples": 4739,
+        "evaluated_at": "2025-12-21T12:56:37.067069"
+      },
+      "base_model": {
+        "accuracy": {
+          "mean": 0.7251497864723205,
+          "std": 0.012715525949506177,
+          "ci_95": 0.007881164634893282,
+          "min": 0.7014925479888916,
+          "max": 0.7443609237670898
+        },
+        "zero_day_detection_rate": {
+          "mean": 0.810497532988855,
+          "std": 0.03519672186523102,
+          "ci_95": 0.021815154224053675,
+          "min": 0.75,
+          "max": 0.8552631578947368
+        },
+        "false_alarm_rate": {
+          "mean": 0.25936599423631124,
+          "std": 0.0,
+          "ci_95": 0.0,
+          "min": 0.25936599423631124,
+          "max": 0.25936599423631124
+        },
+        "f1_score": {
+          "mean": 0.6381035077168757,
+          "std": 0.02182148107590002,
+          "ci_95": 0.013525094095148711,
+          "min": 0.5979899497487438,
+          "max": 0.6714975845410628
+        }
+      },
+      "ttt_model": {
+        "accuracy": {
+          "mean": 0.699690685722689,
+          "std": 0.007177048821053554,
+          "ci_95": 0.004448380945940069,
+          "min": 0.6832412523020258,
+          "max": 0.7094972067039106
+        },
+        "zero_day_detection_rate": {
+          "mean": 0.9398862695168038,
+          "std": 0.017673522965093034,
+          "ci_95": 0.010954163022401356,
+          "min": 0.9,
+          "max": 0.9662921348314607
+        },
+        "false_alarm_rate": {
+          "mean": 0.42525939238976795,
+          "std": 0.012493408154654431,
+          "ci_95": 0.007743494599338515,
+          "min": 0.40173410404624277,
+          "max": 0.44285714285714284
+        },
+        "f1_score": {
+          "mean": 0.6868515598218071,
+          "std": 0.006545403959150235,
+          "ci_95": 0.004056883404492497,
+          "min": 0.6704980842911877,
+          "max": 0.6923076923076923
+        }
+      },
+      "improvement": {
+        "zero_day_detection_rate": {
+          "mean": 0.12938873652794897,
+          "std": 0.034712174855634624,
+          "ci_95": 0.02151482887603905,
+          "min": 0.08223684210526316,
+          "max": 0.20238095238095233
+        },
+        "accuracy": {
+          "mean": -0.025459100749631636,
+          "std": 0.014112067426579888,
+          "ci_95": 0.008746750010125235,
+          "min": -0.04147785484900568,
+          "max": -0.0033443998407434172
+        }
+      },
+      "per_episode_results": [
+        {
+          "episode_id": 0,
+          "episode_seed": 42,
+          "samples": 559,
+          "zero_day_samples": 84,
+          "non_zero_day_samples": 475,
+          "base_model": {
+            "accuracy": 0.7124060392379761,
+            "precision": 0.5754716981132075,
+            "recall": 0.6594594594594595,
+            "f1_score": 0.6146095717884131,
+            "zero_day_detection_rate": 0.75,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                63,
+                122
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6994535519125683,
+            "precision": 0.5460122699386503,
+            "recall": 0.9128205128205128,
+            "f1_score": 0.6833013435700576,
+            "zero_day_detection_rate": 0.9523809523809523,
+            "far": 0.4180790960451977,
+            "confusion_matrix": [
+              [
+                206,
+                148
+              ],
+              [
+                17,
+                178
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.012952487325407769,
+            "zdr": 0.20238095238095233,
+            "far": -0.15871310180888648
+          }
+        },
+        {
+          "episode_id": 1,
+          "episode_seed": 43,
+          "samples": 559,
+          "zero_day_samples": 80,
+          "non_zero_day_samples": 479,
+          "base_model": {
+            "accuracy": 0.7443609237670898,
+            "precision": 0.6069868995633187,
+            "recall": 0.7513513513513513,
+            "f1_score": 0.6714975845410628,
+            "zero_day_detection_rate": 0.8552631578947368,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                46,
+                139
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7047101449275363,
+            "precision": 0.5512048192771084,
+            "recall": 0.9289340101522843,
+            "f1_score": 0.6918714555765595,
+            "zero_day_detection_rate": 0.9375,
+            "far": 0.4197183098591549,
+            "confusion_matrix": [
+              [
+                206,
+                149
+              ],
+              [
+                14,
+                183
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.03965077883955359,
+            "zdr": 0.08223684210526316,
+            "far": -0.1603523156228437
+          }
+        },
+        {
+          "episode_id": 2,
+          "episode_seed": 44,
+          "samples": 559,
+          "zero_day_samples": 91,
+          "non_zero_day_samples": 468,
+          "base_model": {
+            "accuracy": 0.7344632744789124,
+            "precision": 0.5964125560538116,
+            "recall": 0.7228260869565217,
+            "f1_score": 0.6535626535626535,
+            "zero_day_detection_rate": 0.8409090909090909,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                51,
+                133
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7012987012987013,
+            "precision": 0.5421686746987951,
+            "recall": 0.9523809523809523,
+            "f1_score": 0.690978886756238,
+            "zero_day_detection_rate": 0.9540229885057471,
+            "far": 0.4342857142857143,
+            "confusion_matrix": [
+              [
+                198,
+                152
+              ],
+              [
+                9,
+                180
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.03316457318021104,
+            "zdr": 0.11311389759665613,
+            "far": -0.17491972004940304
+          }
+        },
+        {
+          "episode_id": 3,
+          "episode_seed": 45,
+          "samples": 559,
+          "zero_day_samples": 81,
+          "non_zero_day_samples": 478,
+          "base_model": {
+            "accuracy": 0.721280574798584,
+            "precision": 0.5833333333333334,
+            "recall": 0.6847826086956522,
+            "f1_score": 0.63,
+            "zero_day_detection_rate": 0.8311688311688312,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                58,
+                126
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6972477064220184,
+            "precision": 0.5424242424242425,
+            "recall": 0.927461139896373,
+            "f1_score": 0.6845124282982792,
+            "zero_day_detection_rate": 0.9367088607594937,
+            "far": 0.4289772727272727,
+            "confusion_matrix": [
+              [
+                201,
+                151
+              ],
+              [
+                14,
+                179
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.024032868376565597,
+            "zdr": 0.10554002959066244,
+            "far": -0.16961127849096147
+          }
+        },
+        {
+          "episode_id": 4,
+          "episode_seed": 46,
+          "samples": 559,
+          "zero_day_samples": 91,
+          "non_zero_day_samples": 468,
+          "base_model": {
+            "accuracy": 0.7358490824699402,
+            "precision": 0.5964125560538116,
+            "recall": 0.726775956284153,
+            "f1_score": 0.6551724137931034,
+            "zero_day_detection_rate": 0.8470588235294118,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                50,
+                133
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6959706959706959,
+            "precision": 0.5441176470588235,
+            "recall": 0.9438775510204082,
+            "f1_score": 0.6902985074626866,
+            "zero_day_detection_rate": 0.9662921348314607,
+            "far": 0.44285714285714284,
+            "confusion_matrix": [
+              [
+                195,
+                155
+              ],
+              [
+                11,
+                185
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.039878386499244245,
+            "zdr": 0.11923331130204895,
+            "far": -0.1834911486208316
+          }
+        },
+        {
+          "episode_id": 5,
+          "episode_seed": 47,
+          "samples": 559,
+          "zero_day_samples": 82,
+          "non_zero_day_samples": 477,
+          "base_model": {
+            "accuracy": 0.7247191071510315,
+            "precision": 0.5909090909090909,
+            "recall": 0.6951871657754011,
+            "f1_score": 0.6388206388206388,
+            "zero_day_detection_rate": 0.7974683544303798,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                57,
+                130
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6832412523020258,
+            "precision": 0.5319148936170213,
+            "recall": 0.9067357512953368,
+            "f1_score": 0.6704980842911877,
+            "zero_day_detection_rate": 0.9,
+            "far": 0.44,
+            "confusion_matrix": [
+              [
+                196,
+                154
+              ],
+              [
+                18,
+                175
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.04147785484900568,
+            "zdr": 0.10253164556962024,
+            "far": -0.18063400576368877
+          }
+        },
+        {
+          "episode_id": 6,
+          "episode_seed": 48,
+          "samples": 559,
+          "zero_day_samples": 93,
+          "non_zero_day_samples": 466,
+          "base_model": {
+            "accuracy": 0.7340824007987976,
+            "precision": 0.6,
+            "recall": 0.7219251336898396,
+            "f1_score": 0.6553398058252428,
+            "zero_day_detection_rate": 0.8160919540229885,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                52,
+                135
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7009174311926606,
+            "precision": 0.5487804878048781,
+            "recall": 0.9230769230769231,
+            "f1_score": 0.6883365200764818,
+            "zero_day_detection_rate": 0.946236559139785,
+            "far": 0.4228571428571429,
+            "confusion_matrix": [
+              [
+                202,
+                148
+              ],
+              [
+                15,
+                180
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.03316496960613702,
+            "zdr": 0.13014460511679649,
+            "far": -0.16349114862083164
+          }
+        },
+        {
+          "episode_id": 7,
+          "episode_seed": 49,
+          "samples": 559,
+          "zero_day_samples": 88,
+          "non_zero_day_samples": 471,
+          "base_model": {
+            "accuracy": 0.716946005821228,
+            "precision": 0.5871559633027523,
+            "recall": 0.6736842105263158,
+            "f1_score": 0.6274509803921569,
+            "zero_day_detection_rate": 0.7674418604651163,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                62,
+                128
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7094972067039106,
+            "precision": 0.5559105431309904,
+            "recall": 0.9109947643979057,
+            "f1_score": 0.6904761904761905,
+            "zero_day_detection_rate": 0.9310344827586207,
+            "far": 0.40173410404624277,
+            "confusion_matrix": [
+              [
+                207,
+                139
+              ],
+              [
+                17,
+                174
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.0074487991173174395,
+            "zdr": 0.16359262229350435,
+            "far": -0.14236810980993153
+          }
+        },
+        {
+          "episode_id": 8,
+          "episode_seed": 50,
+          "samples": 559,
+          "zero_day_samples": 84,
+          "non_zero_day_samples": 475,
+          "base_model": {
+            "accuracy": 0.7258979082107544,
+            "precision": 0.5852534562211982,
+            "recall": 0.6978021978021978,
+            "f1_score": 0.6365914786967418,
+            "zero_day_detection_rate": 0.8157894736842105,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                55,
+                127
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7064220183486238,
+            "precision": 0.5538461538461539,
+            "recall": 0.9230769230769231,
+            "f1_score": 0.6923076923076923,
+            "zero_day_detection_rate": 0.9404761904761905,
+            "far": 0.4142857142857143,
+            "confusion_matrix": [
+              [
+                205,
+                145
+              ],
+              [
+                15,
+                180
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.019475889862130558,
+            "zdr": 0.12468671679197996,
+            "far": -0.15491972004940308
+          }
+        },
+        {
+          "episode_id": 9,
+          "episode_seed": 51,
+          "samples": 559,
+          "zero_day_samples": 77,
+          "non_zero_day_samples": 482,
+          "base_model": {
+            "accuracy": 0.7014925479888916,
+            "precision": 0.569377990430622,
+            "recall": 0.6296296296296297,
+            "f1_score": 0.5979899497487438,
+            "zero_day_detection_rate": 0.7837837837837838,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                70,
+                119
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6981481481481482,
+            "precision": 0.5426829268292683,
+            "recall": 0.9319371727748691,
+            "f1_score": 0.6859344894026975,
+            "zero_day_detection_rate": 0.9342105263157895,
+            "far": 0.4297994269340974,
+            "confusion_matrix": [
+              [
+                199,
+                150
+              ],
+              [
+                13,
+                178
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.0033443998407434172,
+            "zdr": 0.15042674253200572,
+            "far": -0.17043343269778616
+          }
+        }
+      ]
+    },
+    "DoS": {
+      "metadata": {
+        "n_episodes": 10,
+        "total_samples": 5590,
+        "total_zero_day_samples": 851,
+        "total_non_zero_day_samples": 4739,
+        "evaluated_at": "2025-12-21T12:57:31.496926"
+      },
+      "base_model": {
+        "accuracy": {
+          "mean": 0.7251497864723205,
+          "std": 0.012715525949506177,
+          "ci_95": 0.007881164634893282,
+          "min": 0.7014925479888916,
+          "max": 0.7443609237670898
+        },
+        "zero_day_detection_rate": {
+          "mean": 0.810497532988855,
+          "std": 0.03519672186523102,
+          "ci_95": 0.021815154224053675,
+          "min": 0.75,
+          "max": 0.8552631578947368
+        },
+        "false_alarm_rate": {
+          "mean": 0.25936599423631124,
+          "std": 0.0,
+          "ci_95": 0.0,
+          "min": 0.25936599423631124,
+          "max": 0.25936599423631124
+        },
+        "f1_score": {
+          "mean": 0.6381035077168757,
+          "std": 0.02182148107590002,
+          "ci_95": 0.013525094095148711,
+          "min": 0.5979899497487438,
+          "max": 0.6714975845410628
+        }
+      },
+      "ttt_model": {
+        "accuracy": {
+          "mean": 0.699690685722689,
+          "std": 0.007177048821053554,
+          "ci_95": 0.004448380945940069,
+          "min": 0.6832412523020258,
+          "max": 0.7094972067039106
+        },
+        "zero_day_detection_rate": {
+          "mean": 0.9398862695168038,
+          "std": 0.017673522965093034,
+          "ci_95": 0.010954163022401356,
+          "min": 0.9,
+          "max": 0.9662921348314607
+        },
+        "false_alarm_rate": {
+          "mean": 0.42525939238976795,
+          "std": 0.012493408154654431,
+          "ci_95": 0.007743494599338515,
+          "min": 0.40173410404624277,
+          "max": 0.44285714285714284
+        },
+        "f1_score": {
+          "mean": 0.6868515598218071,
+          "std": 0.006545403959150235,
+          "ci_95": 0.004056883404492497,
+          "min": 0.6704980842911877,
+          "max": 0.6923076923076923
+        }
+      },
+      "improvement": {
+        "zero_day_detection_rate": {
+          "mean": 0.12938873652794897,
+          "std": 0.034712174855634624,
+          "ci_95": 0.02151482887603905,
+          "min": 0.08223684210526316,
+          "max": 0.20238095238095233
+        },
+        "accuracy": {
+          "mean": -0.025459100749631636,
+          "std": 0.014112067426579888,
+          "ci_95": 0.008746750010125235,
+          "min": -0.04147785484900568,
+          "max": -0.0033443998407434172
+        }
+      },
+      "per_episode_results": [
+        {
+          "episode_id": 0,
+          "episode_seed": 42,
+          "samples": 559,
+          "zero_day_samples": 84,
+          "non_zero_day_samples": 475,
+          "base_model": {
+            "accuracy": 0.7124060392379761,
+            "precision": 0.5754716981132075,
+            "recall": 0.6594594594594595,
+            "f1_score": 0.6146095717884131,
+            "zero_day_detection_rate": 0.75,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                63,
+                122
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6994535519125683,
+            "precision": 0.5460122699386503,
+            "recall": 0.9128205128205128,
+            "f1_score": 0.6833013435700576,
+            "zero_day_detection_rate": 0.9523809523809523,
+            "far": 0.4180790960451977,
+            "confusion_matrix": [
+              [
+                206,
+                148
+              ],
+              [
+                17,
+                178
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.012952487325407769,
+            "zdr": 0.20238095238095233,
+            "far": -0.15871310180888648
+          }
+        },
+        {
+          "episode_id": 1,
+          "episode_seed": 43,
+          "samples": 559,
+          "zero_day_samples": 80,
+          "non_zero_day_samples": 479,
+          "base_model": {
+            "accuracy": 0.7443609237670898,
+            "precision": 0.6069868995633187,
+            "recall": 0.7513513513513513,
+            "f1_score": 0.6714975845410628,
+            "zero_day_detection_rate": 0.8552631578947368,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                46,
+                139
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7047101449275363,
+            "precision": 0.5512048192771084,
+            "recall": 0.9289340101522843,
+            "f1_score": 0.6918714555765595,
+            "zero_day_detection_rate": 0.9375,
+            "far": 0.4197183098591549,
+            "confusion_matrix": [
+              [
+                206,
+                149
+              ],
+              [
+                14,
+                183
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.03965077883955359,
+            "zdr": 0.08223684210526316,
+            "far": -0.1603523156228437
+          }
+        },
+        {
+          "episode_id": 2,
+          "episode_seed": 44,
+          "samples": 559,
+          "zero_day_samples": 91,
+          "non_zero_day_samples": 468,
+          "base_model": {
+            "accuracy": 0.7344632744789124,
+            "precision": 0.5964125560538116,
+            "recall": 0.7228260869565217,
+            "f1_score": 0.6535626535626535,
+            "zero_day_detection_rate": 0.8409090909090909,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                51,
+                133
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7012987012987013,
+            "precision": 0.5421686746987951,
+            "recall": 0.9523809523809523,
+            "f1_score": 0.690978886756238,
+            "zero_day_detection_rate": 0.9540229885057471,
+            "far": 0.4342857142857143,
+            "confusion_matrix": [
+              [
+                198,
+                152
+              ],
+              [
+                9,
+                180
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.03316457318021104,
+            "zdr": 0.11311389759665613,
+            "far": -0.17491972004940304
+          }
+        },
+        {
+          "episode_id": 3,
+          "episode_seed": 45,
+          "samples": 559,
+          "zero_day_samples": 81,
+          "non_zero_day_samples": 478,
+          "base_model": {
+            "accuracy": 0.721280574798584,
+            "precision": 0.5833333333333334,
+            "recall": 0.6847826086956522,
+            "f1_score": 0.63,
+            "zero_day_detection_rate": 0.8311688311688312,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                58,
+                126
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6972477064220184,
+            "precision": 0.5424242424242425,
+            "recall": 0.927461139896373,
+            "f1_score": 0.6845124282982792,
+            "zero_day_detection_rate": 0.9367088607594937,
+            "far": 0.4289772727272727,
+            "confusion_matrix": [
+              [
+                201,
+                151
+              ],
+              [
+                14,
+                179
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.024032868376565597,
+            "zdr": 0.10554002959066244,
+            "far": -0.16961127849096147
+          }
+        },
+        {
+          "episode_id": 4,
+          "episode_seed": 46,
+          "samples": 559,
+          "zero_day_samples": 91,
+          "non_zero_day_samples": 468,
+          "base_model": {
+            "accuracy": 0.7358490824699402,
+            "precision": 0.5964125560538116,
+            "recall": 0.726775956284153,
+            "f1_score": 0.6551724137931034,
+            "zero_day_detection_rate": 0.8470588235294118,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                50,
+                133
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6959706959706959,
+            "precision": 0.5441176470588235,
+            "recall": 0.9438775510204082,
+            "f1_score": 0.6902985074626866,
+            "zero_day_detection_rate": 0.9662921348314607,
+            "far": 0.44285714285714284,
+            "confusion_matrix": [
+              [
+                195,
+                155
+              ],
+              [
+                11,
+                185
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.039878386499244245,
+            "zdr": 0.11923331130204895,
+            "far": -0.1834911486208316
+          }
+        },
+        {
+          "episode_id": 5,
+          "episode_seed": 47,
+          "samples": 559,
+          "zero_day_samples": 82,
+          "non_zero_day_samples": 477,
+          "base_model": {
+            "accuracy": 0.7247191071510315,
+            "precision": 0.5909090909090909,
+            "recall": 0.6951871657754011,
+            "f1_score": 0.6388206388206388,
+            "zero_day_detection_rate": 0.7974683544303798,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                57,
+                130
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6832412523020258,
+            "precision": 0.5319148936170213,
+            "recall": 0.9067357512953368,
+            "f1_score": 0.6704980842911877,
+            "zero_day_detection_rate": 0.9,
+            "far": 0.44,
+            "confusion_matrix": [
+              [
+                196,
+                154
+              ],
+              [
+                18,
+                175
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.04147785484900568,
+            "zdr": 0.10253164556962024,
+            "far": -0.18063400576368877
+          }
+        },
+        {
+          "episode_id": 6,
+          "episode_seed": 48,
+          "samples": 559,
+          "zero_day_samples": 93,
+          "non_zero_day_samples": 466,
+          "base_model": {
+            "accuracy": 0.7340824007987976,
+            "precision": 0.6,
+            "recall": 0.7219251336898396,
+            "f1_score": 0.6553398058252428,
+            "zero_day_detection_rate": 0.8160919540229885,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                52,
+                135
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7009174311926606,
+            "precision": 0.5487804878048781,
+            "recall": 0.9230769230769231,
+            "f1_score": 0.6883365200764818,
+            "zero_day_detection_rate": 0.946236559139785,
+            "far": 0.4228571428571429,
+            "confusion_matrix": [
+              [
+                202,
+                148
+              ],
+              [
+                15,
+                180
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.03316496960613702,
+            "zdr": 0.13014460511679649,
+            "far": -0.16349114862083164
+          }
+        },
+        {
+          "episode_id": 7,
+          "episode_seed": 49,
+          "samples": 559,
+          "zero_day_samples": 88,
+          "non_zero_day_samples": 471,
+          "base_model": {
+            "accuracy": 0.716946005821228,
+            "precision": 0.5871559633027523,
+            "recall": 0.6736842105263158,
+            "f1_score": 0.6274509803921569,
+            "zero_day_detection_rate": 0.7674418604651163,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                62,
+                128
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7094972067039106,
+            "precision": 0.5559105431309904,
+            "recall": 0.9109947643979057,
+            "f1_score": 0.6904761904761905,
+            "zero_day_detection_rate": 0.9310344827586207,
+            "far": 0.40173410404624277,
+            "confusion_matrix": [
+              [
+                207,
+                139
+              ],
+              [
+                17,
+                174
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.0074487991173174395,
+            "zdr": 0.16359262229350435,
+            "far": -0.14236810980993153
+          }
+        },
+        {
+          "episode_id": 8,
+          "episode_seed": 50,
+          "samples": 559,
+          "zero_day_samples": 84,
+          "non_zero_day_samples": 475,
+          "base_model": {
+            "accuracy": 0.7258979082107544,
+            "precision": 0.5852534562211982,
+            "recall": 0.6978021978021978,
+            "f1_score": 0.6365914786967418,
+            "zero_day_detection_rate": 0.8157894736842105,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                55,
+                127
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7064220183486238,
+            "precision": 0.5538461538461539,
+            "recall": 0.9230769230769231,
+            "f1_score": 0.6923076923076923,
+            "zero_day_detection_rate": 0.9404761904761905,
+            "far": 0.4142857142857143,
+            "confusion_matrix": [
+              [
+                205,
+                145
+              ],
+              [
+                15,
+                180
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.019475889862130558,
+            "zdr": 0.12468671679197996,
+            "far": -0.15491972004940308
+          }
+        },
+        {
+          "episode_id": 9,
+          "episode_seed": 51,
+          "samples": 559,
+          "zero_day_samples": 77,
+          "non_zero_day_samples": 482,
+          "base_model": {
+            "accuracy": 0.7014925479888916,
+            "precision": 0.569377990430622,
+            "recall": 0.6296296296296297,
+            "f1_score": 0.5979899497487438,
+            "zero_day_detection_rate": 0.7837837837837838,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                70,
+                119
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6981481481481482,
+            "precision": 0.5426829268292683,
+            "recall": 0.9319371727748691,
+            "f1_score": 0.6859344894026975,
+            "zero_day_detection_rate": 0.9342105263157895,
+            "far": 0.4297994269340974,
+            "confusion_matrix": [
+              [
+                199,
+                150
+              ],
+              [
+                13,
+                178
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.0033443998407434172,
+            "zdr": 0.15042674253200572,
+            "far": -0.17043343269778616
+          }
+        }
+      ]
+    },
+    "Exploits": {
+      "metadata": {
+        "n_episodes": 10,
+        "total_samples": 5590,
+        "total_zero_day_samples": 851,
+        "total_non_zero_day_samples": 4739,
+        "evaluated_at": "2025-12-21T12:58:24.009353"
+      },
+      "base_model": {
+        "accuracy": {
+          "mean": 0.7251497864723205,
+          "std": 0.012715525949506177,
+          "ci_95": 0.007881164634893282,
+          "min": 0.7014925479888916,
+          "max": 0.7443609237670898
+        },
+        "zero_day_detection_rate": {
+          "mean": 0.810497532988855,
+          "std": 0.03519672186523102,
+          "ci_95": 0.021815154224053675,
+          "min": 0.75,
+          "max": 0.8552631578947368
+        },
+        "false_alarm_rate": {
+          "mean": 0.25936599423631124,
+          "std": 0.0,
+          "ci_95": 0.0,
+          "min": 0.25936599423631124,
+          "max": 0.25936599423631124
+        },
+        "f1_score": {
+          "mean": 0.6381035077168757,
+          "std": 0.02182148107590002,
+          "ci_95": 0.013525094095148711,
+          "min": 0.5979899497487438,
+          "max": 0.6714975845410628
+        }
+      },
+      "ttt_model": {
+        "accuracy": {
+          "mean": 0.699690685722689,
+          "std": 0.007177048821053554,
+          "ci_95": 0.004448380945940069,
+          "min": 0.6832412523020258,
+          "max": 0.7094972067039106
+        },
+        "zero_day_detection_rate": {
+          "mean": 0.9398862695168038,
+          "std": 0.017673522965093034,
+          "ci_95": 0.010954163022401356,
+          "min": 0.9,
+          "max": 0.9662921348314607
+        },
+        "false_alarm_rate": {
+          "mean": 0.42525939238976795,
+          "std": 0.012493408154654431,
+          "ci_95": 0.007743494599338515,
+          "min": 0.40173410404624277,
+          "max": 0.44285714285714284
+        },
+        "f1_score": {
+          "mean": 0.6868515598218071,
+          "std": 0.006545403959150235,
+          "ci_95": 0.004056883404492497,
+          "min": 0.6704980842911877,
+          "max": 0.6923076923076923
+        }
+      },
+      "improvement": {
+        "zero_day_detection_rate": {
+          "mean": 0.12938873652794897,
+          "std": 0.034712174855634624,
+          "ci_95": 0.02151482887603905,
+          "min": 0.08223684210526316,
+          "max": 0.20238095238095233
+        },
+        "accuracy": {
+          "mean": -0.025459100749631636,
+          "std": 0.014112067426579888,
+          "ci_95": 0.008746750010125235,
+          "min": -0.04147785484900568,
+          "max": -0.0033443998407434172
+        }
+      },
+      "per_episode_results": [
+        {
+          "episode_id": 0,
+          "episode_seed": 42,
+          "samples": 559,
+          "zero_day_samples": 84,
+          "non_zero_day_samples": 475,
+          "base_model": {
+            "accuracy": 0.7124060392379761,
+            "precision": 0.5754716981132075,
+            "recall": 0.6594594594594595,
+            "f1_score": 0.6146095717884131,
+            "zero_day_detection_rate": 0.75,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                63,
+                122
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6994535519125683,
+            "precision": 0.5460122699386503,
+            "recall": 0.9128205128205128,
+            "f1_score": 0.6833013435700576,
+            "zero_day_detection_rate": 0.9523809523809523,
+            "far": 0.4180790960451977,
+            "confusion_matrix": [
+              [
+                206,
+                148
+              ],
+              [
+                17,
+                178
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.012952487325407769,
+            "zdr": 0.20238095238095233,
+            "far": -0.15871310180888648
+          }
+        },
+        {
+          "episode_id": 1,
+          "episode_seed": 43,
+          "samples": 559,
+          "zero_day_samples": 80,
+          "non_zero_day_samples": 479,
+          "base_model": {
+            "accuracy": 0.7443609237670898,
+            "precision": 0.6069868995633187,
+            "recall": 0.7513513513513513,
+            "f1_score": 0.6714975845410628,
+            "zero_day_detection_rate": 0.8552631578947368,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                46,
+                139
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7047101449275363,
+            "precision": 0.5512048192771084,
+            "recall": 0.9289340101522843,
+            "f1_score": 0.6918714555765595,
+            "zero_day_detection_rate": 0.9375,
+            "far": 0.4197183098591549,
+            "confusion_matrix": [
+              [
+                206,
+                149
+              ],
+              [
+                14,
+                183
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.03965077883955359,
+            "zdr": 0.08223684210526316,
+            "far": -0.1603523156228437
+          }
+        },
+        {
+          "episode_id": 2,
+          "episode_seed": 44,
+          "samples": 559,
+          "zero_day_samples": 91,
+          "non_zero_day_samples": 468,
+          "base_model": {
+            "accuracy": 0.7344632744789124,
+            "precision": 0.5964125560538116,
+            "recall": 0.7228260869565217,
+            "f1_score": 0.6535626535626535,
+            "zero_day_detection_rate": 0.8409090909090909,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                51,
+                133
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7012987012987013,
+            "precision": 0.5421686746987951,
+            "recall": 0.9523809523809523,
+            "f1_score": 0.690978886756238,
+            "zero_day_detection_rate": 0.9540229885057471,
+            "far": 0.4342857142857143,
+            "confusion_matrix": [
+              [
+                198,
+                152
+              ],
+              [
+                9,
+                180
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.03316457318021104,
+            "zdr": 0.11311389759665613,
+            "far": -0.17491972004940304
+          }
+        },
+        {
+          "episode_id": 3,
+          "episode_seed": 45,
+          "samples": 559,
+          "zero_day_samples": 81,
+          "non_zero_day_samples": 478,
+          "base_model": {
+            "accuracy": 0.721280574798584,
+            "precision": 0.5833333333333334,
+            "recall": 0.6847826086956522,
+            "f1_score": 0.63,
+            "zero_day_detection_rate": 0.8311688311688312,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                58,
+                126
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6972477064220184,
+            "precision": 0.5424242424242425,
+            "recall": 0.927461139896373,
+            "f1_score": 0.6845124282982792,
+            "zero_day_detection_rate": 0.9367088607594937,
+            "far": 0.4289772727272727,
+            "confusion_matrix": [
+              [
+                201,
+                151
+              ],
+              [
+                14,
+                179
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.024032868376565597,
+            "zdr": 0.10554002959066244,
+            "far": -0.16961127849096147
+          }
+        },
+        {
+          "episode_id": 4,
+          "episode_seed": 46,
+          "samples": 559,
+          "zero_day_samples": 91,
+          "non_zero_day_samples": 468,
+          "base_model": {
+            "accuracy": 0.7358490824699402,
+            "precision": 0.5964125560538116,
+            "recall": 0.726775956284153,
+            "f1_score": 0.6551724137931034,
+            "zero_day_detection_rate": 0.8470588235294118,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                50,
+                133
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6959706959706959,
+            "precision": 0.5441176470588235,
+            "recall": 0.9438775510204082,
+            "f1_score": 0.6902985074626866,
+            "zero_day_detection_rate": 0.9662921348314607,
+            "far": 0.44285714285714284,
+            "confusion_matrix": [
+              [
+                195,
+                155
+              ],
+              [
+                11,
+                185
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.039878386499244245,
+            "zdr": 0.11923331130204895,
+            "far": -0.1834911486208316
+          }
+        },
+        {
+          "episode_id": 5,
+          "episode_seed": 47,
+          "samples": 559,
+          "zero_day_samples": 82,
+          "non_zero_day_samples": 477,
+          "base_model": {
+            "accuracy": 0.7247191071510315,
+            "precision": 0.5909090909090909,
+            "recall": 0.6951871657754011,
+            "f1_score": 0.6388206388206388,
+            "zero_day_detection_rate": 0.7974683544303798,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                57,
+                130
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6832412523020258,
+            "precision": 0.5319148936170213,
+            "recall": 0.9067357512953368,
+            "f1_score": 0.6704980842911877,
+            "zero_day_detection_rate": 0.9,
+            "far": 0.44,
+            "confusion_matrix": [
+              [
+                196,
+                154
+              ],
+              [
+                18,
+                175
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.04147785484900568,
+            "zdr": 0.10253164556962024,
+            "far": -0.18063400576368877
+          }
+        },
+        {
+          "episode_id": 6,
+          "episode_seed": 48,
+          "samples": 559,
+          "zero_day_samples": 93,
+          "non_zero_day_samples": 466,
+          "base_model": {
+            "accuracy": 0.7340824007987976,
+            "precision": 0.6,
+            "recall": 0.7219251336898396,
+            "f1_score": 0.6553398058252428,
+            "zero_day_detection_rate": 0.8160919540229885,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                52,
+                135
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7009174311926606,
+            "precision": 0.5487804878048781,
+            "recall": 0.9230769230769231,
+            "f1_score": 0.6883365200764818,
+            "zero_day_detection_rate": 0.946236559139785,
+            "far": 0.4228571428571429,
+            "confusion_matrix": [
+              [
+                202,
+                148
+              ],
+              [
+                15,
+                180
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.03316496960613702,
+            "zdr": 0.13014460511679649,
+            "far": -0.16349114862083164
+          }
+        },
+        {
+          "episode_id": 7,
+          "episode_seed": 49,
+          "samples": 559,
+          "zero_day_samples": 88,
+          "non_zero_day_samples": 471,
+          "base_model": {
+            "accuracy": 0.716946005821228,
+            "precision": 0.5871559633027523,
+            "recall": 0.6736842105263158,
+            "f1_score": 0.6274509803921569,
+            "zero_day_detection_rate": 0.7674418604651163,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                62,
+                128
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7094972067039106,
+            "precision": 0.5559105431309904,
+            "recall": 0.9109947643979057,
+            "f1_score": 0.6904761904761905,
+            "zero_day_detection_rate": 0.9310344827586207,
+            "far": 0.40173410404624277,
+            "confusion_matrix": [
+              [
+                207,
+                139
+              ],
+              [
+                17,
+                174
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.0074487991173174395,
+            "zdr": 0.16359262229350435,
+            "far": -0.14236810980993153
+          }
+        },
+        {
+          "episode_id": 8,
+          "episode_seed": 50,
+          "samples": 559,
+          "zero_day_samples": 84,
+          "non_zero_day_samples": 475,
+          "base_model": {
+            "accuracy": 0.7258979082107544,
+            "precision": 0.5852534562211982,
+            "recall": 0.6978021978021978,
+            "f1_score": 0.6365914786967418,
+            "zero_day_detection_rate": 0.8157894736842105,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                55,
+                127
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7064220183486238,
+            "precision": 0.5538461538461539,
+            "recall": 0.9230769230769231,
+            "f1_score": 0.6923076923076923,
+            "zero_day_detection_rate": 0.9404761904761905,
+            "far": 0.4142857142857143,
+            "confusion_matrix": [
+              [
+                205,
+                145
+              ],
+              [
+                15,
+                180
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.019475889862130558,
+            "zdr": 0.12468671679197996,
+            "far": -0.15491972004940308
+          }
+        },
+        {
+          "episode_id": 9,
+          "episode_seed": 51,
+          "samples": 559,
+          "zero_day_samples": 77,
+          "non_zero_day_samples": 482,
+          "base_model": {
+            "accuracy": 0.7014925479888916,
+            "precision": 0.569377990430622,
+            "recall": 0.6296296296296297,
+            "f1_score": 0.5979899497487438,
+            "zero_day_detection_rate": 0.7837837837837838,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                70,
+                119
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6981481481481482,
+            "precision": 0.5426829268292683,
+            "recall": 0.9319371727748691,
+            "f1_score": 0.6859344894026975,
+            "zero_day_detection_rate": 0.9342105263157895,
+            "far": 0.4297994269340974,
+            "confusion_matrix": [
+              [
+                199,
+                150
+              ],
+              [
+                13,
+                178
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.0033443998407434172,
+            "zdr": 0.15042674253200572,
+            "far": -0.17043343269778616
+          }
+        }
+      ]
+    },
+    "Generic": {
+      "metadata": {
+        "n_episodes": 10,
+        "total_samples": 5590,
+        "total_zero_day_samples": 851,
+        "total_non_zero_day_samples": 4739,
+        "evaluated_at": "2025-12-21T12:59:18.104052"
+      },
+      "base_model": {
+        "accuracy": {
+          "mean": 0.7251497864723205,
+          "std": 0.012715525949506177,
+          "ci_95": 0.007881164634893282,
+          "min": 0.7014925479888916,
+          "max": 0.7443609237670898
+        },
+        "zero_day_detection_rate": {
+          "mean": 0.810497532988855,
+          "std": 0.03519672186523102,
+          "ci_95": 0.021815154224053675,
+          "min": 0.75,
+          "max": 0.8552631578947368
+        },
+        "false_alarm_rate": {
+          "mean": 0.25936599423631124,
+          "std": 0.0,
+          "ci_95": 0.0,
+          "min": 0.25936599423631124,
+          "max": 0.25936599423631124
+        },
+        "f1_score": {
+          "mean": 0.6381035077168757,
+          "std": 0.02182148107590002,
+          "ci_95": 0.013525094095148711,
+          "min": 0.5979899497487438,
+          "max": 0.6714975845410628
+        }
+      },
+      "ttt_model": {
+        "accuracy": {
+          "mean": 0.699690685722689,
+          "std": 0.007177048821053554,
+          "ci_95": 0.004448380945940069,
+          "min": 0.6832412523020258,
+          "max": 0.7094972067039106
+        },
+        "zero_day_detection_rate": {
+          "mean": 0.9398862695168038,
+          "std": 0.017673522965093034,
+          "ci_95": 0.010954163022401356,
+          "min": 0.9,
+          "max": 0.9662921348314607
+        },
+        "false_alarm_rate": {
+          "mean": 0.42525939238976795,
+          "std": 0.012493408154654431,
+          "ci_95": 0.007743494599338515,
+          "min": 0.40173410404624277,
+          "max": 0.44285714285714284
+        },
+        "f1_score": {
+          "mean": 0.6868515598218071,
+          "std": 0.006545403959150235,
+          "ci_95": 0.004056883404492497,
+          "min": 0.6704980842911877,
+          "max": 0.6923076923076923
+        }
+      },
+      "improvement": {
+        "zero_day_detection_rate": {
+          "mean": 0.12938873652794897,
+          "std": 0.034712174855634624,
+          "ci_95": 0.02151482887603905,
+          "min": 0.08223684210526316,
+          "max": 0.20238095238095233
+        },
+        "accuracy": {
+          "mean": -0.025459100749631636,
+          "std": 0.014112067426579888,
+          "ci_95": 0.008746750010125235,
+          "min": -0.04147785484900568,
+          "max": -0.0033443998407434172
+        }
+      },
+      "per_episode_results": [
+        {
+          "episode_id": 0,
+          "episode_seed": 42,
+          "samples": 559,
+          "zero_day_samples": 84,
+          "non_zero_day_samples": 475,
+          "base_model": {
+            "accuracy": 0.7124060392379761,
+            "precision": 0.5754716981132075,
+            "recall": 0.6594594594594595,
+            "f1_score": 0.6146095717884131,
+            "zero_day_detection_rate": 0.75,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                63,
+                122
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6994535519125683,
+            "precision": 0.5460122699386503,
+            "recall": 0.9128205128205128,
+            "f1_score": 0.6833013435700576,
+            "zero_day_detection_rate": 0.9523809523809523,
+            "far": 0.4180790960451977,
+            "confusion_matrix": [
+              [
+                206,
+                148
+              ],
+              [
+                17,
+                178
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.012952487325407769,
+            "zdr": 0.20238095238095233,
+            "far": -0.15871310180888648
+          }
+        },
+        {
+          "episode_id": 1,
+          "episode_seed": 43,
+          "samples": 559,
+          "zero_day_samples": 80,
+          "non_zero_day_samples": 479,
+          "base_model": {
+            "accuracy": 0.7443609237670898,
+            "precision": 0.6069868995633187,
+            "recall": 0.7513513513513513,
+            "f1_score": 0.6714975845410628,
+            "zero_day_detection_rate": 0.8552631578947368,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                46,
+                139
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7047101449275363,
+            "precision": 0.5512048192771084,
+            "recall": 0.9289340101522843,
+            "f1_score": 0.6918714555765595,
+            "zero_day_detection_rate": 0.9375,
+            "far": 0.4197183098591549,
+            "confusion_matrix": [
+              [
+                206,
+                149
+              ],
+              [
+                14,
+                183
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.03965077883955359,
+            "zdr": 0.08223684210526316,
+            "far": -0.1603523156228437
+          }
+        },
+        {
+          "episode_id": 2,
+          "episode_seed": 44,
+          "samples": 559,
+          "zero_day_samples": 91,
+          "non_zero_day_samples": 468,
+          "base_model": {
+            "accuracy": 0.7344632744789124,
+            "precision": 0.5964125560538116,
+            "recall": 0.7228260869565217,
+            "f1_score": 0.6535626535626535,
+            "zero_day_detection_rate": 0.8409090909090909,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                51,
+                133
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7012987012987013,
+            "precision": 0.5421686746987951,
+            "recall": 0.9523809523809523,
+            "f1_score": 0.690978886756238,
+            "zero_day_detection_rate": 0.9540229885057471,
+            "far": 0.4342857142857143,
+            "confusion_matrix": [
+              [
+                198,
+                152
+              ],
+              [
+                9,
+                180
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.03316457318021104,
+            "zdr": 0.11311389759665613,
+            "far": -0.17491972004940304
+          }
+        },
+        {
+          "episode_id": 3,
+          "episode_seed": 45,
+          "samples": 559,
+          "zero_day_samples": 81,
+          "non_zero_day_samples": 478,
+          "base_model": {
+            "accuracy": 0.721280574798584,
+            "precision": 0.5833333333333334,
+            "recall": 0.6847826086956522,
+            "f1_score": 0.63,
+            "zero_day_detection_rate": 0.8311688311688312,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                58,
+                126
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6972477064220184,
+            "precision": 0.5424242424242425,
+            "recall": 0.927461139896373,
+            "f1_score": 0.6845124282982792,
+            "zero_day_detection_rate": 0.9367088607594937,
+            "far": 0.4289772727272727,
+            "confusion_matrix": [
+              [
+                201,
+                151
+              ],
+              [
+                14,
+                179
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.024032868376565597,
+            "zdr": 0.10554002959066244,
+            "far": -0.16961127849096147
+          }
+        },
+        {
+          "episode_id": 4,
+          "episode_seed": 46,
+          "samples": 559,
+          "zero_day_samples": 91,
+          "non_zero_day_samples": 468,
+          "base_model": {
+            "accuracy": 0.7358490824699402,
+            "precision": 0.5964125560538116,
+            "recall": 0.726775956284153,
+            "f1_score": 0.6551724137931034,
+            "zero_day_detection_rate": 0.8470588235294118,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                50,
+                133
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6959706959706959,
+            "precision": 0.5441176470588235,
+            "recall": 0.9438775510204082,
+            "f1_score": 0.6902985074626866,
+            "zero_day_detection_rate": 0.9662921348314607,
+            "far": 0.44285714285714284,
+            "confusion_matrix": [
+              [
+                195,
+                155
+              ],
+              [
+                11,
+                185
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.039878386499244245,
+            "zdr": 0.11923331130204895,
+            "far": -0.1834911486208316
+          }
+        },
+        {
+          "episode_id": 5,
+          "episode_seed": 47,
+          "samples": 559,
+          "zero_day_samples": 82,
+          "non_zero_day_samples": 477,
+          "base_model": {
+            "accuracy": 0.7247191071510315,
+            "precision": 0.5909090909090909,
+            "recall": 0.6951871657754011,
+            "f1_score": 0.6388206388206388,
+            "zero_day_detection_rate": 0.7974683544303798,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                57,
+                130
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6832412523020258,
+            "precision": 0.5319148936170213,
+            "recall": 0.9067357512953368,
+            "f1_score": 0.6704980842911877,
+            "zero_day_detection_rate": 0.9,
+            "far": 0.44,
+            "confusion_matrix": [
+              [
+                196,
+                154
+              ],
+              [
+                18,
+                175
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.04147785484900568,
+            "zdr": 0.10253164556962024,
+            "far": -0.18063400576368877
+          }
+        },
+        {
+          "episode_id": 6,
+          "episode_seed": 48,
+          "samples": 559,
+          "zero_day_samples": 93,
+          "non_zero_day_samples": 466,
+          "base_model": {
+            "accuracy": 0.7340824007987976,
+            "precision": 0.6,
+            "recall": 0.7219251336898396,
+            "f1_score": 0.6553398058252428,
+            "zero_day_detection_rate": 0.8160919540229885,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                52,
+                135
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7009174311926606,
+            "precision": 0.5487804878048781,
+            "recall": 0.9230769230769231,
+            "f1_score": 0.6883365200764818,
+            "zero_day_detection_rate": 0.946236559139785,
+            "far": 0.4228571428571429,
+            "confusion_matrix": [
+              [
+                202,
+                148
+              ],
+              [
+                15,
+                180
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.03316496960613702,
+            "zdr": 0.13014460511679649,
+            "far": -0.16349114862083164
+          }
+        },
+        {
+          "episode_id": 7,
+          "episode_seed": 49,
+          "samples": 559,
+          "zero_day_samples": 88,
+          "non_zero_day_samples": 471,
+          "base_model": {
+            "accuracy": 0.716946005821228,
+            "precision": 0.5871559633027523,
+            "recall": 0.6736842105263158,
+            "f1_score": 0.6274509803921569,
+            "zero_day_detection_rate": 0.7674418604651163,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                62,
+                128
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7094972067039106,
+            "precision": 0.5559105431309904,
+            "recall": 0.9109947643979057,
+            "f1_score": 0.6904761904761905,
+            "zero_day_detection_rate": 0.9310344827586207,
+            "far": 0.40173410404624277,
+            "confusion_matrix": [
+              [
+                207,
+                139
+              ],
+              [
+                17,
+                174
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.0074487991173174395,
+            "zdr": 0.16359262229350435,
+            "far": -0.14236810980993153
+          }
+        },
+        {
+          "episode_id": 8,
+          "episode_seed": 50,
+          "samples": 559,
+          "zero_day_samples": 84,
+          "non_zero_day_samples": 475,
+          "base_model": {
+            "accuracy": 0.7258979082107544,
+            "precision": 0.5852534562211982,
+            "recall": 0.6978021978021978,
+            "f1_score": 0.6365914786967418,
+            "zero_day_detection_rate": 0.8157894736842105,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                55,
+                127
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7064220183486238,
+            "precision": 0.5538461538461539,
+            "recall": 0.9230769230769231,
+            "f1_score": 0.6923076923076923,
+            "zero_day_detection_rate": 0.9404761904761905,
+            "far": 0.4142857142857143,
+            "confusion_matrix": [
+              [
+                205,
+                145
+              ],
+              [
+                15,
+                180
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.019475889862130558,
+            "zdr": 0.12468671679197996,
+            "far": -0.15491972004940308
+          }
+        },
+        {
+          "episode_id": 9,
+          "episode_seed": 51,
+          "samples": 559,
+          "zero_day_samples": 77,
+          "non_zero_day_samples": 482,
+          "base_model": {
+            "accuracy": 0.7014925479888916,
+            "precision": 0.569377990430622,
+            "recall": 0.6296296296296297,
+            "f1_score": 0.5979899497487438,
+            "zero_day_detection_rate": 0.7837837837837838,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                70,
+                119
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6981481481481482,
+            "precision": 0.5426829268292683,
+            "recall": 0.9319371727748691,
+            "f1_score": 0.6859344894026975,
+            "zero_day_detection_rate": 0.9342105263157895,
+            "far": 0.4297994269340974,
+            "confusion_matrix": [
+              [
+                199,
+                150
+              ],
+              [
+                13,
+                178
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.0033443998407434172,
+            "zdr": 0.15042674253200572,
+            "far": -0.17043343269778616
+          }
+        }
+      ]
+    },
+    "Reconnaissance": {
+      "metadata": {
+        "n_episodes": 10,
+        "total_samples": 5590,
+        "total_zero_day_samples": 851,
+        "total_non_zero_day_samples": 4739,
+        "evaluated_at": "2025-12-21T13:00:13.097261"
+      },
+      "base_model": {
+        "accuracy": {
+          "mean": 0.7251497864723205,
+          "std": 0.012715525949506177,
+          "ci_95": 0.007881164634893282,
+          "min": 0.7014925479888916,
+          "max": 0.7443609237670898
+        },
+        "zero_day_detection_rate": {
+          "mean": 0.810497532988855,
+          "std": 0.03519672186523102,
+          "ci_95": 0.021815154224053675,
+          "min": 0.75,
+          "max": 0.8552631578947368
+        },
+        "false_alarm_rate": {
+          "mean": 0.25936599423631124,
+          "std": 0.0,
+          "ci_95": 0.0,
+          "min": 0.25936599423631124,
+          "max": 0.25936599423631124
+        },
+        "f1_score": {
+          "mean": 0.6381035077168757,
+          "std": 0.02182148107590002,
+          "ci_95": 0.013525094095148711,
+          "min": 0.5979899497487438,
+          "max": 0.6714975845410628
+        }
+      },
+      "ttt_model": {
+        "accuracy": {
+          "mean": 0.699690685722689,
+          "std": 0.007177048821053554,
+          "ci_95": 0.004448380945940069,
+          "min": 0.6832412523020258,
+          "max": 0.7094972067039106
+        },
+        "zero_day_detection_rate": {
+          "mean": 0.9398862695168038,
+          "std": 0.017673522965093034,
+          "ci_95": 0.010954163022401356,
+          "min": 0.9,
+          "max": 0.9662921348314607
+        },
+        "false_alarm_rate": {
+          "mean": 0.42525939238976795,
+          "std": 0.012493408154654431,
+          "ci_95": 0.007743494599338515,
+          "min": 0.40173410404624277,
+          "max": 0.44285714285714284
+        },
+        "f1_score": {
+          "mean": 0.6868515598218071,
+          "std": 0.006545403959150235,
+          "ci_95": 0.004056883404492497,
+          "min": 0.6704980842911877,
+          "max": 0.6923076923076923
+        }
+      },
+      "improvement": {
+        "zero_day_detection_rate": {
+          "mean": 0.12938873652794897,
+          "std": 0.034712174855634624,
+          "ci_95": 0.02151482887603905,
+          "min": 0.08223684210526316,
+          "max": 0.20238095238095233
+        },
+        "accuracy": {
+          "mean": -0.025459100749631636,
+          "std": 0.014112067426579888,
+          "ci_95": 0.008746750010125235,
+          "min": -0.04147785484900568,
+          "max": -0.0033443998407434172
+        }
+      },
+      "per_episode_results": [
+        {
+          "episode_id": 0,
+          "episode_seed": 42,
+          "samples": 559,
+          "zero_day_samples": 84,
+          "non_zero_day_samples": 475,
+          "base_model": {
+            "accuracy": 0.7124060392379761,
+            "precision": 0.5754716981132075,
+            "recall": 0.6594594594594595,
+            "f1_score": 0.6146095717884131,
+            "zero_day_detection_rate": 0.75,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                63,
+                122
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6994535519125683,
+            "precision": 0.5460122699386503,
+            "recall": 0.9128205128205128,
+            "f1_score": 0.6833013435700576,
+            "zero_day_detection_rate": 0.9523809523809523,
+            "far": 0.4180790960451977,
+            "confusion_matrix": [
+              [
+                206,
+                148
+              ],
+              [
+                17,
+                178
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.012952487325407769,
+            "zdr": 0.20238095238095233,
+            "far": -0.15871310180888648
+          }
+        },
+        {
+          "episode_id": 1,
+          "episode_seed": 43,
+          "samples": 559,
+          "zero_day_samples": 80,
+          "non_zero_day_samples": 479,
+          "base_model": {
+            "accuracy": 0.7443609237670898,
+            "precision": 0.6069868995633187,
+            "recall": 0.7513513513513513,
+            "f1_score": 0.6714975845410628,
+            "zero_day_detection_rate": 0.8552631578947368,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                46,
+                139
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7047101449275363,
+            "precision": 0.5512048192771084,
+            "recall": 0.9289340101522843,
+            "f1_score": 0.6918714555765595,
+            "zero_day_detection_rate": 0.9375,
+            "far": 0.4197183098591549,
+            "confusion_matrix": [
+              [
+                206,
+                149
+              ],
+              [
+                14,
+                183
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.03965077883955359,
+            "zdr": 0.08223684210526316,
+            "far": -0.1603523156228437
+          }
+        },
+        {
+          "episode_id": 2,
+          "episode_seed": 44,
+          "samples": 559,
+          "zero_day_samples": 91,
+          "non_zero_day_samples": 468,
+          "base_model": {
+            "accuracy": 0.7344632744789124,
+            "precision": 0.5964125560538116,
+            "recall": 0.7228260869565217,
+            "f1_score": 0.6535626535626535,
+            "zero_day_detection_rate": 0.8409090909090909,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                51,
+                133
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7012987012987013,
+            "precision": 0.5421686746987951,
+            "recall": 0.9523809523809523,
+            "f1_score": 0.690978886756238,
+            "zero_day_detection_rate": 0.9540229885057471,
+            "far": 0.4342857142857143,
+            "confusion_matrix": [
+              [
+                198,
+                152
+              ],
+              [
+                9,
+                180
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.03316457318021104,
+            "zdr": 0.11311389759665613,
+            "far": -0.17491972004940304
+          }
+        },
+        {
+          "episode_id": 3,
+          "episode_seed": 45,
+          "samples": 559,
+          "zero_day_samples": 81,
+          "non_zero_day_samples": 478,
+          "base_model": {
+            "accuracy": 0.721280574798584,
+            "precision": 0.5833333333333334,
+            "recall": 0.6847826086956522,
+            "f1_score": 0.63,
+            "zero_day_detection_rate": 0.8311688311688312,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                58,
+                126
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6972477064220184,
+            "precision": 0.5424242424242425,
+            "recall": 0.927461139896373,
+            "f1_score": 0.6845124282982792,
+            "zero_day_detection_rate": 0.9367088607594937,
+            "far": 0.4289772727272727,
+            "confusion_matrix": [
+              [
+                201,
+                151
+              ],
+              [
+                14,
+                179
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.024032868376565597,
+            "zdr": 0.10554002959066244,
+            "far": -0.16961127849096147
+          }
+        },
+        {
+          "episode_id": 4,
+          "episode_seed": 46,
+          "samples": 559,
+          "zero_day_samples": 91,
+          "non_zero_day_samples": 468,
+          "base_model": {
+            "accuracy": 0.7358490824699402,
+            "precision": 0.5964125560538116,
+            "recall": 0.726775956284153,
+            "f1_score": 0.6551724137931034,
+            "zero_day_detection_rate": 0.8470588235294118,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                50,
+                133
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6959706959706959,
+            "precision": 0.5441176470588235,
+            "recall": 0.9438775510204082,
+            "f1_score": 0.6902985074626866,
+            "zero_day_detection_rate": 0.9662921348314607,
+            "far": 0.44285714285714284,
+            "confusion_matrix": [
+              [
+                195,
+                155
+              ],
+              [
+                11,
+                185
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.039878386499244245,
+            "zdr": 0.11923331130204895,
+            "far": -0.1834911486208316
+          }
+        },
+        {
+          "episode_id": 5,
+          "episode_seed": 47,
+          "samples": 559,
+          "zero_day_samples": 82,
+          "non_zero_day_samples": 477,
+          "base_model": {
+            "accuracy": 0.7247191071510315,
+            "precision": 0.5909090909090909,
+            "recall": 0.6951871657754011,
+            "f1_score": 0.6388206388206388,
+            "zero_day_detection_rate": 0.7974683544303798,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                57,
+                130
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6832412523020258,
+            "precision": 0.5319148936170213,
+            "recall": 0.9067357512953368,
+            "f1_score": 0.6704980842911877,
+            "zero_day_detection_rate": 0.9,
+            "far": 0.44,
+            "confusion_matrix": [
+              [
+                196,
+                154
+              ],
+              [
+                18,
+                175
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.04147785484900568,
+            "zdr": 0.10253164556962024,
+            "far": -0.18063400576368877
+          }
+        },
+        {
+          "episode_id": 6,
+          "episode_seed": 48,
+          "samples": 559,
+          "zero_day_samples": 93,
+          "non_zero_day_samples": 466,
+          "base_model": {
+            "accuracy": 0.7340824007987976,
+            "precision": 0.6,
+            "recall": 0.7219251336898396,
+            "f1_score": 0.6553398058252428,
+            "zero_day_detection_rate": 0.8160919540229885,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                52,
+                135
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7009174311926606,
+            "precision": 0.5487804878048781,
+            "recall": 0.9230769230769231,
+            "f1_score": 0.6883365200764818,
+            "zero_day_detection_rate": 0.946236559139785,
+            "far": 0.4228571428571429,
+            "confusion_matrix": [
+              [
+                202,
+                148
+              ],
+              [
+                15,
+                180
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.03316496960613702,
+            "zdr": 0.13014460511679649,
+            "far": -0.16349114862083164
+          }
+        },
+        {
+          "episode_id": 7,
+          "episode_seed": 49,
+          "samples": 559,
+          "zero_day_samples": 88,
+          "non_zero_day_samples": 471,
+          "base_model": {
+            "accuracy": 0.716946005821228,
+            "precision": 0.5871559633027523,
+            "recall": 0.6736842105263158,
+            "f1_score": 0.6274509803921569,
+            "zero_day_detection_rate": 0.7674418604651163,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                62,
+                128
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7094972067039106,
+            "precision": 0.5559105431309904,
+            "recall": 0.9109947643979057,
+            "f1_score": 0.6904761904761905,
+            "zero_day_detection_rate": 0.9310344827586207,
+            "far": 0.40173410404624277,
+            "confusion_matrix": [
+              [
+                207,
+                139
+              ],
+              [
+                17,
+                174
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.0074487991173174395,
+            "zdr": 0.16359262229350435,
+            "far": -0.14236810980993153
+          }
+        },
+        {
+          "episode_id": 8,
+          "episode_seed": 50,
+          "samples": 559,
+          "zero_day_samples": 84,
+          "non_zero_day_samples": 475,
+          "base_model": {
+            "accuracy": 0.7258979082107544,
+            "precision": 0.5852534562211982,
+            "recall": 0.6978021978021978,
+            "f1_score": 0.6365914786967418,
+            "zero_day_detection_rate": 0.8157894736842105,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                55,
+                127
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7064220183486238,
+            "precision": 0.5538461538461539,
+            "recall": 0.9230769230769231,
+            "f1_score": 0.6923076923076923,
+            "zero_day_detection_rate": 0.9404761904761905,
+            "far": 0.4142857142857143,
+            "confusion_matrix": [
+              [
+                205,
+                145
+              ],
+              [
+                15,
+                180
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.019475889862130558,
+            "zdr": 0.12468671679197996,
+            "far": -0.15491972004940308
+          }
+        },
+        {
+          "episode_id": 9,
+          "episode_seed": 51,
+          "samples": 559,
+          "zero_day_samples": 77,
+          "non_zero_day_samples": 482,
+          "base_model": {
+            "accuracy": 0.7014925479888916,
+            "precision": 0.569377990430622,
+            "recall": 0.6296296296296297,
+            "f1_score": 0.5979899497487438,
+            "zero_day_detection_rate": 0.7837837837837838,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                70,
+                119
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6981481481481482,
+            "precision": 0.5426829268292683,
+            "recall": 0.9319371727748691,
+            "f1_score": 0.6859344894026975,
+            "zero_day_detection_rate": 0.9342105263157895,
+            "far": 0.4297994269340974,
+            "confusion_matrix": [
+              [
+                199,
+                150
+              ],
+              [
+                13,
+                178
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.0033443998407434172,
+            "zdr": 0.15042674253200572,
+            "far": -0.17043343269778616
+          }
+        }
+      ]
+    },
+    "Shellcode": {
+      "metadata": {
+        "n_episodes": 10,
+        "total_samples": 5590,
+        "total_zero_day_samples": 851,
+        "total_non_zero_day_samples": 4739,
+        "evaluated_at": "2025-12-21T13:01:02.236908"
+      },
+      "base_model": {
+        "accuracy": {
+          "mean": 0.7251497864723205,
+          "std": 0.012715525949506177,
+          "ci_95": 0.007881164634893282,
+          "min": 0.7014925479888916,
+          "max": 0.7443609237670898
+        },
+        "zero_day_detection_rate": {
+          "mean": 0.810497532988855,
+          "std": 0.03519672186523102,
+          "ci_95": 0.021815154224053675,
+          "min": 0.75,
+          "max": 0.8552631578947368
+        },
+        "false_alarm_rate": {
+          "mean": 0.25936599423631124,
+          "std": 0.0,
+          "ci_95": 0.0,
+          "min": 0.25936599423631124,
+          "max": 0.25936599423631124
+        },
+        "f1_score": {
+          "mean": 0.6381035077168757,
+          "std": 0.02182148107590002,
+          "ci_95": 0.013525094095148711,
+          "min": 0.5979899497487438,
+          "max": 0.6714975845410628
+        }
+      },
+      "ttt_model": {
+        "accuracy": {
+          "mean": 0.699690685722689,
+          "std": 0.007177048821053554,
+          "ci_95": 0.004448380945940069,
+          "min": 0.6832412523020258,
+          "max": 0.7094972067039106
+        },
+        "zero_day_detection_rate": {
+          "mean": 0.9398862695168038,
+          "std": 0.017673522965093034,
+          "ci_95": 0.010954163022401356,
+          "min": 0.9,
+          "max": 0.9662921348314607
+        },
+        "false_alarm_rate": {
+          "mean": 0.42525939238976795,
+          "std": 0.012493408154654431,
+          "ci_95": 0.007743494599338515,
+          "min": 0.40173410404624277,
+          "max": 0.44285714285714284
+        },
+        "f1_score": {
+          "mean": 0.6868515598218071,
+          "std": 0.006545403959150235,
+          "ci_95": 0.004056883404492497,
+          "min": 0.6704980842911877,
+          "max": 0.6923076923076923
+        }
+      },
+      "improvement": {
+        "zero_day_detection_rate": {
+          "mean": 0.12938873652794897,
+          "std": 0.034712174855634624,
+          "ci_95": 0.02151482887603905,
+          "min": 0.08223684210526316,
+          "max": 0.20238095238095233
+        },
+        "accuracy": {
+          "mean": -0.025459100749631636,
+          "std": 0.014112067426579888,
+          "ci_95": 0.008746750010125235,
+          "min": -0.04147785484900568,
+          "max": -0.0033443998407434172
+        }
+      },
+      "per_episode_results": [
+        {
+          "episode_id": 0,
+          "episode_seed": 42,
+          "samples": 559,
+          "zero_day_samples": 84,
+          "non_zero_day_samples": 475,
+          "base_model": {
+            "accuracy": 0.7124060392379761,
+            "precision": 0.5754716981132075,
+            "recall": 0.6594594594594595,
+            "f1_score": 0.6146095717884131,
+            "zero_day_detection_rate": 0.75,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                63,
+                122
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6994535519125683,
+            "precision": 0.5460122699386503,
+            "recall": 0.9128205128205128,
+            "f1_score": 0.6833013435700576,
+            "zero_day_detection_rate": 0.9523809523809523,
+            "far": 0.4180790960451977,
+            "confusion_matrix": [
+              [
+                206,
+                148
+              ],
+              [
+                17,
+                178
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.012952487325407769,
+            "zdr": 0.20238095238095233,
+            "far": -0.15871310180888648
+          }
+        },
+        {
+          "episode_id": 1,
+          "episode_seed": 43,
+          "samples": 559,
+          "zero_day_samples": 80,
+          "non_zero_day_samples": 479,
+          "base_model": {
+            "accuracy": 0.7443609237670898,
+            "precision": 0.6069868995633187,
+            "recall": 0.7513513513513513,
+            "f1_score": 0.6714975845410628,
+            "zero_day_detection_rate": 0.8552631578947368,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                46,
+                139
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7047101449275363,
+            "precision": 0.5512048192771084,
+            "recall": 0.9289340101522843,
+            "f1_score": 0.6918714555765595,
+            "zero_day_detection_rate": 0.9375,
+            "far": 0.4197183098591549,
+            "confusion_matrix": [
+              [
+                206,
+                149
+              ],
+              [
+                14,
+                183
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.03965077883955359,
+            "zdr": 0.08223684210526316,
+            "far": -0.1603523156228437
+          }
+        },
+        {
+          "episode_id": 2,
+          "episode_seed": 44,
+          "samples": 559,
+          "zero_day_samples": 91,
+          "non_zero_day_samples": 468,
+          "base_model": {
+            "accuracy": 0.7344632744789124,
+            "precision": 0.5964125560538116,
+            "recall": 0.7228260869565217,
+            "f1_score": 0.6535626535626535,
+            "zero_day_detection_rate": 0.8409090909090909,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                51,
+                133
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7012987012987013,
+            "precision": 0.5421686746987951,
+            "recall": 0.9523809523809523,
+            "f1_score": 0.690978886756238,
+            "zero_day_detection_rate": 0.9540229885057471,
+            "far": 0.4342857142857143,
+            "confusion_matrix": [
+              [
+                198,
+                152
+              ],
+              [
+                9,
+                180
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.03316457318021104,
+            "zdr": 0.11311389759665613,
+            "far": -0.17491972004940304
+          }
+        },
+        {
+          "episode_id": 3,
+          "episode_seed": 45,
+          "samples": 559,
+          "zero_day_samples": 81,
+          "non_zero_day_samples": 478,
+          "base_model": {
+            "accuracy": 0.721280574798584,
+            "precision": 0.5833333333333334,
+            "recall": 0.6847826086956522,
+            "f1_score": 0.63,
+            "zero_day_detection_rate": 0.8311688311688312,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                58,
+                126
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6972477064220184,
+            "precision": 0.5424242424242425,
+            "recall": 0.927461139896373,
+            "f1_score": 0.6845124282982792,
+            "zero_day_detection_rate": 0.9367088607594937,
+            "far": 0.4289772727272727,
+            "confusion_matrix": [
+              [
+                201,
+                151
+              ],
+              [
+                14,
+                179
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.024032868376565597,
+            "zdr": 0.10554002959066244,
+            "far": -0.16961127849096147
+          }
+        },
+        {
+          "episode_id": 4,
+          "episode_seed": 46,
+          "samples": 559,
+          "zero_day_samples": 91,
+          "non_zero_day_samples": 468,
+          "base_model": {
+            "accuracy": 0.7358490824699402,
+            "precision": 0.5964125560538116,
+            "recall": 0.726775956284153,
+            "f1_score": 0.6551724137931034,
+            "zero_day_detection_rate": 0.8470588235294118,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                50,
+                133
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6959706959706959,
+            "precision": 0.5441176470588235,
+            "recall": 0.9438775510204082,
+            "f1_score": 0.6902985074626866,
+            "zero_day_detection_rate": 0.9662921348314607,
+            "far": 0.44285714285714284,
+            "confusion_matrix": [
+              [
+                195,
+                155
+              ],
+              [
+                11,
+                185
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.039878386499244245,
+            "zdr": 0.11923331130204895,
+            "far": -0.1834911486208316
+          }
+        },
+        {
+          "episode_id": 5,
+          "episode_seed": 47,
+          "samples": 559,
+          "zero_day_samples": 82,
+          "non_zero_day_samples": 477,
+          "base_model": {
+            "accuracy": 0.7247191071510315,
+            "precision": 0.5909090909090909,
+            "recall": 0.6951871657754011,
+            "f1_score": 0.6388206388206388,
+            "zero_day_detection_rate": 0.7974683544303798,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                57,
+                130
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6832412523020258,
+            "precision": 0.5319148936170213,
+            "recall": 0.9067357512953368,
+            "f1_score": 0.6704980842911877,
+            "zero_day_detection_rate": 0.9,
+            "far": 0.44,
+            "confusion_matrix": [
+              [
+                196,
+                154
+              ],
+              [
+                18,
+                175
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.04147785484900568,
+            "zdr": 0.10253164556962024,
+            "far": -0.18063400576368877
+          }
+        },
+        {
+          "episode_id": 6,
+          "episode_seed": 48,
+          "samples": 559,
+          "zero_day_samples": 93,
+          "non_zero_day_samples": 466,
+          "base_model": {
+            "accuracy": 0.7340824007987976,
+            "precision": 0.6,
+            "recall": 0.7219251336898396,
+            "f1_score": 0.6553398058252428,
+            "zero_day_detection_rate": 0.8160919540229885,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                52,
+                135
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7009174311926606,
+            "precision": 0.5487804878048781,
+            "recall": 0.9230769230769231,
+            "f1_score": 0.6883365200764818,
+            "zero_day_detection_rate": 0.946236559139785,
+            "far": 0.4228571428571429,
+            "confusion_matrix": [
+              [
+                202,
+                148
+              ],
+              [
+                15,
+                180
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.03316496960613702,
+            "zdr": 0.13014460511679649,
+            "far": -0.16349114862083164
+          }
+        },
+        {
+          "episode_id": 7,
+          "episode_seed": 49,
+          "samples": 559,
+          "zero_day_samples": 88,
+          "non_zero_day_samples": 471,
+          "base_model": {
+            "accuracy": 0.716946005821228,
+            "precision": 0.5871559633027523,
+            "recall": 0.6736842105263158,
+            "f1_score": 0.6274509803921569,
+            "zero_day_detection_rate": 0.7674418604651163,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                62,
+                128
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7094972067039106,
+            "precision": 0.5559105431309904,
+            "recall": 0.9109947643979057,
+            "f1_score": 0.6904761904761905,
+            "zero_day_detection_rate": 0.9310344827586207,
+            "far": 0.40173410404624277,
+            "confusion_matrix": [
+              [
+                207,
+                139
+              ],
+              [
+                17,
+                174
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.0074487991173174395,
+            "zdr": 0.16359262229350435,
+            "far": -0.14236810980993153
+          }
+        },
+        {
+          "episode_id": 8,
+          "episode_seed": 50,
+          "samples": 559,
+          "zero_day_samples": 84,
+          "non_zero_day_samples": 475,
+          "base_model": {
+            "accuracy": 0.7258979082107544,
+            "precision": 0.5852534562211982,
+            "recall": 0.6978021978021978,
+            "f1_score": 0.6365914786967418,
+            "zero_day_detection_rate": 0.8157894736842105,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                55,
+                127
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7064220183486238,
+            "precision": 0.5538461538461539,
+            "recall": 0.9230769230769231,
+            "f1_score": 0.6923076923076923,
+            "zero_day_detection_rate": 0.9404761904761905,
+            "far": 0.4142857142857143,
+            "confusion_matrix": [
+              [
+                205,
+                145
+              ],
+              [
+                15,
+                180
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.019475889862130558,
+            "zdr": 0.12468671679197996,
+            "far": -0.15491972004940308
+          }
+        },
+        {
+          "episode_id": 9,
+          "episode_seed": 51,
+          "samples": 559,
+          "zero_day_samples": 77,
+          "non_zero_day_samples": 482,
+          "base_model": {
+            "accuracy": 0.7014925479888916,
+            "precision": 0.569377990430622,
+            "recall": 0.6296296296296297,
+            "f1_score": 0.5979899497487438,
+            "zero_day_detection_rate": 0.7837837837837838,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                70,
+                119
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6981481481481482,
+            "precision": 0.5426829268292683,
+            "recall": 0.9319371727748691,
+            "f1_score": 0.6859344894026975,
+            "zero_day_detection_rate": 0.9342105263157895,
+            "far": 0.4297994269340974,
+            "confusion_matrix": [
+              [
+                199,
+                150
+              ],
+              [
+                13,
+                178
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.0033443998407434172,
+            "zdr": 0.15042674253200572,
+            "far": -0.17043343269778616
+          }
+        }
+      ]
+    },
+    "Worms": {
+      "metadata": {
+        "n_episodes": 10,
+        "total_samples": 5590,
+        "total_zero_day_samples": 851,
+        "total_non_zero_day_samples": 4739,
+        "evaluated_at": "2025-12-21T13:01:58.175141"
+      },
+      "base_model": {
+        "accuracy": {
+          "mean": 0.7251497864723205,
+          "std": 0.012715525949506177,
+          "ci_95": 0.007881164634893282,
+          "min": 0.7014925479888916,
+          "max": 0.7443609237670898
+        },
+        "zero_day_detection_rate": {
+          "mean": 0.810497532988855,
+          "std": 0.03519672186523102,
+          "ci_95": 0.021815154224053675,
+          "min": 0.75,
+          "max": 0.8552631578947368
+        },
+        "false_alarm_rate": {
+          "mean": 0.25936599423631124,
+          "std": 0.0,
+          "ci_95": 0.0,
+          "min": 0.25936599423631124,
+          "max": 0.25936599423631124
+        },
+        "f1_score": {
+          "mean": 0.6381035077168757,
+          "std": 0.02182148107590002,
+          "ci_95": 0.013525094095148711,
+          "min": 0.5979899497487438,
+          "max": 0.6714975845410628
+        }
+      },
+      "ttt_model": {
+        "accuracy": {
+          "mean": 0.699690685722689,
+          "std": 0.007177048821053554,
+          "ci_95": 0.004448380945940069,
+          "min": 0.6832412523020258,
+          "max": 0.7094972067039106
+        },
+        "zero_day_detection_rate": {
+          "mean": 0.9398862695168038,
+          "std": 0.017673522965093034,
+          "ci_95": 0.010954163022401356,
+          "min": 0.9,
+          "max": 0.9662921348314607
+        },
+        "false_alarm_rate": {
+          "mean": 0.42525939238976795,
+          "std": 0.012493408154654431,
+          "ci_95": 0.007743494599338515,
+          "min": 0.40173410404624277,
+          "max": 0.44285714285714284
+        },
+        "f1_score": {
+          "mean": 0.6868515598218071,
+          "std": 0.006545403959150235,
+          "ci_95": 0.004056883404492497,
+          "min": 0.6704980842911877,
+          "max": 0.6923076923076923
+        }
+      },
+      "improvement": {
+        "zero_day_detection_rate": {
+          "mean": 0.12938873652794897,
+          "std": 0.034712174855634624,
+          "ci_95": 0.02151482887603905,
+          "min": 0.08223684210526316,
+          "max": 0.20238095238095233
+        },
+        "accuracy": {
+          "mean": -0.025459100749631636,
+          "std": 0.014112067426579888,
+          "ci_95": 0.008746750010125235,
+          "min": -0.04147785484900568,
+          "max": -0.0033443998407434172
+        }
+      },
+      "per_episode_results": [
+        {
+          "episode_id": 0,
+          "episode_seed": 42,
+          "samples": 559,
+          "zero_day_samples": 84,
+          "non_zero_day_samples": 475,
+          "base_model": {
+            "accuracy": 0.7124060392379761,
+            "precision": 0.5754716981132075,
+            "recall": 0.6594594594594595,
+            "f1_score": 0.6146095717884131,
+            "zero_day_detection_rate": 0.75,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                63,
+                122
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6994535519125683,
+            "precision": 0.5460122699386503,
+            "recall": 0.9128205128205128,
+            "f1_score": 0.6833013435700576,
+            "zero_day_detection_rate": 0.9523809523809523,
+            "far": 0.4180790960451977,
+            "confusion_matrix": [
+              [
+                206,
+                148
+              ],
+              [
+                17,
+                178
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.012952487325407769,
+            "zdr": 0.20238095238095233,
+            "far": -0.15871310180888648
+          }
+        },
+        {
+          "episode_id": 1,
+          "episode_seed": 43,
+          "samples": 559,
+          "zero_day_samples": 80,
+          "non_zero_day_samples": 479,
+          "base_model": {
+            "accuracy": 0.7443609237670898,
+            "precision": 0.6069868995633187,
+            "recall": 0.7513513513513513,
+            "f1_score": 0.6714975845410628,
+            "zero_day_detection_rate": 0.8552631578947368,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                46,
+                139
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7047101449275363,
+            "precision": 0.5512048192771084,
+            "recall": 0.9289340101522843,
+            "f1_score": 0.6918714555765595,
+            "zero_day_detection_rate": 0.9375,
+            "far": 0.4197183098591549,
+            "confusion_matrix": [
+              [
+                206,
+                149
+              ],
+              [
+                14,
+                183
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.03965077883955359,
+            "zdr": 0.08223684210526316,
+            "far": -0.1603523156228437
+          }
+        },
+        {
+          "episode_id": 2,
+          "episode_seed": 44,
+          "samples": 559,
+          "zero_day_samples": 91,
+          "non_zero_day_samples": 468,
+          "base_model": {
+            "accuracy": 0.7344632744789124,
+            "precision": 0.5964125560538116,
+            "recall": 0.7228260869565217,
+            "f1_score": 0.6535626535626535,
+            "zero_day_detection_rate": 0.8409090909090909,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                51,
+                133
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7012987012987013,
+            "precision": 0.5421686746987951,
+            "recall": 0.9523809523809523,
+            "f1_score": 0.690978886756238,
+            "zero_day_detection_rate": 0.9540229885057471,
+            "far": 0.4342857142857143,
+            "confusion_matrix": [
+              [
+                198,
+                152
+              ],
+              [
+                9,
+                180
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.03316457318021104,
+            "zdr": 0.11311389759665613,
+            "far": -0.17491972004940304
+          }
+        },
+        {
+          "episode_id": 3,
+          "episode_seed": 45,
+          "samples": 559,
+          "zero_day_samples": 81,
+          "non_zero_day_samples": 478,
+          "base_model": {
+            "accuracy": 0.721280574798584,
+            "precision": 0.5833333333333334,
+            "recall": 0.6847826086956522,
+            "f1_score": 0.63,
+            "zero_day_detection_rate": 0.8311688311688312,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                58,
+                126
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6972477064220184,
+            "precision": 0.5424242424242425,
+            "recall": 0.927461139896373,
+            "f1_score": 0.6845124282982792,
+            "zero_day_detection_rate": 0.9367088607594937,
+            "far": 0.4289772727272727,
+            "confusion_matrix": [
+              [
+                201,
+                151
+              ],
+              [
+                14,
+                179
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.024032868376565597,
+            "zdr": 0.10554002959066244,
+            "far": -0.16961127849096147
+          }
+        },
+        {
+          "episode_id": 4,
+          "episode_seed": 46,
+          "samples": 559,
+          "zero_day_samples": 91,
+          "non_zero_day_samples": 468,
+          "base_model": {
+            "accuracy": 0.7358490824699402,
+            "precision": 0.5964125560538116,
+            "recall": 0.726775956284153,
+            "f1_score": 0.6551724137931034,
+            "zero_day_detection_rate": 0.8470588235294118,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                50,
+                133
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6959706959706959,
+            "precision": 0.5441176470588235,
+            "recall": 0.9438775510204082,
+            "f1_score": 0.6902985074626866,
+            "zero_day_detection_rate": 0.9662921348314607,
+            "far": 0.44285714285714284,
+            "confusion_matrix": [
+              [
+                195,
+                155
+              ],
+              [
+                11,
+                185
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.039878386499244245,
+            "zdr": 0.11923331130204895,
+            "far": -0.1834911486208316
+          }
+        },
+        {
+          "episode_id": 5,
+          "episode_seed": 47,
+          "samples": 559,
+          "zero_day_samples": 82,
+          "non_zero_day_samples": 477,
+          "base_model": {
+            "accuracy": 0.7247191071510315,
+            "precision": 0.5909090909090909,
+            "recall": 0.6951871657754011,
+            "f1_score": 0.6388206388206388,
+            "zero_day_detection_rate": 0.7974683544303798,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                57,
+                130
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6832412523020258,
+            "precision": 0.5319148936170213,
+            "recall": 0.9067357512953368,
+            "f1_score": 0.6704980842911877,
+            "zero_day_detection_rate": 0.9,
+            "far": 0.44,
+            "confusion_matrix": [
+              [
+                196,
+                154
+              ],
+              [
+                18,
+                175
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.04147785484900568,
+            "zdr": 0.10253164556962024,
+            "far": -0.18063400576368877
+          }
+        },
+        {
+          "episode_id": 6,
+          "episode_seed": 48,
+          "samples": 559,
+          "zero_day_samples": 93,
+          "non_zero_day_samples": 466,
+          "base_model": {
+            "accuracy": 0.7340824007987976,
+            "precision": 0.6,
+            "recall": 0.7219251336898396,
+            "f1_score": 0.6553398058252428,
+            "zero_day_detection_rate": 0.8160919540229885,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                52,
+                135
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7009174311926606,
+            "precision": 0.5487804878048781,
+            "recall": 0.9230769230769231,
+            "f1_score": 0.6883365200764818,
+            "zero_day_detection_rate": 0.946236559139785,
+            "far": 0.4228571428571429,
+            "confusion_matrix": [
+              [
+                202,
+                148
+              ],
+              [
+                15,
+                180
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.03316496960613702,
+            "zdr": 0.13014460511679649,
+            "far": -0.16349114862083164
+          }
+        },
+        {
+          "episode_id": 7,
+          "episode_seed": 49,
+          "samples": 559,
+          "zero_day_samples": 88,
+          "non_zero_day_samples": 471,
+          "base_model": {
+            "accuracy": 0.716946005821228,
+            "precision": 0.5871559633027523,
+            "recall": 0.6736842105263158,
+            "f1_score": 0.6274509803921569,
+            "zero_day_detection_rate": 0.7674418604651163,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                62,
+                128
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7094972067039106,
+            "precision": 0.5559105431309904,
+            "recall": 0.9109947643979057,
+            "f1_score": 0.6904761904761905,
+            "zero_day_detection_rate": 0.9310344827586207,
+            "far": 0.40173410404624277,
+            "confusion_matrix": [
+              [
+                207,
+                139
+              ],
+              [
+                17,
+                174
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.0074487991173174395,
+            "zdr": 0.16359262229350435,
+            "far": -0.14236810980993153
+          }
+        },
+        {
+          "episode_id": 8,
+          "episode_seed": 50,
+          "samples": 559,
+          "zero_day_samples": 84,
+          "non_zero_day_samples": 475,
+          "base_model": {
+            "accuracy": 0.7258979082107544,
+            "precision": 0.5852534562211982,
+            "recall": 0.6978021978021978,
+            "f1_score": 0.6365914786967418,
+            "zero_day_detection_rate": 0.8157894736842105,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                55,
+                127
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.7064220183486238,
+            "precision": 0.5538461538461539,
+            "recall": 0.9230769230769231,
+            "f1_score": 0.6923076923076923,
+            "zero_day_detection_rate": 0.9404761904761905,
+            "far": 0.4142857142857143,
+            "confusion_matrix": [
+              [
+                205,
+                145
+              ],
+              [
+                15,
+                180
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.019475889862130558,
+            "zdr": 0.12468671679197996,
+            "far": -0.15491972004940308
+          }
+        },
+        {
+          "episode_id": 9,
+          "episode_seed": 51,
+          "samples": 559,
+          "zero_day_samples": 77,
+          "non_zero_day_samples": 482,
+          "base_model": {
+            "accuracy": 0.7014925479888916,
+            "precision": 0.569377990430622,
+            "recall": 0.6296296296296297,
+            "f1_score": 0.5979899497487438,
+            "zero_day_detection_rate": 0.7837837837837838,
+            "far": 0.25936599423631124,
+            "confusion_matrix": [
+              [
+                257,
+                90
+              ],
+              [
+                70,
+                119
+              ]
+            ]
+          },
+          "ttt_model": {
+            "accuracy": 0.6981481481481482,
+            "precision": 0.5426829268292683,
+            "recall": 0.9319371727748691,
+            "f1_score": 0.6859344894026975,
+            "zero_day_detection_rate": 0.9342105263157895,
+            "far": 0.4297994269340974,
+            "confusion_matrix": [
+              [
+                199,
+                150
+              ],
+              [
+                13,
+                178
+              ]
+            ]
+          },
+          "improvement": {
+            "accuracy": -0.0033443998407434172,
+            "zdr": 0.15042674253200572,
+            "far": -0.17043343269778616
+          }
+        }
+      ]
+    }
+  }
+}
