@@ -11,7 +11,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_selection import mutual_info_classif
-from imblearn.over_sampling import SMOTE, ADASYN
+from imblearn.over_sampling import SMOTE
 from imblearn.under_sampling import RandomUnderSampler
 import logging
 import os
@@ -459,6 +459,19 @@ class UNSWPreprocessor:
                     logger.info(f"    Applied one-hot encoding to {col} → {dummies.shape[1]} features")
         
         logger.info(f"  Final shape after encoding: {df.shape}")
+        
+        # CRITICAL: Verify no categorical columns remain
+        remaining_categorical = [col for col in df.columns if df[col].dtype == 'object' and col not in ['label', 'binary_label', 'attack_cat']]
+        if remaining_categorical:
+            logger.warning(f"⚠️  WARNING: Categorical columns still present after encoding: {remaining_categorical}")
+            logger.warning(f"   These will cause errors during float conversion. Attempting to remove...")
+            for col in remaining_categorical:
+                if col in ['proto', 'service', 'state']:
+                    logger.error(f"   ❌ CRITICAL: Original categorical column '{col}' was not properly encoded!")
+                else:
+                    logger.warning(f"   Removing unexpected categorical column: {col}")
+                    df = df.drop(columns=[col])
+        
         return df
     
     def step4_categorical_encoding_transform(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -525,6 +538,19 @@ class UNSWPreprocessor:
                         logger.warning(f"    Warning: No training one-hot columns found for {col}, created {dummies.shape[1]} features")
         
         logger.info(f"  Final shape after encoding: {df.shape}")
+        
+        # CRITICAL: Verify no categorical columns remain
+        remaining_categorical = [col for col in df.columns if df[col].dtype == 'object' and col not in ['label', 'binary_label', 'attack_cat']]
+        if remaining_categorical:
+            logger.warning(f"⚠️  WARNING: Categorical columns still present after encoding: {remaining_categorical}")
+            logger.warning(f"   These will cause errors during float conversion. Attempting to remove...")
+            for col in remaining_categorical:
+                if col in ['proto', 'service', 'state']:
+                    logger.error(f"   ❌ CRITICAL: Original categorical column '{col}' was not properly encoded!")
+                else:
+                    logger.warning(f"   Removing unexpected categorical column: {col}")
+                    df = df.drop(columns=[col])
+        
         return df
     
     
@@ -576,15 +602,15 @@ class UNSWPreprocessor:
     def step7_data_rebalancing_complete(self, complete_df: pd.DataFrame) -> pd.DataFrame:
         """
         Step 7: Data Rebalancing for Complete Dataset using 10-class labels
-        
+
         This method addresses the extreme class imbalance in the complete UNSW-NB15 dataset:
-        - ADASYN: Adaptive Synthetic Sampling for better minority class representation
+        - SMOTE: Synthetic Minority Over-sampling Technique for minority class augmentation
         - RandomUnderSampler: Undersamples majority classes to reduce their dominance
         - Dynamic targets: min samples = median class size, max = 2x median
-        
+
         Args:
             complete_df: Complete dataframe with all classes
-            
+
         Returns:
             Rebalanced complete dataframe
         """
@@ -663,44 +689,32 @@ class UNSWPreprocessor:
             action = "oversample" if target_count > current_count else "undersample" if target_count < current_count else "keep"
             logger.info(f"    {attack_name}: {current_count:,} → {target_count:,} ({action})")
         
-        # Step 1: Apply ADASYN for oversampling minority classes only
-        logger.info("  Step 1: Applying ADASYN oversampling...")
-        
+        # Step 1: Apply SMOTE for oversampling minority classes only
+        logger.info("  Step 1: Applying SMOTE oversampling...")
+
         # Create oversampling strategy (only for classes that need oversampling)
         oversample_strategy = {}
         for class_label, count in zip(unique_classes, class_counts):
             target_count = sampling_strategy[class_label]
             if target_count > count:  # Only oversample if target > current
                 oversample_strategy[class_label] = target_count
-        
+
         if oversample_strategy:
-            adasyn = ADASYN(
+            smote = SMOTE(
                 sampling_strategy=oversample_strategy,
                 random_state=42,
-                n_neighbors=5  # ADASYN uses n_neighbors parameter
+                k_neighbors=3
             )
-            
+
             try:
-                X_resampled, y_resampled = adasyn.fit_resample(X, y)
-                logger.info(f"  ADASYN completed: {len(X)} → {len(X_resampled)} samples")
+                X_resampled, y_resampled = smote.fit_resample(X, y)
+                logger.info(f"  SMOTE completed: {len(X)} → {len(X_resampled)} samples")
             except Exception as e:
-                logger.warning(f"  ADASYN failed: {e}")
-                logger.info("  Falling back to SMOTE")
-                # Fallback to SMOTE if ADASYN fails
-                try:
-                    smote = SMOTE(
-                        sampling_strategy=oversample_strategy,
-                        random_state=42,
-                        k_neighbors=3
-                    )
-                    X_resampled, y_resampled = smote.fit_resample(X, y)
-                    logger.info(f"  SMOTE fallback completed: {len(X)} → {len(X_resampled)} samples")
-                except Exception as e2:
-                    logger.warning(f"  SMOTE fallback also failed: {e2}")
-                    logger.info("  Using original data")
-                    X_resampled, y_resampled = X, y
+                logger.warning(f"  SMOTE failed: {e}")
+                logger.info("  Using original data without oversampling")
+                X_resampled, y_resampled = X, y
         else:
-            logger.info("  No classes need oversampling, skipping ADASYN")
+            logger.info("  No classes need oversampling, skipping SMOTE")
             X_resampled, y_resampled = X, y
         
         # Step 2: Apply RandomUnderSampler for undersampling majority classes
@@ -1080,7 +1094,32 @@ class UNSWPreprocessor:
         from sklearn.model_selection import train_test_split
         
         # Prepare features and labels for stratified split
+        # CRITICAL: Exclude ALL non-numeric columns (categorical should already be encoded, but double-check)
         feature_cols = [col for col in train_df.columns if col not in ['label', 'binary_label', 'attack_cat']]
+        
+        # CRITICAL FIX: Ensure all feature columns are numeric (categorical columns should be encoded by now)
+        # Check for any remaining non-numeric columns and log warning
+        non_numeric_cols = []
+        for col in feature_cols:
+            if train_df[col].dtype == 'object':
+                non_numeric_cols.append(col)
+        
+        if non_numeric_cols:
+            logger.error(f"❌ CRITICAL: Found non-numeric (categorical) columns in features: {non_numeric_cols}")
+            logger.error(f"   These should have been encoded in step4_categorical_encoding!")
+            logger.error(f"   Removing these columns to prevent conversion errors...")
+            feature_cols = [col for col in feature_cols if col not in non_numeric_cols]
+        
+        # Verify all feature columns are numeric before conversion
+        for col in feature_cols:
+            if train_df[col].dtype == 'object':
+                logger.error(f"❌ Column '{col}' is still object type! Attempting to convert to numeric...")
+                # Try to convert to numeric, coercing errors to NaN
+                train_df[col] = pd.to_numeric(train_df[col], errors='coerce')
+                # Fill NaN with 0
+                train_df[col] = train_df[col].fillna(0)
+                logger.warning(f"   Converted '{col}' to numeric (filled NaN with 0)")
+        
         X = train_df[feature_cols].values
         
         # CRITICAL FIX: Ensure label column contains MULTICLASS labels (0-9), not binary (0,1)
@@ -1220,6 +1259,36 @@ class UNSWPreprocessor:
         
         # Convert to PyTorch tensors
         feature_cols = [col for col in train_scaled.columns if col not in ['label', 'binary_label', 'attack_cat']]
+        
+        # CRITICAL FIX: Ensure all feature columns are numeric before conversion
+        # Check for any remaining non-numeric (categorical) columns
+        non_numeric_cols = []
+        for col in feature_cols:
+            if train_scaled[col].dtype == 'object':
+                non_numeric_cols.append(col)
+        
+        if non_numeric_cols:
+            logger.error(f"❌ CRITICAL: Found non-numeric (categorical) columns in features: {non_numeric_cols}")
+            logger.error(f"   These should have been encoded in step4_categorical_encoding!")
+            logger.error(f"   Attempting to convert to numeric or remove...")
+            for col in non_numeric_cols:
+                # Try to convert to numeric, coercing errors to NaN
+                train_scaled[col] = pd.to_numeric(train_scaled[col], errors='coerce')
+                val_scaled[col] = pd.to_numeric(val_scaled[col], errors='coerce')
+                test_scaled[col] = pd.to_numeric(test_scaled[col], errors='coerce')
+                # Fill NaN with 0
+                train_scaled[col] = train_scaled[col].fillna(0)
+                val_scaled[col] = val_scaled[col].fillna(0)
+                test_scaled[col] = test_scaled[col].fillna(0)
+                logger.warning(f"   Converted '{col}' to numeric (filled NaN with 0)")
+        
+        # Verify all columns are numeric
+        for col in feature_cols:
+            if train_scaled[col].dtype == 'object':
+                logger.error(f"❌ Column '{col}' is still object type after conversion attempt!")
+                # Remove from feature_cols as last resort
+                feature_cols.remove(col)
+                logger.warning(f"   Removed '{col}' from feature columns")
         
         X_train = torch.FloatTensor(train_scaled[feature_cols].values)
         y_train = torch.LongTensor(train_scaled['binary_label'].values)  # Use binary labels (0=Normal, 1=Attack)
