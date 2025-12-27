@@ -1,0 +1,42 @@
+{
+  "attack_name": "Backdoor",
+  "timestamp": "2025-12-19T18:02:58.689759",
+  "base_accuracy": 0.6839080452919006,
+  "base_precision": 0.8045977011494253,
+  "base_recall": 0.6481481481481481,
+  "base_f1_score": 0.717948717948718,
+  "base_zdr": 0.9318181818181818,
+  "base_far": 0.25757575757575757,
+  "base_confusion_matrix": [
+    [
+      49,
+      17
+    ],
+    [
+      38,
+      70
+    ]
+  ],
+  "ttt_accuracy": 0.7627118644067796,
+  "ttt_precision": 0.7804878048780488,
+  "ttt_recall": 0.8648648648648649,
+  "ttt_f1_score": 0.8205128205128205,
+  "ttt_zdr": 0.9565217391304348,
+  "ttt_far": 0.0,
+  "ttt_confusion_matrix": [
+    [
+      38,
+      28
+    ],
+    [
+      15,
+      93
+    ]
+  ],
+  "accuracy_improvement": 0.07880381911487899,
+  "zdr_improvement": 0.024703557312253044,
+  "far_improvement": 0.25757575757575757,
+  "zero_day_samples": 46,
+  "non_zero_day_samples": 138,
+  "total_samples": 174
+}

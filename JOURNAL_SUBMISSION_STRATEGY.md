@@ -418,3 +418,5 @@ Top-tier journals **DO accept papers without beating SOTA**, but you need to mak
 **Top journals accept papers for contribution, not just performance!**
 
 Focus on **framing your contribution** well, and you have a good chance of acceptance! 🎓
+
+

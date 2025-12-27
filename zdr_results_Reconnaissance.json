@@ -1,0 +1,42 @@
+{
+  "attack_name": "Reconnaissance",
+  "timestamp": "2025-12-19T18:06:04.936932",
+  "base_accuracy": 0.5376344323158264,
+  "base_precision": 0.7023809523809523,
+  "base_recall": 0.3619631901840491,
+  "base_f1_score": 0.4777327935222672,
+  "base_zdr": 0.38349514563106796,
+  "base_far": 0.21551724137931033,
+  "base_confusion_matrix": [
+    [
+      273,
+      75
+    ],
+    [
+      312,
+      177
+    ]
+  ],
+  "ttt_accuracy": 0.729794933655006,
+  "ttt_precision": 0.7166947723440135,
+  "ttt_recall": 0.8835758835758836,
+  "ttt_f1_score": 0.7914338919925512,
+  "ttt_zdr": 0.8944723618090452,
+  "ttt_far": 0.0,
+  "ttt_confusion_matrix": [
+    [
+      180,
+      168
+    ],
+    [
+      56,
+      433
+    ]
+  ],
+  "accuracy_improvement": 0.1921605013391796,
+  "zdr_improvement": 0.5109772161779773,
+  "far_improvement": 0.21551724137931033,
+  "zero_day_samples": 221,
+  "non_zero_day_samples": 663,
+  "total_samples": 837
+}

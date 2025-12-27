@@ -742,6 +742,7 @@ class CICIDSPreprocessor(UNSWPreprocessor):
             'y_test_multiclass': y_test_multiclass,
             'test_attack_cat': test_attack_cat,
             'zero_day_indices': zero_day_indices,
+            'zero_day_attack': zero_day_attack,  # CRITICAL: Store zero-day attack type for later use
             'feature_names': feature_cols,
             'quality_reports': {'train': train_quality, 'test': test_quality},
             'attack_types': self.attack_types,

@@ -1,0 +1,42 @@
+{
+  "attack_name": "Generic",
+  "timestamp": "2025-12-19T18:05:14.281681",
+  "base_accuracy": 0.6950517892837524,
+  "base_precision": 0.7557894736842106,
+  "base_recall": 0.7066929133858267,
+  "base_f1_score": 0.7304170905391658,
+  "base_zdr": 0.5714285714285714,
+  "base_far": 0.32132963988919666,
+  "base_confusion_matrix": [
+    [
+      245,
+      116
+    ],
+    [
+      149,
+      359
+    ]
+  ],
+  "ttt_accuracy": 0.7052023121387283,
+  "ttt_precision": 0.7267857142857143,
+  "ttt_recall": 0.7996070726915521,
+  "ttt_f1_score": 0.7614593077642656,
+  "ttt_zdr": 0.5488372093023256,
+  "ttt_far": 0.0,
+  "ttt_confusion_matrix": [
+    [
+      203,
+      158
+    ],
+    [
+      99,
+      409
+    ]
+  ],
+  "accuracy_improvement": 0.010150522854975863,
+  "zdr_improvement": -0.022591362126245795,
+  "far_improvement": 0.32132963988919666,
+  "zero_day_samples": 221,
+  "non_zero_day_samples": 663,
+  "total_samples": 869
+}

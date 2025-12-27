@@ -302,6 +302,10 @@ class CentralizedCoordinator:
         pseudo_threshold = getattr(ttt_config, 'pseudo_threshold', 0.85)
         entropy_weight = getattr(ttt_config, 'entropy_weight', 1.0)
         pseudo_weight = getattr(ttt_config, 'pseudo_weight', 1.5)
+
+        # FAR penalty parameters (to reduce false positives while protecting ZDR)
+        far_penalty_weight = getattr(ttt_config, 'ttt_far_penalty_weight', 0.0)
+        far_confidence_threshold = getattr(ttt_config, 'ttt_far_confidence_threshold', 0.7)
         
         # ========================================
         # CRITICAL FIX: TENT-Style Layer Selection
@@ -373,6 +377,8 @@ class CentralizedCoordinator:
             'entropy_losses': [],
             'pseudo_losses': [],
             'l2_reg_losses': [],  # Track L2 regularization loss
+            'far_penalty_losses': [],  # Track FAR penalty loss
+            'confidence_reg_losses': [],  # NEW: Track confidence regularization loss (key FAR fix)
             'attack_vs_normal_data': []  # NEW: Store predictions for attack vs normal scatter plot
         }
         
@@ -505,16 +511,90 @@ class CentralizedCoordinator:
             if use_pseudo_labels:
                 confidences, pseudo_labels = probs.max(dim=1)
                 confident_mask = confidences > pseudo_threshold
-                
+
                 if confident_mask.sum() > 0:
                     pseudo_loss = F.cross_entropy(
                         logits[confident_mask],
                         pseudo_labels[confident_mask],
                         reduction='mean'
                     )
-            
-            # Total loss
-            total_loss = entropy_weight * entropy_loss + pseudo_weight * pseudo_loss
+
+            # =====================================================================
+            # CONFIDENCE REGULARIZATION: Prevent Overconfidence (NEW - Key Fix for FAR)
+            # =====================================================================
+            # Problem: Entropy minimization pushes ALL predictions to extreme confidence
+            # This causes high FAR because even wrong predictions are confident
+            #
+            # Solution: Regularize confidence to target level (e.g., 0.75 instead of 0.99)
+            # - Allows model to be confident but not OVER-confident
+            # - Reduces false positives from overconfident wrong predictions
+            # - Maintains ZDR because correct attack predictions still confident
+
+            confidence_reg_weight = getattr(ttt_config, 'ttt_confidence_reg_weight', 0.0)
+            confidence_reg_loss = torch.tensor(0.0, device=logits.device)
+
+            if confidence_reg_weight > 0:
+                # Get max probability (confidence) for each sample
+                max_probs = probs.max(dim=1)[0]
+
+                # Target confidence (0.75 = confident but not extreme)
+                target_confidence = getattr(ttt_config, 'ttt_target_confidence', 0.75)
+
+                # Penalize EXCESS confidence above target
+                # Only penalize if confidence > target (allow lower confidence)
+                excess_confidence = torch.clamp(max_probs - target_confidence, min=0.0)
+                confidence_reg_loss = (excess_confidence ** 2).mean()
+
+                # Log statistics
+                if step % 20 == 0:
+                    avg_conf = max_probs.mean().item()
+                    pct_overconfident = (max_probs > target_confidence).float().mean().item() * 100
+                    logger.debug(f"   Step {step}: Avg conf={avg_conf:.3f}, target={target_confidence:.3f}, "
+                               f"{pct_overconfident:.1f}% samples exceed target")
+
+            # =====================================================================
+            # FAR PENALTY: Reduce False Positives (Gentle, protects ZDR)
+            # =====================================================================
+            # Gently penalize high-confidence "attack" predictions to reduce FAR
+            # while preserving ZDR (high recall) and F1-score
+
+            far_penalty_loss = torch.tensor(0.0, device=logits.device)
+
+            if far_penalty_weight > 0:
+                # Assuming binary classification: class 0 = normal, class 1 = attack
+                # For multi-class: sum probabilities of attack classes
+                if probs.shape[1] == 2:
+                    # Binary case
+                    attack_probs = probs[:, 1]  # Probability of "attack"
+                else:
+                    # Multi-class case: Sum all non-normal class probabilities
+                    # Assuming class 0 is normal, all others are attacks
+                    attack_probs = 1.0 - probs[:, 0]
+
+                # Only penalize HIGH-CONFIDENCE attack predictions
+                # This protects uncertain predictions and maintains exploration
+                confident_attack_mask = attack_probs > far_confidence_threshold
+
+                # Soft penalty: Penalize EXCESS confidence above threshold
+                # This is gradual, not binary - model can still predict attacks
+                excess_confidence = torch.clamp(attack_probs - far_confidence_threshold, min=0.0)
+
+                # Compute mean penalty over confident attack predictions
+                if confident_attack_mask.sum() > 0:
+                    far_penalty_loss = excess_confidence[confident_attack_mask].mean()
+
+                    # Log FAR penalty statistics (only occasionally to avoid spam)
+                    if step % 20 == 0:
+                        n_confident = confident_attack_mask.sum().item()
+                        pct_confident = 100.0 * n_confident / len(attack_probs)
+                        avg_excess = excess_confidence[confident_attack_mask].mean().item()
+                        logger.debug(f"   Step {step}: FAR penalty on {n_confident}/{len(attack_probs)} samples ({pct_confident:.1f}%), avg excess conf: {avg_excess:.3f}")
+
+            # Total loss with confidence regularization
+            total_loss = (entropy_weight * entropy_loss +
+                         pseudo_weight * pseudo_loss +
+                         far_penalty_weight * far_penalty_loss +
+                         confidence_reg_weight * confidence_reg_loss)
             
             # ADD L2 REGULARIZATION: penalize deviation from original parameters
             # This prevents excessive parameter drift and improves generalization (+2-4% improvement)
@@ -568,6 +648,8 @@ class CentralizedCoordinator:
             adaptation_data['entropy_losses'].append(entropy_loss.item())
             adaptation_data['pseudo_losses'].append(pseudo_loss.item())
             adaptation_data['l2_reg_losses'].append(reg_loss.item())
+            adaptation_data['far_penalty_losses'].append(far_penalty_loss.item())
+            adaptation_data['confidence_reg_losses'].append(confidence_reg_loss.item())  # NEW: Track confidence regularization
             
             # Store predictions for attack vs normal scatter plot (at key steps: beginning, middle, end)
             # This helps visualize if TTT successfully separates attacks from normal samples
@@ -605,7 +687,8 @@ class CentralizedCoordinator:
             if (step + 1) % 20 == 0:
                 logger.info(f"  TTT Step {step + 1}/{ttt_steps}: Loss={total_loss.item():.4f}, "
                           f"Entropy={entropy_loss.item():.4f}, Pseudo={pseudo_loss.item():.4f}, "
-                          f"L2_Reg={reg_loss.item():.4f}")
+                          f"L2_Reg={reg_loss.item():.4f}, FAR_Penalty={far_penalty_loss.item():.4f}, "
+                          f"ConfReg={confidence_reg_loss.item():.4f}")
         
         # Set model back to evaluation mode
         if hasattr(adapted_model, 'set_ttt_mode'):
@@ -701,10 +784,25 @@ class CentralizedCoordinator:
                 
                 # Handle different output shapes
                 if logits.dim() > 1:
-                    predictions = torch.argmax(logits, dim=1)
+                    # Get probabilities for adaptive threshold
+                    probs = torch.softmax(logits, dim=1)
+
+                    # Use adaptive decision threshold to reduce FAR
+                    attack_threshold = getattr(config, 'ttt_attack_decision_threshold', 0.5) if config else 0.5
+
+                    if probs.shape[1] == 2:
+                        # Binary classification: use class 1 (attack) probability
+                        attack_probs = probs[:, 1]
+                    else:
+                        # Multi-class: sum all non-normal class probabilities
+                        attack_probs = 1.0 - probs[:, 0]
+
+                    # Predict attack if probability exceeds threshold
+                    predictions = (attack_probs > attack_threshold).long()
                 else:
                     # Binary classification with single output
-                    predictions = (logits > 0.5).long()
+                    attack_threshold = getattr(config, 'ttt_attack_decision_threshold', 0.5) if config else 0.5
+                    predictions = (logits > attack_threshold).long()
             
             # Calculate metrics
             correct = (predictions == query_y).sum().item()

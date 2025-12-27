@@ -1,0 +1,42 @@
+{
+  "attack_name": "Analysis",
+  "timestamp": "2025-12-19T18:02:14.789441",
+  "base_accuracy": 0.6534653306007385,
+  "base_precision": 0.7235772357723578,
+  "base_recall": 0.712,
+  "base_f1_score": 0.717741935483871,
+  "base_zdr": 0.9,
+  "base_far": 0.44155844155844154,
+  "base_confusion_matrix": [
+    [
+      43,
+      34
+    ],
+    [
+      36,
+      89
+    ]
+  ],
+  "ttt_accuracy": 0.6780487804878049,
+  "ttt_precision": 0.7142857142857143,
+  "ttt_recall": 0.7936507936507936,
+  "ttt_f1_score": 0.7518796992481203,
+  "ttt_zdr": 0.9607843137254902,
+  "ttt_far": 0.0,
+  "ttt_confusion_matrix": [
+    [
+      39,
+      38
+    ],
+    [
+      26,
+      99
+    ]
+  ],
+  "accuracy_improvement": 0.0245834498870664,
+  "zdr_improvement": 0.0607843137254902,
+  "far_improvement": 0.44155844155844154,
+  "zero_day_samples": 52,
+  "non_zero_day_samples": 156,
+  "total_samples": 202
+}

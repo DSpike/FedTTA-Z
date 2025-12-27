@@ -1,18 +1,18 @@
 {
   "embedding_shapes": {
     "test": [
-      224,
-      128
+      566,
+      256
     ],
     "support": [
-      758,
-      128
+      998,
+      256
     ]
   },
   "prototypes": {
     "shape": [
       2,
-      128
+      256
     ],
     "unique_labels": [
       

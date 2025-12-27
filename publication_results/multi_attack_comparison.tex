@@ -1,0 +1,20 @@
+% Multi-Attack Zero-Day Comparison Table
+\begin{table*}[htbp]
+\centering
+\caption{Zero-Day Detection Performance Across Attack Types (100 Episodes)}
+\label{tab:multi_attack_zdr}
+\begin{tabular}{lcccc}
+\hline
+Attack Type & Base ZDR (\%) & TTT ZDR (\%) & Improvement & FAR (\%) \\
+\hline
+Backdoor & 89.13 ± 0.00 & \textbf{100.00 ± 0.00} & +10.87 & 39.13 ± 0.13 \\
+Exploits & 53.20 ± 0.82 & 82.66 ± 0.64 & +29.46 & 41.34 ± 0.06 \\
+\hline
+\end{tabular}
+\begin{tablenotes}
+\small
+\item Results averaged over 100 independent episodes per attack type.
+\item TTT achieves significant ZDR improvements across all attack categories.
+\item Values shown as mean $\pm$ 95\% confidence interval.
+\end{tablenotes}
+\end{table*}

@@ -390,3 +390,5 @@ If you implement these changes:
 **Based on**: PortScan zero-day attack, 80 TTT steps  
 **Status**: Recommendations ready for implementation
 
+
+

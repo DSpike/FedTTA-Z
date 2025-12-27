@@ -260,3 +260,5 @@ weighted_entropy_loss = (entropy * zero_day_weights).mean()
 2. **Fix model consistency** - use same model for base and TTT predictions
 3. **Implement zero-day weighted TTT** to prioritize zero-day samples
 4. **Re-run evaluation** and verify TTT improves zero-day detection
+
+

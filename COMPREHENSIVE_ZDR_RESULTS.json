@@ -1,0 +1,397 @@
+{
+  "metadata": {
+    "total_experiments": 9,
+    "successful_experiments": 9,
+    "failed_experiments": 0,
+    "generated_at": "2025-12-19T18:07:44.591540"
+  },
+  "averages": {
+    "base_zdr": 0.5415247812824366,
+    "ttt_zdr": 0.841124373821225,
+    "zdr_improvement": 0.29959959253878843,
+    "base_accuracy": 0.6466050744056702,
+    "ttt_accuracy": 0.7354737946088625,
+    "base_far": 0.25803737997944487,
+    "ttt_far": 0.0
+  },
+  "per_attack_results": {
+    "Fuzzers": {
+      "attack_name": "Fuzzers",
+      "timestamp": "2025-12-19T18:01:30.745680",
+      "base_accuracy": 0.5609756112098694,
+      "base_precision": 0.8089430894308943,
+      "base_recall": 0.3754716981132076,
+      "base_f1_score": 0.5128865979381443,
+      "base_zdr": 0.2930232558139535,
+      "base_far": 0.1419939577039275,
+      "base_confusion_matrix": [
+        [
+          284,
+          47
+        ],
+        [
+          331,
+          199
+        ]
+      ],
+      "ttt_accuracy": 0.780373831775701,
+      "ttt_precision": 0.7697160883280757,
+      "ttt_recall": 0.9207547169811321,
+      "ttt_f1_score": 0.8384879725085911,
+      "ttt_zdr": 0.8767772511848341,
+      "ttt_far": 0.0,
+      "ttt_confusion_matrix": [
+        [
+          180,
+          151
+        ],
+        [
+          42,
+          488
+        ]
+      ],
+      "accuracy_improvement": 0.21939822056583158,
+      "zdr_improvement": 0.5837539953708806,
+      "far_improvement": 0.1419939577039275,
+      "zero_day_samples": 221,
+      "non_zero_day_samples": 663,
+      "total_samples": 861
+    },
+    "Analysis": {
+      "attack_name": "Analysis",
+      "timestamp": "2025-12-19T18:02:14.789441",
+      "base_accuracy": 0.6534653306007385,
+      "base_precision": 0.7235772357723578,
+      "base_recall": 0.712,
+      "base_f1_score": 0.717741935483871,
+      "base_zdr": 0.9,
+      "base_far": 0.44155844155844154,
+      "base_confusion_matrix": [
+        [
+          43,
+          34
+        ],
+        [
+          36,
+          89
+        ]
+      ],
+      "ttt_accuracy": 0.6780487804878049,
+      "ttt_precision": 0.7142857142857143,
+      "ttt_recall": 0.7936507936507936,
+      "ttt_f1_score": 0.7518796992481203,
+      "ttt_zdr": 0.9607843137254902,
+      "ttt_far": 0.0,
+      "ttt_confusion_matrix": [
+        [
+          39,
+          38
+        ],
+        [
+          26,
+          99
+        ]
+      ],
+      "accuracy_improvement": 0.0245834498870664,
+      "zdr_improvement": 0.0607843137254902,
+      "far_improvement": 0.44155844155844154,
+      "zero_day_samples": 52,
+      "non_zero_day_samples": 156,
+      "total_samples": 202
+    },
+    "Backdoor": {
+      "attack_name": "Backdoor",
+      "timestamp": "2025-12-19T18:02:58.689759",
+      "base_accuracy": 0.6839080452919006,
+      "base_precision": 0.8045977011494253,
+      "base_recall": 0.6481481481481481,
+      "base_f1_score": 0.717948717948718,
+      "base_zdr": 0.9318181818181818,
+      "base_far": 0.25757575757575757,
+      "base_confusion_matrix": [
+        [
+          49,
+          17
+        ],
+        [
+          38,
+          70
+        ]
+      ],
+      "ttt_accuracy": 0.7627118644067796,
+      "ttt_precision": 0.7804878048780488,
+      "ttt_recall": 0.8648648648648649,
+      "ttt_f1_score": 0.8205128205128205,
+      "ttt_zdr": 0.9565217391304348,
+      "ttt_far": 0.0,
+      "ttt_confusion_matrix": [
+        [
+          38,
+          28
+        ],
+        [
+          15,
+          93
+        ]
+      ],
+      "accuracy_improvement": 0.07880381911487899,
+      "zdr_improvement": 0.024703557312253044,
+      "far_improvement": 0.25757575757575757,
+      "zero_day_samples": 46,
+      "non_zero_day_samples": 138,
+      "total_samples": 174
+    },
+    "DoS": {
+      "attack_name": "DoS",
+      "timestamp": "2025-12-19T18:03:43.245945",
+      "base_accuracy": 0.7153109908103943,
+      "base_precision": 0.789838337182448,
+      "base_recall": 0.6993865030674846,
+      "base_f1_score": 0.7418655097613883,
+      "base_zdr": 0.8133971291866029,
+      "base_far": 0.2622478386167147,
+      "base_confusion_matrix": [
+        [
+          256,
+          91
+        ],
+        [
+          147,
+          342
+        ]
+      ],
+      "ttt_accuracy": 0.7541176470588236,
+      "ttt_precision": 0.75,
+      "ttt_recall": 0.8717434869739479,
+      "ttt_f1_score": 0.8063021316033364,
+      "ttt_zdr": 0.9065420560747663,
+      "ttt_far": 0.0,
+      "ttt_confusion_matrix": [
+        [
+          206,
+          141
+        ],
+        [
+          64,
+          425
+        ]
+      ],
+      "accuracy_improvement": 0.03880665624842927,
+      "zdr_improvement": 0.09314492688816345,
+      "far_improvement": 0.2622478386167147,
+      "zero_day_samples": 221,
+      "non_zero_day_samples": 663,
+      "total_samples": 836
+    },
+    "Exploits": {
+      "attack_name": "Exploits",
+      "timestamp": "2025-12-19T18:04:27.824432",
+      "base_accuracy": 0.6397660970687866,
+      "base_precision": 0.7609254498714653,
+      "base_recall": 0.5792563600782779,
+      "base_f1_score": 0.6577777777777778,
+      "base_zdr": 0.4205607476635514,
+      "base_far": 0.2703488372093023,
+      "base_confusion_matrix": [
+        [
+          251,
+          93
+        ],
+        [
+          215,
+          296
+        ]
+      ],
+      "ttt_accuracy": 0.7270560190703218,
+      "ttt_precision": 0.7486136783733827,
+      "ttt_recall": 0.8132530120481928,
+      "ttt_f1_score": 0.7795957651588066,
+      "ttt_zdr": 0.6345177664974619,
+      "ttt_far": 0.0,
+      "ttt_confusion_matrix": [
+        [
+          204,
+          140
+        ],
+        [
+          93,
+          418
+        ]
+      ],
+      "accuracy_improvement": 0.08728992200153518,
+      "zdr_improvement": 0.21395701883391055,
+      "far_improvement": 0.2703488372093023,
+      "zero_day_samples": 221,
+      "non_zero_day_samples": 663,
+      "total_samples": 855
+    },
+    "Generic": {
+      "attack_name": "Generic",
+      "timestamp": "2025-12-19T18:05:14.281681",
+      "base_accuracy": 0.6950517892837524,
+      "base_precision": 0.7557894736842106,
+      "base_recall": 0.7066929133858267,
+      "base_f1_score": 0.7304170905391658,
+      "base_zdr": 0.5714285714285714,
+      "base_far": 0.32132963988919666,
+      "base_confusion_matrix": [
+        [
+          245,
+          116
+        ],
+        [
+          149,
+          359
+        ]
+      ],
+      "ttt_accuracy": 0.7052023121387283,
+      "ttt_precision": 0.7267857142857143,
+      "ttt_recall": 0.7996070726915521,
+      "ttt_f1_score": 0.7614593077642656,
+      "ttt_zdr": 0.5488372093023256,
+      "ttt_far": 0.0,
+      "ttt_confusion_matrix": [
+        [
+          203,
+          158
+        ],
+        [
+          99,
+          409
+        ]
+      ],
+      "accuracy_improvement": 0.010150522854975863,
+      "zdr_improvement": -0.022591362126245795,
+      "far_improvement": 0.32132963988919666,
+      "zero_day_samples": 221,
+      "non_zero_day_samples": 663,
+      "total_samples": 869
+    },
+    "Reconnaissance": {
+      "attack_name": "Reconnaissance",
+      "timestamp": "2025-12-19T18:06:04.936932",
+      "base_accuracy": 0.5376344323158264,
+      "base_precision": 0.7023809523809523,
+      "base_recall": 0.3619631901840491,
+      "base_f1_score": 0.4777327935222672,
+      "base_zdr": 0.38349514563106796,
+      "base_far": 0.21551724137931033,
+      "base_confusion_matrix": [
+        [
+          273,
+          75
+        ],
+        [
+          312,
+          177
+        ]
+      ],
+      "ttt_accuracy": 0.729794933655006,
+      "ttt_precision": 0.7166947723440135,
+      "ttt_recall": 0.8835758835758836,
+      "ttt_f1_score": 0.7914338919925512,
+      "ttt_zdr": 0.8944723618090452,
+      "ttt_far": 0.0,
+      "ttt_confusion_matrix": [
+        [
+          180,
+          168
+        ],
+        [
+          56,
+          433
+        ]
+      ],
+      "accuracy_improvement": 0.1921605013391796,
+      "zdr_improvement": 0.5109772161779773,
+      "far_improvement": 0.21551724137931033,
+      "zero_day_samples": 221,
+      "non_zero_day_samples": 663,
+      "total_samples": 837
+    },
+    "Shellcode": {
+      "attack_name": "Shellcode",
+      "timestamp": "2025-12-19T18:06:54.633179",
+      "base_accuracy": 0.6666666865348816,
+      "base_precision": 0.7666666666666667,
+      "base_recall": 0.7076923076923077,
+      "base_f1_score": 0.736,
+      "base_zdr": 0.56,
+      "base_far": 0.4117647058823529,
+      "base_confusion_matrix": [
+        [
+          20,
+          14
+        ],
+        [
+          19,
+          46
+        ]
+      ],
+      "ttt_accuracy": 0.7319587628865979,
+      "ttt_precision": 0.7567567567567568,
+      "ttt_recall": 0.875,
+      "ttt_f1_score": 0.8115942028985508,
+      "ttt_zdr": 0.7916666666666666,
+      "ttt_far": 0.0,
+      "ttt_confusion_matrix": [
+        [
+          15,
+          19
+        ],
+        [
+          8,
+          57
+        ]
+      ],
+      "accuracy_improvement": 0.0652920763517163,
+      "zdr_improvement": 0.23166666666666658,
+      "far_improvement": 0.4117647058823529,
+      "zero_day_samples": 25,
+      "non_zero_day_samples": 75,
+      "total_samples": 99
+    },
+    "Worms": {
+      "attack_name": "Worms",
+      "timestamp": "2025-12-19T18:07:44.579668",
+      "base_accuracy": 0.6666666865348816,
+      "base_precision": 1.0,
+      "base_recall": 0.5,
+      "base_f1_score": 0.6666666666666666,
+      "base_zdr": 0.0,
+      "base_far": 0.0,
+      "base_confusion_matrix": [
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "ttt_accuracy": 0.75,
+      "ttt_precision": 1.0,
+      "ttt_recall": 0.6666666666666666,
+      "ttt_f1_score": 0.8,
+      "ttt_zdr": 1.0,
+      "ttt_far": 0.0,
+      "ttt_confusion_matrix": [
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "accuracy_improvement": 0.08333331346511841,
+      "zdr_improvement": 1.0,
+      "far_improvement": 0.0,
+      "zero_day_samples": 1,
+      "non_zero_day_samples": 3,
+      "total_samples": 3
+    }
+  }
+}

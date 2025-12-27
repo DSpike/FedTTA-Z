@@ -280,3 +280,5 @@ adapt_bn_for_subset(adapted_model, non_zero_day_query_x, subset_name='non_zero_d
 3. **Low Priority:** Solution 3 (Zero-Day Specific Loss) - Most flexible but requires tuning
 4. **Research:** Solution 4 (Separate BatchNorm) - Most complex, requires architecture changes
 
+
+

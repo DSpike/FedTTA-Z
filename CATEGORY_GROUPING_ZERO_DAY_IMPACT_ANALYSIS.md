@@ -404,3 +404,5 @@ Grouped: Model learns generic "DoS" pattern
 **Document Created**: Analysis of category grouping impact on zero-day detection  
 **Recommendation**: Disable grouping for better zero-day detection  
 **Status**: Ready for testing
+
+

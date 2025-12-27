@@ -1,0 +1,135 @@
+{
+  "current_threshold": 0.85,
+  "current_far": 0.395,
+  "current_zdr": 0.952,
+  "target_far": 0.2,
+  "target_zdr": 0.9,
+  "analysis_results": [
+    {
+      "threshold": 0.5,
+      "far": 0.698,
+      "zdr": 1.0
+    },
+    {
+      "threshold": 0.52,
+      "far": 0.662,
+      "zdr": 1.0
+    },
+    {
+      "threshold": 0.54,
+      "far": 0.621,
+      "zdr": 1.0
+    },
+    {
+      "threshold": 0.56,
+      "far": 0.59,
+      "zdr": 1.0
+    },
+    {
+      "threshold": 0.5800000000000001,
+      "far": 0.552,
+      "zdr": 0.999
+    },
+    {
+      "threshold": 0.6000000000000001,
+      "far": 0.513,
+      "zdr": 0.997
+    },
+    {
+      "threshold": 0.6200000000000001,
+      "far": 0.483,
+      "zdr": 0.991
+    },
+    {
+      "threshold": 0.6400000000000001,
+      "far": 0.447,
+      "zdr": 0.99
+    },
+    {
+      "threshold": 0.6600000000000001,
+      "far": 0.416,
+      "zdr": 0.984
+    },
+    {
+      "threshold": 0.6800000000000002,
+      "far": 0.375,
+      "zdr": 0.976
+    },
+    {
+      "threshold": 0.7000000000000002,
+      "far": 0.341,
+      "zdr": 0.968
+    },
+    {
+      "threshold": 0.7200000000000002,
+      "far": 0.306,
+      "zdr": 0.95
+    },
+    {
+      "threshold": 0.7400000000000002,
+      "far": 0.273,
+      "zdr": 0.935
+    },
+    {
+      "threshold": 0.7600000000000002,
+      "far": 0.23,
+      "zdr": 0.921
+    },
+    {
+      "threshold": 0.7800000000000002,
+      "far": 0.184,
+      "zdr": 0.9
+    },
+    {
+      "threshold": 0.8000000000000003,
+      "far": 0.162,
+      "zdr": 0.859
+    },
+    {
+      "threshold": 0.8200000000000003,
+      "far": 0.132,
+      "zdr": 0.802
+    },
+    {
+      "threshold": 0.8400000000000003,
+      "far": 0.11,
+      "zdr": 0.75
+    },
+    {
+      "threshold": 0.8600000000000003,
+      "far": 0.087,
+      "zdr": 0.672
+    },
+    {
+      "threshold": 0.8800000000000003,
+      "far": 0.063,
+      "zdr": 0.572
+    },
+    {
+      "threshold": 0.9000000000000004,
+      "far": 0.047,
+      "zdr": 0.476
+    },
+    {
+      "threshold": 0.9200000000000004,
+      "far": 0.029,
+      "zdr": 0.372
+    },
+    {
+      "threshold": 0.9400000000000004,
+      "far": 0.014,
+      "zdr": 0.247
+    },
+    {
+      "threshold": 0.9600000000000004,
+      "far": 0.007,
+      "zdr": 0.132
+    }
+  ],
+  "recommendation": {
+    "threshold": 0.7800000000000002,
+    "expected_far": 0.184,
+    "expected_zdr": 0.9,
+    "action": "Update config.py: ttt_attack_decision_threshold = 0.78"
+  }
+}

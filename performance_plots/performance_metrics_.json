@@ -3,44 +3,44 @@
   "round_results": [],
   "evaluation_results": {
     "base_model": {
-      "accuracy": 0.5959596037864685,
-      "precision": 0.7659574468085106,
-      "recall": 0.5538461538461539,
-      "f1_score": 0.6428571428571429,
-      "zero_day_detection_rate": 0.48,
-      "far": 0.3235294117647059,
+      "accuracy": 0.6980462074279785,
+      "precision": 0.5594713656387665,
+      "recall": 0.6446700507614214,
+      "f1_score": 0.5990566037735849,
+      "zero_day_detection_rate": 0.43373493975903615,
+      "far": 0.273224043715847,
       "confusion_matrix": [
         [
-          23,
-          11
+          266,
+          100
         ],
         [
-          29,
-          36
+          70,
+          127
         ]
       ],
-      "auc_pr": 0.7799328131251206,
-      "roc_auc": 0.7127896613190731
+      "auc_pr": 0.5522996733176527,
+      "roc_auc": 0.7723702185792349
     },
     "adapted_model": {
-      "accuracy": 0.7070707070707071,
-      "precision": 0.7571428571428571,
-      "recall": 0.8153846153846154,
-      "f1_score": 0.7851851851851852,
-      "zero_day_detection_rate": 0.68,
-      "far": 0.5,
+      "accuracy": 0.6798561151079137,
+      "precision": 0.5250836120401338,
+      "recall": 0.8134715025906736,
+      "f1_score": 0.6382113821138211,
+      "zero_day_detection_rate": 0.5822784810126582,
+      "far": 0.39118457300275483,
       "confusion_matrix": [
         [
-          17,
-          17
+          221,
+          142
         ],
         [
-          12,
-          53
+          36,
+          157
         ]
       ],
-      "auc_pr": 0.7976243520035218,
-      "roc_auc": 0.732843137254902
+      "auc_pr": 0.46616043495059317,
+      "roc_auc": 0.7018306010928962
     }
   },
   "final_evaluation_results": {},
@@ -49,5 +49,5 @@
   "incentive_history": [],
   "incentive_summary": {},
   "timestamp": "",
-  "generated_at": "2025-12-26T20:18:52.438042"
+  "generated_at": "2025-12-27T14:39:56.230905"
 }

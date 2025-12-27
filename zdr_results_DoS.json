@@ -1,0 +1,42 @@
+{
+  "attack_name": "DoS",
+  "timestamp": "2025-12-19T18:03:43.245945",
+  "base_accuracy": 0.7153109908103943,
+  "base_precision": 0.789838337182448,
+  "base_recall": 0.6993865030674846,
+  "base_f1_score": 0.7418655097613883,
+  "base_zdr": 0.8133971291866029,
+  "base_far": 0.2622478386167147,
+  "base_confusion_matrix": [
+    [
+      256,
+      91
+    ],
+    [
+      147,
+      342
+    ]
+  ],
+  "ttt_accuracy": 0.7541176470588236,
+  "ttt_precision": 0.75,
+  "ttt_recall": 0.8717434869739479,
+  "ttt_f1_score": 0.8063021316033364,
+  "ttt_zdr": 0.9065420560747663,
+  "ttt_far": 0.0,
+  "ttt_confusion_matrix": [
+    [
+      206,
+      141
+    ],
+    [
+      64,
+      425
+    ]
+  ],
+  "accuracy_improvement": 0.03880665624842927,
+  "zdr_improvement": 0.09314492688816345,
+  "far_improvement": 0.2622478386167147,
+  "zero_day_samples": 221,
+  "non_zero_day_samples": 663,
+  "total_samples": 836
+}

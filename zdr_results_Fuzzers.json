@@ -1,0 +1,42 @@
+{
+  "attack_name": "Fuzzers",
+  "timestamp": "2025-12-19T18:01:30.745680",
+  "base_accuracy": 0.5609756112098694,
+  "base_precision": 0.8089430894308943,
+  "base_recall": 0.3754716981132076,
+  "base_f1_score": 0.5128865979381443,
+  "base_zdr": 0.2930232558139535,
+  "base_far": 0.1419939577039275,
+  "base_confusion_matrix": [
+    [
+      284,
+      47
+    ],
+    [
+      331,
+      199
+    ]
+  ],
+  "ttt_accuracy": 0.780373831775701,
+  "ttt_precision": 0.7697160883280757,
+  "ttt_recall": 0.9207547169811321,
+  "ttt_f1_score": 0.8384879725085911,
+  "ttt_zdr": 0.8767772511848341,
+  "ttt_far": 0.0,
+  "ttt_confusion_matrix": [
+    [
+      180,
+      151
+    ],
+    [
+      42,
+      488
+    ]
+  ],
+  "accuracy_improvement": 0.21939822056583158,
+  "zdr_improvement": 0.5837539953708806,
+  "far_improvement": 0.1419939577039275,
+  "zero_day_samples": 221,
+  "non_zero_day_samples": 663,
+  "total_samples": 861
+}

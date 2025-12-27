@@ -1,0 +1,42 @@
+{
+  "attack_name": "Shellcode",
+  "timestamp": "2025-12-19T18:06:54.633179",
+  "base_accuracy": 0.6666666865348816,
+  "base_precision": 0.7666666666666667,
+  "base_recall": 0.7076923076923077,
+  "base_f1_score": 0.736,
+  "base_zdr": 0.56,
+  "base_far": 0.4117647058823529,
+  "base_confusion_matrix": [
+    [
+      20,
+      14
+    ],
+    [
+      19,
+      46
+    ]
+  ],
+  "ttt_accuracy": 0.7319587628865979,
+  "ttt_precision": 0.7567567567567568,
+  "ttt_recall": 0.875,
+  "ttt_f1_score": 0.8115942028985508,
+  "ttt_zdr": 0.7916666666666666,
+  "ttt_far": 0.0,
+  "ttt_confusion_matrix": [
+    [
+      15,
+      19
+    ],
+    [
+      8,
+      57
+    ]
+  ],
+  "accuracy_improvement": 0.0652920763517163,
+  "zdr_improvement": 0.23166666666666658,
+  "far_improvement": 0.4117647058823529,
+  "zero_day_samples": 25,
+  "non_zero_day_samples": 75,
+  "total_samples": 99
+}

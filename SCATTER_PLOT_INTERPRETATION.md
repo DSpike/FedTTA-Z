@@ -96,3 +96,5 @@ When looking at the scatter plot image:
 - **Poor separation**: Red and blue dots mixed together, no clear pattern
 - **Improvement**: End plot should show better separation than beginning plot
 
+
+

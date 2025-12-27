@@ -54,7 +54,7 @@ DATASET_CONFIGS = {
         'confidence_rejection_threshold': 0.70,
         'data_path': "UNSW_NB15_training-set.csv",
         'test_path': "UNSW_NB15_testing-set.csv",
-        'zero_day_attack': "Shellcode",  # UNSW zero-day attack - Testing Shellcode attack type
+        'zero_day_attack': "Generic",  # UNSW zero-day attack - Testing Generic attack type
         'use_category_grouping': False,
     },
     'CICIDS2017': {

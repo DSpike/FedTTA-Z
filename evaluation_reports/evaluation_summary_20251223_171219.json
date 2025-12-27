@@ -1,0 +1,110 @@
+{
+  "metadata": {
+    "generated_at": "2025-12-23T17:12:19.771940",
+    "dataset": "UNSW-NB15",
+    "zero_day_attack": "Backdoor",
+    "evaluation_method": "Transductive Meta-Learning with Test-Time Training",
+    "phase": "Phase 1 - Conservative TTT"
+  },
+  "configuration": {
+    "phase1_settings": {
+      "meta_epochs": 40,
+      "k_shot": 118,
+      "num_meta_tasks": 46,
+      "n_query": 304,
+      "ttt_max_steps": 10,
+      "ttt_lr": 0.0005,
+      "ttt_confidence_reg_weight": 1.0,
+      "ttt_attack_decision_threshold": 0.85,
+      "use_post_ttt_calibration": true,
+      "post_ttt_target_far": 0.3
+    },
+    "production_mode": false,
+    "quick_test_mode": false
+  },
+  "base_model_performance": {
+    "accuracy": 0.6521739363670349,
+    "precision": 0.8378378378378378,
+    "recall": 0.543859649122807,
+    "f1_score": 0.6595744680851063,
+    "zero_day_detection_rate": 0.8695652173913043,
+    "false_alarm_rate": 0.17142857142857143,
+    "mcc": 0.0,
+    "roc_auc": 0.6985588972431078,
+    "test_samples": 0,
+    "confusion_matrix": [
+      [
+        58,
+        12
+      ],
+      [
+        52,
+        62
+      ]
+    ]
+  },
+  "ttt_model_performance": {
+    "accuracy": 0.7663043478260869,
+    "precision": 0.7933884297520661,
+    "recall": 0.8421052631578947,
+    "f1_score": 0.8170212765957446,
+    "zero_day_detection_rate": 1.0,
+    "false_alarm_rate": 0.35714285714285715,
+    "mcc": 0.0,
+    "roc_auc": 0.7887844611528823,
+    "test_samples": 0,
+    "confusion_matrix": [
+      [
+        45,
+        25
+      ],
+      [
+        18,
+        96
+      ]
+    ]
+  },
+  "improvement": {
+    "zdr_absolute": 0.13043478260869568,
+    "zdr_relative": 15.000000000000002,
+    "far_absolute": 0.18571428571428572,
+    "far_relative": 108.33333333333333,
+    "accuracy_absolute": 0.114130411459052,
+    "accuracy_relative": 17.49999579787269,
+    "f1_absolute": 0.1574468085106383,
+    "f1_relative": 23.870967741935488
+  },
+  "statistical_analysis": {
+    "note": "Single-run evaluation. For statistical significance, run multi-episode evaluation.",
+    "zdr_performance": {
+      "value": 100.0,
+      "target": "> 90%",
+      "status": "excellent"
+    },
+    "far_performance": {
+      "value": 35.714285714285715,
+      "target": "< 40%",
+      "status": "acceptable"
+    },
+    "recommendation": "Run 100-episode evaluation for statistical validation"
+  },
+  "phase1_assessment": {
+    "criteria_evaluation": {
+      "zdr_above_90": true,
+      "far_below_40": "True",
+      "f1_above_80": true,
+      "accuracy_above_75": "True"
+    },
+    "criteria_met": "4",
+    "total_criteria": 4,
+    "percentage_met": 100.0,
+    "verdict": "EXCELLENT - All Phase 1 criteria met",
+    "grade": "A",
+    "metrics": {
+      "zdr": "100.00%",
+      "far": "35.71%",
+      "accuracy": "76.63%",
+      "f1_score": "81.70%"
+    }
+  }
+}

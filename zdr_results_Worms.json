@@ -1,0 +1,42 @@
+{
+  "attack_name": "Worms",
+  "timestamp": "2025-12-19T18:07:44.579668",
+  "base_accuracy": 0.6666666865348816,
+  "base_precision": 1.0,
+  "base_recall": 0.5,
+  "base_f1_score": 0.6666666666666666,
+  "base_zdr": 0.0,
+  "base_far": 0.0,
+  "base_confusion_matrix": [
+    [
+      1,
+      0
+    ],
+    [
+      1,
+      1
+    ]
+  ],
+  "ttt_accuracy": 0.75,
+  "ttt_precision": 1.0,
+  "ttt_recall": 0.6666666666666666,
+  "ttt_f1_score": 0.8,
+  "ttt_zdr": 1.0,
+  "ttt_far": 0.0,
+  "ttt_confusion_matrix": [
+    [
+      1,
+      0
+    ],
+    [
+      1,
+      1
+    ]
+  ],
+  "accuracy_improvement": 0.08333331346511841,
+  "zdr_improvement": 1.0,
+  "far_improvement": 0.0,
+  "zero_day_samples": 1,
+  "non_zero_day_samples": 3,
+  "total_samples": 3
+}

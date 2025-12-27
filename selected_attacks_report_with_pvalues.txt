@@ -1,0 +1,239 @@
+C:\Users\Dspike\AppData\Local\Programs\Python\Python310\lib\site-packages\scipy\stats\_axis_nan_policy.py:430: RuntimeWarning: Precision loss occurred in moment calculation due to catastrophic cancellation. This occurs when the data are nearly identical. Results may be unreliable.
+  return hypotest_fun_in(*args, **kwds)
+====================================================================================================
+ZERO-DAY DETECTION PERFORMANCE REPORT
+Selected Attack Scenarios: Reconnaissance, Backdoor, DoS, Analysis, Fuzzers
+====================================================================================================
+
+==========================================================================================================================================================================
+SUMMARY TABLE - ZDR AND RECALL PERFORMANCE (100 Episodes)
+==========================================================================================================================================================================
+
+Attack Type          Dataset Size    Base ZDR (%)         TTT ZDR (%)          ZDR Δ           Base Recall (%)      TTT Recall (%)       Recall Δ       
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Reconnaissance       56,000 samples   67.24 ± 0.79      95.39 ± 0.32      +28.15% ***    65.62 ± 0.50         92.76 ± 0.27         +27.14% ***    
+Backdoor             18,400 samples   86.96 ± 0.00      97.83 ± 0.00      +10.87% ***    61.95 ± 0.00         89.53 ± 0.12         +27.58% ***    
+DoS                  55,900 samples   69.28 ± 0.83      97.11 ± 0.29      +27.83% ***    56.77 ± 0.54         93.73 ± 0.25         +36.96% ***    
+Analysis             20,800 samples   94.23 ± 0.00      97.93 ± 0.09       +3.70% ***    76.56 ± 0.00         90.94 ± 0.08         +14.38% ***    
+Fuzzers              53,600 samples   32.35 ± 0.79      83.63 ± 0.62      +51.29% ***    51.33 ± 0.57         91.38 ± 0.28         +40.05% ***    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+TOTAL                204,700 samples   (34,636 zero-day samples)
+==========================================================================================================================================================================
+
+Significance levels: *** p<0.001, ** p<0.01, * p<0.05, ns = not significant
+
+====================================================================================================
+DETAILED BREAKDOWN - ZDR AND RECALL WITH ALL METRICS
+====================================================================================================
+
+
+====================================================================================================
+📊 RECONNAISSANCE
+====================================================================================================
+Dataset: 56,000 total samples (8,345 zero-day, 47,655 non-zero-day)
+Episodes: 100
+
+BASE MODEL PERFORMANCE:
+----------------------------------------------------------------------------------------------------
+  Zero-Day Detection Rate (ZDR):   67.24% ±  0.79%
+  Recall:                          65.62% ±  0.50%
+  False Alarm Rate (FAR):          33.15% ±  0.00%
+  Accuracy:                        66.41% ±  0.18%
+  Precision:                       52.39% ±  0.20%
+  F1-Score:                        58.26% ±  0.32%
+  ROC-AUC:                        0.7251 ± 0.0018
+  AUC-PR:                         0.5102 ± 0.0019
+
+TTT-ENHANCED MODEL PERFORMANCE:
+----------------------------------------------------------------------------------------------------
+  Zero-Day Detection Rate (ZDR):   95.39% ±  0.32%
+  Recall:                          92.76% ±  0.27%
+  False Alarm Rate (FAR):          48.58% ±  0.01%
+  Accuracy:                        66.14% ±  0.10%
+  Precision:                       51.35% ±  0.08%
+  F1-Score:                        66.10% ±  0.13%
+  ROC-AUC:                        0.6572 ± 0.0015
+  AUC-PR:                         0.4291 ± 0.0014
+
+TTT IMPROVEMENT (Statistical Significance):
+----------------------------------------------------------------------------------------------------
+  ZDR Improvement:                 +28.15 percentage points  (p=3.15e-88, ***)
+  Recall Improvement:              +27.14 percentage points  (p=2.10e-104, ***)
+  FAR Change:                      +15.43 percentage points  (p=N/A, )
+  Accuracy Improvement:             -0.28 percentage points  (p=2.42e-03, **)
+  F1-Score Improvement:             +7.84 percentage points  (p=7.11e-73, ***)
+
+Note: *** = p<0.001 (highly significant), ** = p<0.01 (very significant), * = p<0.05 (significant), ns = not significant
+
+
+====================================================================================================
+📊 BACKDOOR
+====================================================================================================
+Dataset: 18,400 total samples (4,600 zero-day, 13,800 non-zero-day)
+Episodes: 100
+
+BASE MODEL PERFORMANCE:
+----------------------------------------------------------------------------------------------------
+  Zero-Day Detection Rate (ZDR):   86.96% ±  0.00%
+  Recall:                          61.95% ±  0.00%
+  False Alarm Rate (FAR):          25.71% ±  0.00%
+  Accuracy:                        66.67% ±  0.00%
+  Precision:                       79.55% ±  0.00%
+  F1-Score:                        69.65% ±  0.00%
+  ROC-AUC:                        0.7772 ± 0.0000
+  AUC-PR:                         0.8044 ± 0.0000
+
+TTT-ENHANCED MODEL PERFORMANCE:
+----------------------------------------------------------------------------------------------------
+  Zero-Day Detection Rate (ZDR):   97.83% ±  0.00%
+  Recall:                          89.53% ±  0.12%
+  False Alarm Rate (FAR):          42.09% ±  0.10%
+  Accuracy:                        77.54% ±  0.07%
+  Precision:                       77.69% ±  0.05%
+  F1-Score:                        83.19% ±  0.06%
+  ROC-AUC:                        0.7408 ± 0.0006
+  AUC-PR:                         0.7497 ± 0.0007
+
+TTT IMPROVEMENT (Statistical Significance):
+----------------------------------------------------------------------------------------------------
+  ZDR Improvement:                 +10.87 percentage points  (p=N/A, ***)
+  Recall Improvement:              +27.58 percentage points  (p=1.00e-166, ***)
+  FAR Change:                      +16.37 percentage points  (p=N/A, )
+  Accuracy Improvement:            +10.87 percentage points  (p=6.38e-150, ***)
+  F1-Score Improvement:            +13.54 percentage points  (p=5.16e-168, ***)
+
+Note: *** = p<0.001 (highly significant), ** = p<0.01 (very significant), * = p<0.05 (significant), ns = not significant
+
+
+====================================================================================================
+📊 DOS
+====================================================================================================
+Dataset: 55,900 total samples (8,428 zero-day, 47,472 non-zero-day)
+Episodes: 100
+
+BASE MODEL PERFORMANCE:
+----------------------------------------------------------------------------------------------------
+  Zero-Day Detection Rate (ZDR):   69.28% ±  0.83%
+  Recall:                          56.77% ±  0.54%
+  False Alarm Rate (FAR):          24.86% ±  0.00%
+  Accuracy:                        68.62% ±  0.19%
+  Precision:                       55.68% ±  0.24%
+  F1-Score:                        56.21% ±  0.39%
+  ROC-AUC:                        0.7724 ± 0.0017
+  AUC-PR:                         0.5577 ± 0.0019
+
+TTT-ENHANCED MODEL PERFORMANCE:
+----------------------------------------------------------------------------------------------------
+  Zero-Day Detection Rate (ZDR):   97.11% ±  0.29%
+  Recall:                          93.73% ±  0.25%
+  False Alarm Rate (FAR):          43.54% ±  0.04%
+  Accuracy:                        69.71% ±  0.09%
+  Precision:                       54.29% ±  0.07%
+  F1-Score:                        68.76% ±  0.12%
+  ROC-AUC:                        0.7577 ± 0.0013
+  AUC-PR:                         0.5333 ± 0.0015
+
+TTT IMPROVEMENT (Statistical Significance):
+----------------------------------------------------------------------------------------------------
+  ZDR Improvement:                 +27.83 percentage points  (p=1.81e-87, ***)
+  Recall Improvement:              +36.96 percentage points  (p=6.93e-114, ***)
+  FAR Change:                      +18.68 percentage points  (p=N/A, )
+  Accuracy Improvement:             +1.10 percentage points  (p=1.94e-20, ***)
+  F1-Score Improvement:            +12.54 percentage points  (p=1.61e-84, ***)
+
+Note: *** = p<0.001 (highly significant), ** = p<0.01 (very significant), * = p<0.05 (significant), ns = not significant
+
+
+====================================================================================================
+📊 ANALYSIS
+====================================================================================================
+Dataset: 20,800 total samples (5,200 zero-day, 15,600 non-zero-day)
+Episodes: 100
+
+BASE MODEL PERFORMANCE:
+----------------------------------------------------------------------------------------------------
+  Zero-Day Detection Rate (ZDR):   94.23% ±  0.00%
+  Recall:                          76.56% ±  0.00%
+  False Alarm Rate (FAR):          15.19% ±  0.00%
+  Accuracy:                        79.71% ±  0.00%
+  Precision:                       89.09% ±  0.00%
+  F1-Score:                        82.35% ±  0.00%
+  ROC-AUC:                        0.8292 ± 0.0000
+  AUC-PR:                         0.8661 ± 0.0000
+
+TTT-ENHANCED MODEL PERFORMANCE:
+----------------------------------------------------------------------------------------------------
+  Zero-Day Detection Rate (ZDR):   97.93% ±  0.09%
+  Recall:                          90.94% ±  0.08%
+  False Alarm Rate (FAR):          32.90% ±  0.04%
+  Accuracy:                        81.63% ±  0.05%
+  Precision:                       81.18% ±  0.02%
+  F1-Score:                        85.78% ±  0.04%
+  ROC-AUC:                        0.8055 ± 0.0003
+  AUC-PR:                         0.8286 ± 0.0007
+
+TTT IMPROVEMENT (Statistical Significance):
+----------------------------------------------------------------------------------------------------
+  ZDR Improvement:                  +3.70 percentage points  (p=7.04e-93, ***)
+  Recall Improvement:              +14.38 percentage points  (p=6.60e-158, ***)
+  FAR Change:                      +17.71 percentage points  (p=N/A, )
+  Accuracy Improvement:             +1.92 percentage points  (p=2.02e-93, ***)
+  F1-Score Improvement:             +3.43 percentage points  (p=1.87e-128, ***)
+
+Note: *** = p<0.001 (highly significant), ** = p<0.01 (very significant), * = p<0.05 (significant), ns = not significant
+
+
+====================================================================================================
+📊 FUZZERS
+====================================================================================================
+Dataset: 53,600 total samples (8,063 zero-day, 45,537 non-zero-day)
+Episodes: 100
+
+BASE MODEL PERFORMANCE:
+----------------------------------------------------------------------------------------------------
+  Zero-Day Detection Rate (ZDR):   32.35% ±  0.79%
+  Recall:                          51.33% ±  0.57%
+  False Alarm Rate (FAR):          17.42% ±  0.00%
+  Accuracy:                        70.88% ±  0.21%
+  Precision:                       63.76% ±  0.26%
+  F1-Score:                        56.86% ±  0.45%
+  ROC-AUC:                        0.7571 ± 0.0028
+  AUC-PR:                         0.6038 ± 0.0026
+
+TTT-ENHANCED MODEL PERFORMANCE:
+----------------------------------------------------------------------------------------------------
+  Zero-Day Detection Rate (ZDR):   83.63% ±  0.62%
+  Recall:                          91.38% ±  0.28%
+  False Alarm Rate (FAR):          41.76% ±  0.05%
+  Accuracy:                        70.62% ±  0.12%
+  Precision:                       56.61% ±  0.08%
+  F1-Score:                        69.91% ±  0.14%
+  ROC-AUC:                        0.7275 ± 0.0016
+  AUC-PR:                         0.5265 ± 0.0016
+
+TTT IMPROVEMENT (Statistical Significance):
+----------------------------------------------------------------------------------------------------
+  ZDR Improvement:                 +51.29 percentage points  (p=3.74e-104, ***)
+  Recall Improvement:              +40.05 percentage points  (p=2.37e-117, ***)
+  FAR Change:                      +24.35 percentage points  (p=N/A, )
+  Accuracy Improvement:             -0.27 percentage points  (p=1.09e-02, *)
+  F1-Score Improvement:            +13.05 percentage points  (p=2.85e-80, ***)
+
+Note: *** = p<0.001 (highly significant), ** = p<0.01 (very significant), * = p<0.05 (significant), ns = not significant
+
+
+====================================================================================================
+PUBLICATION READINESS ASSESSMENT
+====================================================================================================
+
+Criteria: ZDR ≥ 90%, FAR ≤ 40%, Accuracy ≥ 75%, F1-Score ≥ 80%
+
+Attack Type          ZDR          FAR          Accuracy     F1-Score     Status                   
+----------------------------------------------------------------------------------------------------
+Reconnaissance       95.39%      48.58%      66.14%      66.10%      ❌ Needs improvement (FAR=48.6%, Acc=66.1%, F1=66.1%)
+Backdoor             97.83%      42.09%      77.54%      83.19%      ❌ Needs improvement (FAR=42.1%)
+DoS                  97.11%      43.54%      69.71%      68.76%      ❌ Needs improvement (FAR=43.5%, Acc=69.7%, F1=68.8%)
+Analysis             97.93%      32.90%      81.63%      85.78%      ✅ PUBLICATION READY
+Fuzzers              83.63%      41.76%      70.62%      69.91%      ❌ Needs improvement (ZDR=83.6%, FAR=41.8%, Acc=70.6%, F1=69.9%)
+====================================================================================================
+
