@@ -717,43 +717,6 @@ class UnifiedDilatedTCN(nn.Module):
         return pooled_features
 
 
-# Keep EfficientMultiScaleTCN for backward compatibility but mark as deprecated
-class EfficientMultiScaleTCN(nn.Module):
-    """
-    [DEPRECATED] This implementation is 3× slower than necessary.
-    
-    Use UnifiedDilatedTCN instead for:
-    - 3× faster computation (single path vs 3 parallel branches)
-    - 3× less memory bandwidth
-    - ~83% fewer parameters
-    - Same multi-scale receptive fields through dilated convolutions
-    """
-    def __init__(self, input_dim: int, sequence_length: int, hidden_dim: int = 64, dropout: float = 0.1, 
-                 kernel_sizes: tuple = (2, 3, 4)):
-        super(EfficientMultiScaleTCN, self).__init__()
-        import warnings
-        warnings.warn(
-            "EfficientMultiScaleTCN is deprecated and inefficient. "
-            "Use UnifiedDilatedTCN instead for 3× better performance.",
-            DeprecationWarning,
-            stacklevel=2
-        )
-        
-        # Delegate to UnifiedDilatedTCN (use first kernel size, others ignored)
-        self.unified_tcn = UnifiedDilatedTCN(
-            input_dim=input_dim,
-            sequence_length=sequence_length,
-            hidden_dim=hidden_dim,
-            dropout=dropout,
-            kernel_size=kernel_sizes[0] if isinstance(kernel_sizes, tuple) else 3
-        )
-        self.output_dim = self.unified_tcn.output_dim
-
-    def forward(self, x):
-        """Forward pass - delegates to UnifiedDilatedTCN"""
-        return self.unified_tcn(x)
-        
-
 class EmbeddingUtils:
     """
     Centralized utility class for embedding extraction and processing
@@ -1126,8 +1089,7 @@ class TransductiveLearner(nn.Module):
         self.ttt_steps = 100
         
         # Multi-scale TCN feature extractors for temporal pattern recognition
-        # OPTIMIZED: Using EfficientMultiScaleTCN with depthwise separable convolutions
-        # for 12-18% faster feature extraction while maintaining representational power
+        # Using UnifiedDilatedTCN with sequential dilated convolutions (3× faster than parallel branches)
         # OR: Simple pooling-based extractor if TCN is disabled (for testing)
         
         if self._disable_tcn_feature_extraction:
@@ -1152,9 +1114,8 @@ class TransductiveLearner(nn.Module):
             logger.info(f"✅ UnifiedDilatedTCN initialized with kernel_size={kernel_size} (dilations=[1,2,4], RF=[3,7,15])")
         
         # Feature projection to embedding space
-        # UnifiedDilatedTCN output: hidden_dim (single unified path)
-        # Old EfficientMultiScaleTCN output: hidden_dim + (hidden_dim // 2) + (hidden_dim * 2) (deprecated)
-        feature_output_dim = self.feature_extractors.output_dim  # Automatically matches: hidden_dim for UnifiedDilatedTCN
+        # UnifiedDilatedTCN output: hidden_dim (single sequential path)
+        feature_output_dim = self.feature_extractors.output_dim  # hidden_dim for UnifiedDilatedTCN
         self.feature_projection = nn.Sequential(
             nn.Linear(feature_output_dim, embedding_dim),
             nn.BatchNorm1d(embedding_dim),  # Added for TENT compatibility
