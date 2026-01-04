@@ -39,7 +39,7 @@ class MultiEpisodeEvaluator:
     - Evaluation: Multiple episodes (eval_episodes)
     """
 
-    def __init__(self, config, n_episodes=10, episode_size_target=800):
+    def __init__(self, config, n_episodes=10, episode_size_target=300):  # REDUCED: 800→300 for bootstrap variance with limited samples
         """
         Initialize multi-episode evaluator.
 
@@ -357,10 +357,11 @@ class MultiEpisodeEvaluator:
         target_zero_day_samples = int(self.episode_size_target * 0.25)
         target_non_zero_day_samples = self.episode_size_target - target_zero_day_samples
 
-        # Sample from each class
+        # Sample from each class WITH REPLACEMENT to ensure variation across episodes
+        # This is critical for obtaining meaningful confidence intervals
         if len(zero_day_indices) >= target_zero_day_samples:
             sampled_zero_day_indices = np.random.choice(
-                zero_day_indices, target_zero_day_samples, replace=False
+                zero_day_indices, target_zero_day_samples, replace=True  # CHANGED: replace=True
             )
         else:
             # If not enough samples, use all available
@@ -374,7 +375,7 @@ class MultiEpisodeEvaluator:
 
         if len(non_zero_day_indices) >= target_non_zero_day_samples:
             sampled_non_zero_day_indices = np.random.choice(
-                non_zero_day_indices, target_non_zero_day_samples, replace=False
+                non_zero_day_indices, target_non_zero_day_samples, replace=True  # CHANGED: replace=True
             )
         else:
             sampled_non_zero_day_indices = non_zero_day_indices

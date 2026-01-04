@@ -1,12 +1,12 @@
-# Publication-Ready Results for DoS Zero-Day Attack Detection
+# Publication-Ready Results for Backdoor Zero-Day Attack Detection
 
-**Generated**: 2025-12-27 14:24:02
+**Generated**: 2026-01-04 18:10:38
 
 ---
 
 ## Overview
 
-This directory contains publication-ready results from 100-episode validation of TTT-enhanced intrusion detection on DoS zero-day attacks.
+This directory contains publication-ready results from 100-episode validation of TTT-enhanced intrusion detection on Backdoor zero-day attacks.
 
 ## Files Included
 

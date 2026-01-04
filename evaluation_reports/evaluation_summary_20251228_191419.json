@@ -1,0 +1,110 @@
+{
+  "metadata": {
+    "generated_at": "2025-12-28T19:14:19.516882",
+    "dataset": "UNSW-NB15",
+    "zero_day_attack": "Generic",
+    "evaluation_method": "Transductive Meta-Learning with Test-Time Training",
+    "phase": "Phase 1 - Conservative TTT"
+  },
+  "configuration": {
+    "phase1_settings": {
+      "meta_epochs": 40,
+      "k_shot": 118,
+      "num_meta_tasks": 46,
+      "n_query": 100,
+      "ttt_max_steps": 10,
+      "ttt_lr": 0.0005,
+      "ttt_confidence_reg_weight": 1.0,
+      "ttt_attack_decision_threshold": 0.85,
+      "use_post_ttt_calibration": true,
+      "post_ttt_target_far": 0.3
+    },
+    "production_mode": false,
+    "quick_test_mode": false
+  },
+  "base_model_performance": {
+    "accuracy": 0.6430205702781677,
+    "precision": 0.7654986522911051,
+    "recall": 0.5579567779960707,
+    "f1_score": 0.6454545454545455,
+    "zero_day_detection_rate": 0.3177570093457944,
+    "false_alarm_rate": 0.23835616438356164,
+    "mcc": 0.0,
+    "roc_auc": 0.6818917863999832,
+    "test_samples": 0,
+    "confusion_matrix": [
+      [
+        278,
+        87
+      ],
+      [
+        225,
+        284
+      ]
+    ]
+  },
+  "ttt_model_performance": {
+    "accuracy": 0.6958997722095672,
+    "precision": 0.7393822393822393,
+    "recall": 0.7436893203883496,
+    "f1_score": 0.7415295256534365,
+    "zero_day_detection_rate": 0.4840182648401826,
+    "false_alarm_rate": 0.0,
+    "mcc": 0.0,
+    "roc_auc": 0.6670965461949068,
+    "test_samples": 0,
+    "confusion_matrix": [
+      [
+        228,
+        137
+      ],
+      [
+        132,
+        377
+      ]
+    ]
+  },
+  "improvement": {
+    "zdr_absolute": 0.16626125549438825,
+    "zdr_relative": 52.32339511146925,
+    "far_absolute": -0.23835616438356164,
+    "far_relative": -100.0,
+    "accuracy_absolute": 0.0528792019313995,
+    "accuracy_relative": 8.223563036019858,
+    "f1_absolute": 0.09607498019889105,
+    "f1_relative": 14.884856087152132
+  },
+  "statistical_analysis": {
+    "note": "Single-run evaluation. For statistical significance, run multi-episode evaluation.",
+    "zdr_performance": {
+      "value": 48.401826484018265,
+      "target": "> 90%",
+      "status": "needs_improvement"
+    },
+    "far_performance": {
+      "value": 0.0,
+      "target": "< 40%",
+      "status": "excellent"
+    },
+    "recommendation": "Tune hyperparameters before multi-episode evaluation"
+  },
+  "phase1_assessment": {
+    "criteria_evaluation": {
+      "zdr_above_90": "False",
+      "far_below_40": true,
+      "f1_above_80": false,
+      "accuracy_above_75": "False"
+    },
+    "criteria_met": "1",
+    "total_criteria": 4,
+    "percentage_met": 25.0,
+    "verdict": "NEEDS IMPROVEMENT - Phase 1 criteria not met",
+    "grade": "D",
+    "metrics": {
+      "zdr": "48.40%",
+      "far": "0.00%",
+      "accuracy": "69.59%",
+      "f1_score": "74.15%"
+    }
+  }
+}

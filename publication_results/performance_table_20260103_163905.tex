@@ -1,0 +1,24 @@
+% LaTeX table for publication
+\begin{table}[htbp]
+\centering
+\caption{Performance Comparison: Base Model vs. TTT-Enhanced Model (100 Episodes)}
+\label{tab:performance}
+\begin{tabular}{lccc}
+\hline
+Metric & Base Model & TTT Model & Improvement \\
+\hline
+Zero-Day Detection Rate (\%) & 82.61 ± 0.00 & 95.99 ± 0.17 & +13.38 \\
+False Alarm Rate (\%) & 24.29 ± 0.00 & 38.53 ± 0.08 & +14.25 \\
+F1-Score (\%) & 70.94 ± 0.00 & 81.99 ± 0.06 & +11.05 \\
+Overall Accuracy (\%) & 67.93 ± 0.00 & 76.72 ± 0.07 & +8.79 \\
+Precision (\%) & 80.90 ± 0.00 & 78.08 ± 0.04 & -2.82 \\
+Recall (\%) & 63.16 ± 0.00 & 86.31 ± 0.10 & +23.15 \\
+ROC AUC & 0.7836 ± 0.0000 & 0.8392 ± 0.0000 & +0.0555 \\
+AUC-PR & 0.8189 ± 0.0000 & 0.9037 ± 0.0000 & +0.0848 \\
+\hline
+\end{tabular}
+\begin{tablenotes}
+\small
+\item Results are averaged over 100 independent episodes. Values are shown as mean $\pm$ 95\% confidence interval.
+\end{tablenotes}
+\end{table}

@@ -86,7 +86,7 @@ def create_performance_table(data: Dict[str, Any], output_path: str = "publicati
             improvement_str = f"{improvement:+.2f}"
         else:
             base_str = f"{base_mean:.4f} ± {base_ci:.4f}"
-            ttt_str = f"{ttt_mean:.4f} ± {base_ci:.4f}"
+            ttt_str = f"{ttt_mean:.4f} ± {ttt_ci:.4f}"
             improvement_str = f"{improvement:+.4f}"
 
         table_data.append({
@@ -168,6 +168,7 @@ def create_performance_comparison_plot(data: Dict[str, Any], output_path: str = 
         ('Zero-Day\nDetection Rate', 'zero_day_detection_rate', True),
         ('F1-Score', 'f1_score', True),
         ('Overall\nAccuracy', 'accuracy', True),
+        ('Recall', 'recall', True),
         ('ROC AUC', 'roc_auc', False)
     ]
 
@@ -211,6 +212,7 @@ def create_performance_comparison_plot(data: Dict[str, Any], output_path: str = 
     x = np.arange(len(metric_names))
     width = 0.35
 
+    # Both models with error bars (bootstrap sampling with replacement for variance)
     bars1 = ax.bar(x - width/2, base_means, width, yerr=base_cis,
                    label='Base Model', capsize=5, color='#3498db', alpha=0.8,
                    error_kw={'linewidth': 2, 'ecolor': '#2c3e50'})
@@ -220,7 +222,7 @@ def create_performance_comparison_plot(data: Dict[str, Any], output_path: str = 
 
     # Customize plot
     ax.set_ylabel('Score (%)', fontsize=12, fontweight='bold')
-    ax.set_title('Performance Comparison: Base Model vs. TTT-Enhanced Model\n(100 Episodes with 95% Confidence Intervals)',
+    ax.set_title('Performance Comparison: Base Model vs. TTT-Enhanced Model\n(100 Episodes with 95% Confidence Intervals, Bootstrap Sampling)',
                  fontsize=14, fontweight='bold', pad=20)
     ax.set_xticks(x)
     ax.set_xticklabels(metric_names, fontsize=11)
