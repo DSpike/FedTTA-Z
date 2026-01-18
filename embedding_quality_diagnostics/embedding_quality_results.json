@@ -1,7 +1,7 @@
 {
   "embedding_shapes": {
     "test": [
-      566,
+      184,
       256
     ],
     "support": [

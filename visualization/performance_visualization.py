@@ -233,7 +233,8 @@ class PerformanceVisualizer:
                 return ""
         
         # Create 2x2 layout: Top row for loss plots, bottom row for scatter plot
-        fig = plt.figure(figsize=(18, 12))
+        # Use a compact height to avoid overly tall images
+        fig = plt.figure(figsize=(18, 6))
         ax1 = fig.add_subplot(2, 2, 1)  # Top left: Total Loss
         ax2 = fig.add_subplot(2, 2, 2)  # Top right: Loss Components
         ax3 = fig.add_subplot(2, 2, 3)  # Bottom left: Attack vs Normal Scatter (beginning)

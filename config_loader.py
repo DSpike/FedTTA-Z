@@ -54,8 +54,20 @@ DATASET_CONFIGS = {
         'confidence_rejection_threshold': 0.70,
         'data_path': "UNSW_NB15_training-set.csv",
         'test_path': "UNSW_NB15_testing-set.csv",
-        'zero_day_attack': "Generic",  # UNSW zero-day attack - Testing Generic attack type
+        'zero_day_attack': "Backdoor",  # UNSW zero-day attack
         'use_category_grouping': False,
+
+        # Adapt only on low-confidence (likely zero-day) samples
+        'use_low_confidence_only_ttt': True,
+        'low_confidence_method': 'entropy',
+        'low_confidence_percentile': 0.80,  # Top 20% most uncertain (stricter)
+        'low_confidence_min_samples': 100,
+        'low_confidence_max_samples': 500,
+
+        # Reduce TTT aggressiveness to avoid drift
+        'ttt_base_steps': 5,
+        'ttt_max_steps': 5,
+        'ttt_lr': 0.0003,
     },
     'CICIDS2017': {
         'input_dim': 78,  # CICIDS2017 has 78 features

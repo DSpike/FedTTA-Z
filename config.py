@@ -552,7 +552,7 @@ class SystemConfig:
     meta_epochs: int = 21  # PRODUCTION: Restored from quick test (was 1)
     transductive_steps: int = 40  # AGGRESSIVE FOR 90%+ BASE MODEL: Increased from 20 → 40 (2x increase)
     transductive_lr: float = 0.001  # AGGRESSIVE FOR 90%+ BASE MODEL: Increased from 0.0007 → 0.001 (43% increase)
-    transductive_refinement_iterations: int = 10  # AGGRESSIVE FOR 90%+ BASE MODEL: Increased from 10 → 30 (3x increase)
+    transductive_refinement_iterations: int = 2  # Reduced for faster runs
     transductive_refinement_confidence_threshold: float = 0.7  # Base confidence threshold (used if adaptive=False)
     use_adaptive_refinement_threshold: bool = True  # Enable adaptive thresholding based on class imbalance and prediction entropy
     transductive_refinement_min_threshold: float = 0.5  # Minimum confidence threshold for adaptive mode
