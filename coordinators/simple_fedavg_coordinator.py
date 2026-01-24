@@ -1157,7 +1157,8 @@ class SimpleFedAVGCoordinator:
         ema_decay = getattr(config, "ema_decay", 0.99) if config else 0.99
         
         # Get advanced TTT technique flags from config
-        use_focal_loss = getattr(config, "use_focal_loss", True) if config else True
+        # FIX: Use separate flag for TTT focal loss (default: False - focal loss interferes with TTT)
+        use_focal_loss = getattr(config, "use_focal_loss_ttt", False) if config else False  # Changed default to False for TTT
         focal_gamma = getattr(config, "focal_gamma", 2.0) if config else 2.0
         focal_alpha = getattr(config, "focal_alpha", 0.25) if config else 0.25
         # Mixup DISABLED by default - inappropriate for TTT with unlabeled data and pseudo-labels
@@ -1220,6 +1221,114 @@ class SimpleFedAVGCoordinator:
         )
         
         return adapted_model
+    
+    def _perform_two_phase_ttt_adaptation(
+        self,
+        query_x,
+        query_y_multiclass: torch.Tensor,
+        config=None,
+    ):
+        """
+        Two-Phase TTT Adaptation
+        
+        Phase 1: Adapt on Known Attacks (preserves base model knowledge)
+        Phase 2: Fine-tune on Zero-Day (adapts to unseen patterns)
+        
+        This prevents the boundary shift conflict between transductive meta-learning
+        and TTT entropy minimization when query sets are mixed.
+        """
+        logger.info("=" * 80)
+        logger.info("TWO-PHASE TTT ADAPTATION")
+        logger.info("=" * 80)
+        
+        # Get zero-day attack label from config
+        zero_day_attack_label = getattr(config, 'zero_day_attack_label', 3)  # Default to Backdoor=3
+        
+        # Separate known attacks from zero-day
+        zero_day_mask = (query_y_multiclass == zero_day_attack_label)
+        known_attack_mask = (query_y_multiclass != zero_day_attack_label) & (query_y_multiclass != 0)
+        normal_mask = (query_y_multiclass == 0)
+        
+        zero_day_count = zero_day_mask.sum().item()
+        known_attack_count = known_attack_mask.sum().item()
+        normal_count = normal_mask.sum().item()
+        
+        logger.info(f"📊 Query Set Composition:")
+        logger.info(f"   Zero-day samples: {zero_day_count}")
+        logger.info(f"   Known attack samples: {known_attack_count}")
+        logger.info(f"   Normal samples: {normal_count}")
+        logger.info(f"   Total: {len(query_x)} samples")
+        
+        # Get TTT configuration
+        ttt_base_steps = getattr(config, 'ttt_base_steps', 258) if config else 258
+        batch_size = getattr(config, 'ttt_batch_size', 16) if config else 16
+        ttt_lr = getattr(config, 'ttt_lr', 0.000152) if config else 0.000152
+        
+        # Phase 1: Adapt on Known Attacks + Normal (60% of steps)
+        phase1_steps = int(ttt_base_steps * 0.6)
+        logger.info(f"\n📌 PHASE 1: Adapting on Known Attacks + Normal...")
+        logger.info(f"   Query set size: {known_attack_count + normal_count} samples")
+        logger.info(f"   Steps: {phase1_steps} (60% of {ttt_base_steps})")
+        logger.info(f"   Learning rate: {ttt_lr}")
+        
+        # Prepare Phase 1 query set (known attacks + normal)
+        phase1_mask = known_attack_mask | normal_mask
+        if phase1_mask.sum().item() == 0:
+            logger.warning("⚠️ No known attacks or normal samples for Phase 1 - skipping to Phase 2")
+            phase1_model = self.model
+        else:
+            phase1_query_x = query_x[phase1_mask]
+            
+            # Perform Phase 1 adaptation
+            phase1_model = self._perform_tent_pseudo_labels_adaptation(
+                query_x=phase1_query_x,
+                query_y=query_y_multiclass[phase1_mask] if query_y_multiclass is not None else None,
+                config=config,
+            )
+            logger.info(f"✅ Phase 1 completed: Adapted on {phase1_mask.sum().item()} known samples")
+        
+        # Phase 2: Fine-tune on Zero-Day (40% of steps, 50% learning rate)
+        phase2_steps = int(ttt_base_steps * 0.4)
+        phase2_lr = ttt_lr * 0.5  # 50% of base learning rate
+        logger.info(f"\n📌 PHASE 2: Fine-tuning on Zero-Day Attacks...")
+        logger.info(f"   Query set size: {zero_day_count} samples")
+        logger.info(f"   Steps: {phase2_steps} (40% of {ttt_base_steps})")
+        logger.info(f"   Learning rate: {phase2_lr} (50% of base LR)")
+        
+        if zero_day_count == 0:
+            logger.warning("⚠️ No zero-day samples for Phase 2 - using Phase 1 model")
+            return phase1_model
+        
+        # Prepare Phase 2 query set (zero-day only)
+        phase2_query_x = query_x[zero_day_mask]
+        
+        # Temporarily update config for Phase 2 (lower LR, fewer steps)
+        original_lr = getattr(config, 'ttt_lr', ttt_lr)
+        original_steps = getattr(config, 'ttt_base_steps', ttt_base_steps)
+        config.ttt_lr = phase2_lr
+        config.ttt_base_steps = phase2_steps
+        
+        # Clone Phase 1 model for Phase 2
+        import copy
+        phase2_model = copy.deepcopy(phase1_model)
+        self.model = phase2_model  # Update base model for adaptation
+        
+        # Perform Phase 2 adaptation on Phase 1 model
+        final_model = self._perform_tent_pseudo_labels_adaptation(
+            query_x=phase2_query_x,
+            query_y=query_y_multiclass[zero_day_mask] if query_y_multiclass is not None else None,
+            config=config,
+        )
+        
+        # Restore original config
+        config.ttt_lr = original_lr
+        config.ttt_base_steps = original_steps
+        self.model = phase1_model  # Restore original base model
+        
+        logger.info(f"✅ Phase 2 completed: Fine-tuned on {zero_day_count} zero-day samples")
+        logger.info(f"✅ Two-phase TTT adaptation completed!")
+        
+        return final_model
 
     def adapt_to_test_data(
         self,
@@ -1267,12 +1376,39 @@ class SimpleFedAVGCoordinator:
                 config=config,
             )
         elif method == "tent_pseudo":
-            logger.info("Using TENT + Pseudo-Labels (Teacher-Student)")
-            adapted_model = self._perform_tent_pseudo_labels_adaptation(
-                query_x=query_x,
-                query_y=query_y,
-                config=config,
-            )
+            # Check if two-phase TTT is enabled and if we have multiclass labels for separation
+            use_two_phase_ttt = getattr(config, 'use_two_phase_ttt', False)
+            
+            # Try to get multiclass labels from query_y if available (for two-phase TTT)
+            query_y_multiclass = None
+            if query_y is not None and hasattr(query_y, 'numel') and query_y.numel() > 0:
+                # Check if query_y contains multiclass labels (not just binary)
+                unique_labels = torch.unique(query_y).cpu().numpy()
+                logger.info(f"🔍 Two-Phase TTT Check: query_y has {len(unique_labels)} unique labels: {unique_labels}")
+                if len(unique_labels) > 2:  # More than binary (0, 1) - it's multiclass
+                    query_y_multiclass = query_y
+                    logger.info(f"✅ Multiclass labels detected - two-phase TTT can be used")
+                else:
+                    logger.info(f"⚠️ Binary labels only ({unique_labels}) - two-phase TTT cannot be used")
+            else:
+                logger.info(f"⚠️ query_y is None or empty - two-phase TTT cannot be used")
+            
+            if use_two_phase_ttt and query_y_multiclass is not None:
+                logger.info("Using TWO-PHASE TTT (Known Attacks → Zero-Day)")
+                adapted_model = self._perform_two_phase_ttt_adaptation(
+                    query_x=query_x,
+                    query_y_multiclass=query_y_multiclass,
+                    config=config,
+                )
+            else:
+                if use_two_phase_ttt:
+                    logger.warning("⚠️ Two-phase TTT requested but multiclass labels not available - falling back to single-phase")
+                logger.info("Using TENT + Pseudo-Labels (Teacher-Student) - Single Phase")
+                adapted_model = self._perform_tent_pseudo_labels_adaptation(
+                    query_x=query_x,
+                    query_y=query_y,
+                    config=config,
+                )
         else:
             raise ValueError(f"Unknown adaptation method: {method}. Supported: 'tent', 'tent_pseudo'")
         
@@ -1359,7 +1495,8 @@ class SimpleFedAVGCoordinator:
         use_teacher = getattr(config, 'use_teacher', True)
         ema_decay = getattr(config, 'ema_decay', 0.99)
         gaussian_noise_std = getattr(config, 'ttt_gaussian_noise_std', 0.0)
-        use_focal_loss = getattr(config, 'use_focal_loss', True)
+        # FIX: Use separate flag for TTT focal loss (default: False - focal loss interferes with TTT)
+        use_focal_loss = getattr(config, 'use_focal_loss_ttt', False)  # Changed from use_focal_loss to use_focal_loss_ttt
         focal_gamma = getattr(config, 'focal_gamma', 2.0)
         focal_alpha = getattr(config, 'focal_alpha', 0.25)
         use_mixup = getattr(config, 'use_mixup_ttt', False)

@@ -852,11 +852,24 @@ class PerformanceVisualizer:
         
         # Extract metrics for comparison - handle both direct evaluation and k-fold formats
         # Include AUC-PR as PRIMARY metric for imbalanced zero-day detection
-        # Include Zero-Day Detection Rate (ZDR) for zero-day attack detection evaluation
-        # Order: Accuracy, Precision, Recall, F1-Score, AUC-PR (PRIMARY), ZDR (CRITICAL for zero-day), FAR
+        # Include Zero-Day Detection Rate (ZDR) ONLY if zero-day samples are included in evaluation
+        # Order: Accuracy, Precision, Recall, F1-Score, AUC-PR (PRIMARY), ZDR (if applicable), FAR
         # MCC replaced with FAR (False Alarm Rate) as requested
-        base_metrics = ['accuracy', 'precision', 'recall', 'f1_score', 'auc_pr', 'zero_day_detection_rate', 'far']
-        ttt_metrics = ['accuracy', 'precision', 'recall', 'f1_score', 'auc_pr', 'zero_day_detection_rate', 'far']
+        
+        # Check if zero-day samples are included in evaluation
+        base_has_zeroday = base_results.get('evaluation_mode') != 'exclude_zero_day'
+        ttt_has_zeroday = ttt_results.get('evaluation_mode') != 'exclude_zero_day'
+        
+        # Only include ZDR if at least one model has zero-day samples
+        include_zdr = base_has_zeroday or ttt_has_zeroday
+        
+        if include_zdr:
+            base_metrics = ['accuracy', 'precision', 'recall', 'f1_score', 'auc_pr', 'zero_day_detection_rate', 'far']
+            ttt_metrics = ['accuracy', 'precision', 'recall', 'f1_score', 'auc_pr', 'zero_day_detection_rate', 'far']
+        else:
+            # Exclude ZDR from Plot 2 (overall performance) since zero-day samples are excluded
+            base_metrics = ['accuracy', 'precision', 'recall', 'f1_score', 'auc_pr', 'far']
+            ttt_metrics = ['accuracy', 'precision', 'recall', 'f1_score', 'auc_pr', 'far']
         
         # Calculate metrics from available data
         base_values = []
@@ -1033,8 +1046,13 @@ class PerformanceVisualizer:
         ax1.set_ylim(0, 1.2)
         
         # Add note about F1-score for imbalanced data
-        note_text = ("Note: F1-score uses weighted average for imbalanced data.\n"
-                    "ZDR (Zero-Day Detection Rate) is critical, FAR (False Alarm Rate) lower is better.")
+        if include_zdr:
+            note_text = ("Note: F1-score uses weighted average for imbalanced data.\n"
+                        "ZDR (Zero-Day Detection Rate) is critical, FAR (False Alarm Rate) lower is better.")
+        else:
+            note_text = ("Note: F1-score uses weighted average for imbalanced data.\n"
+                        "ZDR excluded: Zero-day samples not included in this evaluation (see Zero-Day Performance Comparison plot).\n"
+                        "FAR (False Alarm Rate) lower is better.")
         fig.text(0.5, 0.02, note_text, ha='center', fontsize=9, 
                 fontfamily='Times New Roman', style='italic',
                 bbox=dict(boxstyle='round,pad=0.5', facecolor='lightyellow', alpha=0.8, 
@@ -1063,17 +1081,25 @@ class PerformanceVisualizer:
         Returns:
             plot_path: Path to saved plot
         """
-        if not base_results or not ttt_results:
-            logger.warning("No comparison data provided for zero-day performance plotting")
-            return ""
+        # Handle None/empty results - create defaults instead of returning early
+        if not base_results:
+            logger.warning("Base results are None/empty - creating default empty dict for plot")
+            base_results = {}
+        if not ttt_results:
+            logger.warning("TTT results are None/empty - creating default empty dict for plot")
+            ttt_results = {}
         
         # Extract zero-day only metrics
-        base_zero_day = base_results.get('zero_day_only', {})
-        ttt_zero_day = ttt_results.get('zero_day_only', {})
+        base_zero_day = base_results.get('zero_day_only', {}) if isinstance(base_results, dict) else {}
+        ttt_zero_day = ttt_results.get('zero_day_only', {}) if isinstance(ttt_results, dict) else {}
         
-        if not base_zero_day or not ttt_zero_day:
-            logger.warning("Zero-day specific metrics not found in results - skipping zero-day comparison plot")
-            return ""
+        # ALWAYS generate plot - create default dicts if zero_day_only is missing/empty
+        if not base_zero_day or not isinstance(base_zero_day, dict):
+            logger.warning("Base zero-day metrics not found or invalid - using default zero values for plot")
+            base_zero_day = {'num_samples': 0, 'accuracy': 0.0, 'precision': 0.0, 'recall': 0.0, 'f1_score': 0.0, 'zero_day_detection_rate': 0.0, 'confusion_matrix': [[0, 0], [0, 0]]}
+        if not ttt_zero_day or not isinstance(ttt_zero_day, dict):
+            logger.warning("TTT zero-day metrics not found or invalid - using default zero values for plot")
+            ttt_zero_day = {'num_samples': 0, 'accuracy': 0.0, 'precision': 0.0, 'recall': 0.0, 'f1_score': 0.0, 'zero_day_detection_rate': 0.0, 'confusion_matrix': [[0, 0], [0, 0]]}
         
         # Extract metrics for comparison - focus on zero-day specific metrics
         # Order: Accuracy, Precision, Recall, F1-Score, Zero-Day Detection Rate
@@ -1207,13 +1233,20 @@ class PerformanceVisualizer:
         
         plt.tight_layout()
         
+        plot_path = ""
         if save:
-            plot_path = os.path.join(self.output_dir, self._get_filename("zero_day_performance_comparison"))
-            plt.savefig(plot_path, dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
-            logger.info(f"Zero-day performance comparison plot saved: {plot_path}")
+            try:
+                plot_path = os.path.join(self.output_dir, self._get_filename("zero_day_performance_comparison"))
+                plt.savefig(plot_path, dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
+                logger.info(f"✅ Zero-day performance comparison plot saved: {plot_path}")
+            except Exception as e:
+                logger.error(f"❌ Failed to save zero-day plot: {str(e)}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                plot_path = ""
         
         plt.close()  # Close figure instead of showing it
-        return plot_path if save else ""
+        return plot_path
     
     def plot_training_trends_with_annotations(self, training_history: Dict, save: bool = True) -> str:
         """

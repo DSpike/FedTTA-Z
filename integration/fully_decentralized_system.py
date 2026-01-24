@@ -25,9 +25,18 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models.transductive_fewshot_model import TransductiveFewShotModel
-from incentives.shapley_value_calculator import ShapleyValueCalculator
-from blockchain.blockchain_incentive_contract import BlockchainIncentiveContract
 from preprocessing.blockchain_federated_unsw_preprocessor import UNSWPreprocessor
+
+# Optional incentives/blockchain components (not required for pure FL runs)
+try:
+    from incentives.shapley_value_calculator import ShapleyValueCalculator
+except Exception:
+    ShapleyValueCalculator = None
+
+try:
+    from blockchain.blockchain_incentive_contract import BlockchainIncentiveContract
+except Exception:
+    BlockchainIncentiveContract = None
 
 logger = logging.getLogger(__name__)
 
@@ -156,15 +165,27 @@ class FullyDecentralizedSystem:
             # Initialize preprocessor
             self.preprocessor = UNSWPreprocessor()
             
-            # Initialize Shapley calculator
-            self.shapley_calculator = ShapleyValueCalculator()
+            # Initialize Shapley calculator (optional)
+            if ShapleyValueCalculator is not None:
+                try:
+                    self.shapley_calculator = ShapleyValueCalculator()
+                except Exception as e:
+                    logger.warning(f"Shapley incentive calculator not available: {e}")
+                    self.shapley_calculator = None
+            else:
+                logger.warning("Shapley incentive calculator module missing; incentives disabled.")
+                self.shapley_calculator = None
             
-            # Initialize incentive contract (if available)
-            try:
-                self.incentive_contract = BlockchainIncentiveContract()
-                logger.info("Blockchain incentive contract initialized")
-            except Exception as e:
-                logger.warning(f"Could not initialize blockchain contract: {e}")
+            # Initialize incentive contract (optional)
+            if BlockchainIncentiveContract is not None:
+                try:
+                    self.incentive_contract = BlockchainIncentiveContract()
+                    logger.info("Blockchain incentive contract initialized")
+                except Exception as e:
+                    logger.warning(f"Could not initialize blockchain contract: {e}")
+                    self.incentive_contract = None
+            else:
+                logger.warning("Blockchain incentive contract module missing; incentives disabled.")
                 self.incentive_contract = None
             
             # Load and preprocess data

@@ -9,10 +9,10 @@ import torch
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.feature_selection import mutual_info_classif
+import xgboost as xgb
 from imblearn.over_sampling import SMOTE, ADASYN
 from imblearn.under_sampling import RandomUnderSampler
+from preprocessing.wgan_gp_generator import generate_synthetic_samples_wgan_gp
 import logging
 import os
 import pickle
@@ -34,7 +34,7 @@ class UNSWPreprocessor:
     2. Feature Engineering  
     3. Data Cleaning (handles missing values, duplicates, infinite values)
     4. Categorical Encoding (after cleaning to avoid encoding invalid data)
-    5. Feature Selection (IG + RF hybrid)
+    5. Feature Selection (XGBoost-based, following MIX_LSTM approach)
     6. Feature Scaling
     7. Data Rebalancing
     """
@@ -251,21 +251,23 @@ class UNSWPreprocessor:
     def step5_feature_selection_hybrid(self, df: pd.DataFrame, target_col: str = 'attack_cat', 
                                        n_features_final: int = 30) -> pd.DataFrame:
         """
-        Step 5: Two-Stage IG + RF Hybrid Feature Selection for Multiclass Zero-Day Detection
+        Step 5: XGBoost Feature Selection for Multiclass Zero-Day Detection
         
-        This method implements a cleaner two-stage feature selection approach:
-        - Stage 1 (IG): Information Gain selects top 40 features from ~48 features using mutual_info_classif
-        - Stage 2 (RF): Random Forest selects final 30 features from those 40 using feature importances
+        This method implements XGBoost-based feature selection, following the approach used in
+        MIX_LSTM paper (Chen et al., 2024) which achieved 98.4% AUC-ROC on UNSW-NB15 dataset.
         
-        Why IG + RF Hybrid:
-        - IG provides statistical feature relevance independent of any model (captures non-linear relationships)
-        - RF provides model-based feature importance (captures feature interactions and non-linear patterns)
-        - Together they complement each other: IG finds general relevance, RF finds model-specific importance
+        Why XGBoost Feature Selection:
+        - Gradient boosting is more powerful than bagging (Random Forest)
+        - Single-stage selection (no information loss between stages)
+        - Captures complex non-linear feature interactions
+        - Handles class imbalance well (important for rare attack types)
+        - Proven performance: 98.4% AUC in MIX_LSTM on same dataset (UNSW-NB15)
         
-        Why We Removed RFE:
-        - RFE uses linear assumptions (e.g., LinearSVC) which don't fit non-linear intrusion patterns
-        - RFE is computationally expensive and requires iterative training
-        - RFE's linear nature misses important non-linear feature interactions common in network attacks
+        How It Works:
+        1. Train XGBoost classifier on full dataset with all features
+        2. Extract feature importance scores (gain-based)
+        3. Select top N features based on importance scores
+        4. Return dataframe with selected features
         
         Why 30 Features:
         - Balance between information content and computational efficiency
@@ -284,92 +286,83 @@ class UNSWPreprocessor:
         Returns:
             df: Dataframe with selected features + ['label', 'binary_label', 'attack_cat']
         """
-        logger.info("Step 5: Two-Stage IG + RF Hybrid Feature Selection for Multiclass Zero-Day Detection")
+        logger.info("Step 5: XGBoost Feature Selection for Multiclass Zero-Day Detection")
+        logger.info("  Method: XGBoost-based feature importance (following MIX_LSTM approach)")
         
         # Separate features and target (exclude attack_cat and other non-feature columns)
         exclude_cols = ['label', 'attack_cat', 'binary_label']
         feature_cols = [col for col in df.columns if col not in exclude_cols]
         X = df[feature_cols]
         y = df[target_col]  # Use multiclass labels (0-9 from attack_cat)
-        
+
+        # CRITICAL FIX: Encode string labels to numeric if needed
+        if y.dtype == 'object' or isinstance(y.iloc[0], str):
+            logger.info(f"  Converting string labels to numeric for XGBoost...")
+            from sklearn.preprocessing import LabelEncoder
+            label_encoder = LabelEncoder()
+            y_encoded = label_encoder.fit_transform(y)
+            logger.info(f"  Encoded {len(label_encoder.classes_)} classes: {label_encoder.classes_}")
+            y = pd.Series(y_encoded, index=y.index)
+
         logger.info(f"  Input features: {len(feature_cols)}")
         logger.info(f"  Using multiclass target: {target_col} (classes: {sorted(y.unique())})")
         logger.info(f"  Target final features: {n_features_final}")
         
-        # Calculate stage 1 features (1.33x final features to give RF room to select)
-        stage1_features = max(n_features_final, int(n_features_final * 1.33))
-        stage1_features = min(stage1_features, len(feature_cols))  # Don't exceed available features
-        
-        logger.info(f"  Stage 1 (IG): Selecting top {stage1_features} features")
-        logger.info(f"  Stage 2 (RF): Selecting final {n_features_final} features from {stage1_features}")
-        
-        # STAGE 1: Information Gain Selection
-        logger.info("  Stage 1: Computing Information Gain scores...")
-        
-        # OPTIMIZATION: For large datasets (>100K samples), use sampling to speed up IG computation
-        # IG is a statistical measure, so it works well on representative samples
-        max_samples_for_ig = 100000  # Use up to 100K samples for IG computation
-        if len(X) > max_samples_for_ig:
-            logger.info(f"  ⚡ Large dataset detected ({len(X):,} samples). Sampling {max_samples_for_ig:,} samples for faster IG computation...")
+        # OPTIMIZATION: For large datasets (>100K samples), use sampling to speed up XGBoost training
+        # XGBoost works well on representative samples, especially for feature importance
+        max_samples_for_xgb = 100000  # Use up to 100K samples for XGBoost training
+        if len(X) > max_samples_for_xgb:
+            logger.info(f"  ⚡ Large dataset detected ({len(X):,} samples). Sampling {max_samples_for_xgb:,} samples for faster XGBoost training...")
             # Stratified sampling to maintain class distribution
-            from sklearn.model_selection import train_test_split
             X_sample, _, y_sample, _ = train_test_split(
                 X.values, y.values, 
-                train_size=max_samples_for_ig, 
+                train_size=max_samples_for_xgb, 
                 stratify=y.values,
                 random_state=42
             )
-            logger.info(f"  ✅ Using {len(X_sample):,} samples for IG computation (representative sample)")
-            ig_scores = mutual_info_classif(X_sample, y_sample, random_state=42, n_jobs=-1)
+            logger.info(f"  ✅ Using {len(X_sample):,} samples for XGBoost training (representative sample)")
+            X_train = X_sample
+            y_train = y_sample
         else:
-            logger.info(f"  Using all {len(X):,} samples for IG computation")
-            ig_scores = mutual_info_classif(X.values, y.values, random_state=42, n_jobs=-1)
+            logger.info(f"  Using all {len(X):,} samples for XGBoost training")
+            X_train = X.values
+            y_train = y.values
         
-        ig_scores = np.array(ig_scores)
-        
-        # Get top features by IG score
-        top_ig_indices = np.argsort(ig_scores)[-stage1_features:][::-1]
-        stage1_selected_features = [feature_cols[i] for i in top_ig_indices]
-        X_stage1 = X[stage1_selected_features]
-        
-        logger.info(f"  Stage 1 complete: Selected {len(stage1_selected_features)} features")
-        
-        # Log top 10 features by IG score
-        ig_feature_df = pd.DataFrame({
-            'feature': feature_cols,
-            'ig_score': ig_scores
-        }).sort_values('ig_score', ascending=False)
-        
-        logger.info("  Top 10 features by Information Gain:")
-        for idx, row in ig_feature_df.head(10).iterrows():
-            logger.info(f"    {row['feature']}: {row['ig_score']:.4f}")
-        
-        # STAGE 2: Random Forest Selection
-        logger.info("  Stage 2: Training Random Forest for feature importance...")
-        rf = RandomForestClassifier(
+        # Train XGBoost classifier
+        logger.info("  Training XGBoost classifier for feature importance...")
+        xgb_model = xgb.XGBClassifier(
             n_estimators=100,
-            max_depth=10,
+            max_depth=6,
+            learning_rate=0.1,
             random_state=42,
-            n_jobs=-1
+            n_jobs=-1,
+            eval_metric='mlogloss',  # Multi-class log loss
+            tree_method='hist',  # Fast histogram-based method
+            verbosity=0  # Suppress XGBoost output
         )
-        rf.fit(X_stage1.values, y.values)
-        rf_importances = rf.feature_importances_
         
-        # Get top features by RF importance
-        top_rf_indices = np.argsort(rf_importances)[-n_features_final:][::-1]
-        final_selected_features = [stage1_selected_features[i] for i in top_rf_indices]
+        xgb_model.fit(X_train, y_train)
         
-        logger.info(f"  Stage 2 complete: Selected {len(final_selected_features)} features")
+        # Get feature importance scores (gain-based by default)
+        feature_importance = xgb_model.feature_importances_
         
-        # Log top 10 features by RF importance
-        rf_feature_df = pd.DataFrame({
-            'feature': stage1_selected_features,
-            'rf_importance': rf_importances
-        }).sort_values('rf_importance', ascending=False)
+        logger.info(f"  XGBoost training complete. Extracting feature importance scores...")
         
-        logger.info("  Top 10 features by Random Forest importance:")
-        for idx, row in rf_feature_df.head(10).iterrows():
-            logger.info(f"    {row['feature']}: {row['rf_importance']:.4f}")
+        # Get top features by XGBoost importance
+        top_indices = np.argsort(feature_importance)[-n_features_final:][::-1]
+        final_selected_features = [feature_cols[i] for i in top_indices]
+        
+        logger.info(f"  Feature selection complete: Selected {len(final_selected_features)} features")
+        
+        # Log top 10 features by XGBoost importance
+        xgb_feature_df = pd.DataFrame({
+            'feature': feature_cols,
+            'xgb_importance': feature_importance
+        }).sort_values('xgb_importance', ascending=False)
+        
+        logger.info("  Top 10 features by XGBoost importance:")
+        for idx, row in xgb_feature_df.head(10).iterrows():
+            logger.info(f"    {row['feature']}: {row['xgb_importance']:.4f}")
         
         # Log final selected features
         logger.info(f"  Final {len(final_selected_features)} selected features:")
@@ -379,13 +372,10 @@ class UNSWPreprocessor:
         # Create feature importance dataframe for later use
         feature_importance_df = pd.DataFrame({
             'feature': feature_cols,
-            'ig_score': ig_scores
+            'xgb_importance': feature_importance
         })
         feature_importance_df = feature_importance_df[feature_importance_df['feature'].isin(final_selected_features)].copy()
-        feature_importance_df['rf_importance'] = 0.0
-        for idx, feat in enumerate(stage1_selected_features):
-            if feat in feature_importance_df['feature'].values:
-                feature_importance_df.loc[feature_importance_df['feature'] == feat, 'rf_importance'] = rf_importances[idx]
+        feature_importance_df = feature_importance_df.sort_values('xgb_importance', ascending=False)
         
         # Return dataframe with selected features + target columns
         # Only include columns that actually exist in the dataframe
@@ -400,7 +390,7 @@ class UNSWPreprocessor:
         
         # Store feature selection info for later use
         self.selected_features = final_selected_features
-        self.feature_importance_scores = feature_importance_df.sort_values('ig_score', ascending=False)
+        self.feature_importance_scores = feature_importance_df
         
         logger.info(f"  Final shape: {df_selected.shape}")
         logger.info(f"  Feature reduction: {len(feature_cols)} → {len(final_selected_features)} ({100 * (1 - len(final_selected_features)/len(feature_cols)):.1f}% reduction)")
@@ -663,45 +653,111 @@ class UNSWPreprocessor:
             action = "oversample" if target_count > current_count else "undersample" if target_count < current_count else "keep"
             logger.info(f"    {attack_name}: {current_count:,} → {target_count:,} ({action})")
         
-        # Step 1: Apply ADASYN for oversampling minority classes only
-        logger.info("  Step 1: Applying ADASYN oversampling...")
+        # Step 1: Apply WGAN-GP for extreme minority classes, ADASYN for others
+        logger.info("  Step 1: Applying oversampling (WGAN-GP for extreme minority, ADASYN for others)...")
         
-        # Create oversampling strategy (only for classes that need oversampling)
-        oversample_strategy = {}
+        # Separate classes into extreme minority (< 1000 samples) and others
+        extreme_minority_classes = {}  # Use WGAN-GP
+        moderate_minority_classes = {}  # Use ADASYN
+        
         for class_label, count in zip(unique_classes, class_counts):
             target_count = sampling_strategy[class_label]
             if target_count > count:  # Only oversample if target > current
-                oversample_strategy[class_label] = target_count
+                if count < 1000:  # Extreme minority: use WGAN-GP
+                    extreme_minority_classes[class_label] = (count, target_count)
+                else:  # Moderate minority: use ADASYN
+                    moderate_minority_classes[class_label] = target_count
         
-        if oversample_strategy:
+        # Start with original data
+        X_resampled = X.copy()
+        y_resampled = y.copy()
+        
+        # Process extreme minority classes with WGAN-GP
+        if extreme_minority_classes:
+            logger.info(f"  Processing {len(extreme_minority_classes)} extreme minority classes with WGAN-GP...")
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            
+            synthetic_samples_list = []
+            synthetic_labels_list = []
+            
+            for class_label, (current_count, target_count) in extreme_minority_classes.items():
+                    attack_name = list(attack_type_mapping.keys())[list(attack_type_mapping.values()).index(class_label)]
+                    n_samples_needed = target_count - current_count
+                    
+                    logger.info(f"    {attack_name} (Label {class_label}): {current_count} → {target_count} samples (need {n_samples_needed})")
+                    
+                    # Get minority class samples
+                    class_mask = (y == class_label)
+                    class_samples = X[class_mask]
+                    
+                    if len(class_samples) < 10:
+                        logger.warning(f"      Too few samples ({len(class_samples)}) for WGAN-GP, skipping")
+                        continue
+                    
+                    try:
+                        # Generate synthetic samples using WGAN-GP
+                        logger.info(f"      Training WGAN-GP on {len(class_samples)} samples...")
+                        synthetic_samples = generate_synthetic_samples_wgan_gp(
+                            X=class_samples,
+                            n_samples=n_samples_needed,
+                            n_epochs=50,  # Reduced for faster training
+                            batch_size=min(64, len(class_samples)),
+                            device=device,
+                            verbose=False
+                        )
+                        
+                        synthetic_samples_list.append(synthetic_samples)
+                        synthetic_labels_list.append(np.full(n_samples_needed, class_label))
+                        
+                        logger.info(f"      ✅ Generated {n_samples_needed} synthetic samples for {attack_name}")
+                        
+                    except Exception as e:
+                        logger.error(f"      ❌ WGAN-GP failed for {attack_name}: {e}")
+                        raise RuntimeError(f"WGAN-GP generation failed for {attack_name}. Cannot continue without synthetic samples.")
+            
+            # Combine synthetic samples with original data
+            if synthetic_samples_list:
+                synthetic_X = np.vstack(synthetic_samples_list)
+                synthetic_y = np.hstack(synthetic_labels_list)
+                
+                X_resampled = np.vstack([X_resampled, synthetic_X])
+                y_resampled = np.hstack([y_resampled, synthetic_y])
+                
+                logger.info(f"  WGAN-GP completed: Added {len(synthetic_X)} synthetic samples")
+        
+        # Process moderate minority classes with ADASYN
+        if moderate_minority_classes:
+            logger.info(f"  Processing {len(moderate_minority_classes)} moderate minority classes with ADASYN...")
+            
             adasyn = ADASYN(
-                sampling_strategy=oversample_strategy,
+                sampling_strategy=moderate_minority_classes,
                 random_state=42,
-                n_neighbors=5  # ADASYN uses n_neighbors parameter
+                n_neighbors=5
             )
             
             try:
-                X_resampled, y_resampled = adasyn.fit_resample(X, y)
-                logger.info(f"  ADASYN completed: {len(X)} → {len(X_resampled)} samples")
+                X_adasyn, y_adasyn = adasyn.fit_resample(X_resampled, y_resampled)
+                logger.info(f"  ADASYN completed: {len(X_resampled)} → {len(X_adasyn)} samples")
+                X_resampled, y_resampled = X_adasyn, y_adasyn
             except Exception as e:
                 logger.warning(f"  ADASYN failed: {e}")
                 logger.info("  Falling back to SMOTE")
                 # Fallback to SMOTE if ADASYN fails
                 try:
                     smote = SMOTE(
-                        sampling_strategy=oversample_strategy,
+                        sampling_strategy=moderate_minority_classes,
                         random_state=42,
                         k_neighbors=3
                     )
-                    X_resampled, y_resampled = smote.fit_resample(X, y)
-                    logger.info(f"  SMOTE fallback completed: {len(X)} → {len(X_resampled)} samples")
+                    X_smote, y_smote = smote.fit_resample(X_resampled, y_resampled)
+                    logger.info(f"  SMOTE fallback completed: {len(X_resampled)} → {len(X_smote)} samples")
+                    X_resampled, y_resampled = X_smote, y_smote
                 except Exception as e2:
                     logger.warning(f"  SMOTE fallback also failed: {e2}")
-                    logger.info("  Using original data")
-                    X_resampled, y_resampled = X, y
+                    logger.info("  Using current data")
         else:
-            logger.info("  No classes need oversampling, skipping ADASYN")
-            X_resampled, y_resampled = X, y
+            if not extreme_minority_classes:
+                logger.info("  No classes need oversampling")
         
         # Step 2: Apply RandomUnderSampler for undersampling majority classes
         logger.info("  Step 2: Applying RandomUnderSampler...")
@@ -995,14 +1051,14 @@ class UNSWPreprocessor:
         
         # Check if feature selection is enabled
         try:
-            from config import Config
-            use_feature_selection = Config().use_igrf_rfe
+            from config import SystemConfig
+            use_feature_selection = SystemConfig().use_feature_selection
         except:
             use_feature_selection = True  # Default to enabled if config not available
         
         if use_feature_selection:
             # FIX #1: Feature selection on TRAINING data only (prevents leakage)
-            logger.info("\nApplying IG + RF hybrid feature selection to TRAINING data only...")
+            logger.info("\nApplying XGBoost feature selection to TRAINING data only...")
             train_df = self.step5_feature_selection_hybrid(train_df, target_col='attack_cat', n_features_final=30)
             
             # Apply same selected features to test data
@@ -1380,6 +1436,17 @@ class UNSWPreprocessor:
             y_sequences: Array of shape (n_sequences,)
         """
         logger.info(f"Creating sequences with length={sequence_length}, stride={stride}, zero_pad={zero_pad}")
+        
+        # Convert to numpy arrays if they're tensors
+        if hasattr(X, 'cpu'):
+            X = X.cpu().numpy()
+        elif not isinstance(X, np.ndarray):
+            X = np.array(X)
+        
+        if hasattr(y, 'cpu'):
+            y = y.cpu().numpy()
+        elif not isinstance(y, np.ndarray):
+            y = np.array(y)
         
         n_samples, n_features = X.shape
         sequences = []
