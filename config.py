@@ -20,7 +20,7 @@ class SystemConfig:
     # UPDATED: Changed from 3 rounds/3 clients to 10 rounds/5 clients based on BASE_MODEL_POOR_PERFORMANCE_DEEP_INVESTIGATION.md
     num_clients: int = 3  # Set to 3 clients for federated learning
     num_rounds: int = 3  # Set to 3 rounds for quick test
-    local_epochs: int = 20  # Increased to 20 epochs per round for better training
+    local_epochs: int = 30  # Increased to 30 epochs per round to compensate for less data per client (3 clients = 1/3 data each)
     learning_rate: float = 0.0015751320499779737  # Optimized: 0.001575 (from CICIDS2017 Optuna Trial 0)
     batch_size: int = 16  # Optimal batch size (validated in hyperparameter tuning)
     dirichlet_alpha: float = 1.0  # Set to 1.0 for moderate heterogeneity (balanced non-IID)
@@ -335,13 +335,19 @@ class SystemConfig:
         }
 # Global configuration instance - single source of truth
 config = SystemConfig()
-# FORCE num_rounds to 10 for better base model performance
-config.num_rounds = 10
-# FORCE num_clients to 1 for quick test
-config.num_clients = 1
+# FORCE num_rounds to 20 for better convergence with 3 clients (each client has less data)
+config.num_rounds = 20
+# FORCE num_clients to 3 for proper federated learning
+config.num_clients = 3
+# FORCE local_epochs to 30 to compensate for less data per client (3 clients = 1/3 data each)
+config.local_epochs = 30
+# FORCE k_shot to 50 for 10-shot per attack type (10 samples per type with 5 attack types)
+config.k_shot = 50
 # Verify it's set correctly
-assert config.num_rounds == 10, f"Config num_rounds is {config.num_rounds}, expected 10!"
-assert config.num_clients == 1, f"Config num_clients is {config.num_clients}, expected 1!"
+assert config.num_rounds == 20, f"Config num_rounds is {config.num_rounds}, expected 20!"
+assert config.num_clients == 3, f"Config num_clients is {config.num_clients}, expected 3!"
+assert config.local_epochs == 30, f"Config local_epochs is {config.local_epochs}, expected 30!"
+assert config.k_shot == 50, f"Config k_shot is {config.k_shot}, expected 50!"
 
 # Convenience function to get config
 def get_config() -> SystemConfig:
